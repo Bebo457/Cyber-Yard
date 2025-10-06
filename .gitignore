@@ -1,2 +1,77 @@
+# Python virtual environment
 venv/
 cache/
+
+# Build directories
+program/build/
+program/bin/
+program/lib/
+program/out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.sln.docstates
+*.vcxproj.user
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# CLion
+.idea/
+cmake-build-*/
+
+# Compiled Object files
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# OS specific
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Dependencies (if using vcpkg locally)
+vcpkg_installed/
+
+# IDE specific
+*.pro.user
+
+# Grzegorz
+private_notes/
