@@ -1,7 +1,7 @@
 #ifndef SCOTLANDYARD_STATES_MENUSTATE_H
 #define SCOTLANDYARD_STATES_MENUSTATE_H
 
-#include "core/IGameState.h"
+#include "IGameState.h"
 
 namespace ScotlandYard {
 namespace States {

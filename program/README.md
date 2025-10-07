@@ -22,6 +22,13 @@ cmake --build .
 .\bin\Release\ScotlandYardPlusPlus.exe  # Windows
 ```
 
+### Command Line Arguments
+```bash
+# Traning mode (no graphics)
+./ScotlandYardPlusPlus --training --steps 50000
+./ScotlandYardPlusPlus -t --steps 1000
+```
+
 ---
 
 ## Documentation

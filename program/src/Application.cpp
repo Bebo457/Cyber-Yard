@@ -8,7 +8,7 @@
 namespace ScotlandYard {
 namespace Core {
 
-Application::Application(const std::string& title, int width, int height)
+Application::Application(const std::string& title, int width, int height, bool trainingMode)
     : m_s_Title(title)
     , m_i_Width(width)
     , m_i_Height(height)
@@ -16,6 +16,7 @@ Application::Application(const std::string& title, int width, int height)
     , m_gl_Context(nullptr)
     , m_b_Running(false)
     , m_b_Initialized(false)
+    , m_b_TrainingMode(trainingMode)
     , m_f_DeltaTime(0.0f)
     , m_u64_LastFrameTime(0)
 {
@@ -28,6 +29,12 @@ Application::~Application() {
 }
 
 bool Application::Initialize() {
+    if (m_b_TrainingMode) {
+        m_p_StateManager = std::make_unique<StateManager>();
+        m_b_Initialized = true;
+        return true;
+    }
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
         std::cerr << "SDL initialization failed: " << SDL_GetError() << std::endl;
         return false;
@@ -107,6 +114,15 @@ void Application::Run() {
     }
 }
 
+void Application::RunTraining(int maxSteps) {
+    const float k_FixedDt = 1.0f / 60.0f;
+    m_b_Running = true;
+
+    for (int i = 0; i < maxSteps && m_b_Running && !m_p_StateManager->IsEmpty(); ++i) {
+        Update(k_FixedDt);
+    }
+}
+
 void Application::HandleEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -132,17 +148,20 @@ void Application::Shutdown() {
 
     m_p_StateManager.reset();
 
-    if (m_gl_Context) {
-        SDL_GL_DeleteContext(m_gl_Context);
-        m_gl_Context = nullptr;
+    if (!m_b_TrainingMode) {
+        if (m_gl_Context) {
+            SDL_GL_DeleteContext(m_gl_Context);
+            m_gl_Context = nullptr;
+        }
+
+        if (m_p_Window) {
+            SDL_DestroyWindow(m_p_Window);
+            m_p_Window = nullptr;
+        }
+
+        SDL_Quit();
     }
 
-    if (m_p_Window) {
-        SDL_DestroyWindow(m_p_Window);
-        m_p_Window = nullptr;
-    }
-
-    SDL_Quit();
     m_b_Initialized = false;
 }
 

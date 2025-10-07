@@ -12,7 +12,7 @@ class StateManager;
 
 class Application {
 public:
-    Application(const std::string& title, int width, int height);
+    Application(const std::string& title, int width, int height, bool trainingMode = false);
     ~Application();
 
     Application(const Application&) = delete;
@@ -21,12 +21,14 @@ public:
     bool Initialize();
     void LoadStates();
     void Run();
+    void RunTraining(int maxSteps = 10000);
     void Shutdown();
 
     void RequestExit() { m_b_Running = false; }
     int GetWidth() const { return m_i_Width; }
     int GetHeight() const { return m_i_Height; }
     float GetDeltaTime() const { return m_f_DeltaTime; }
+    bool IsTrainingMode() const { return m_b_TrainingMode; }
 
 private:
     void HandleEvents();
@@ -45,6 +47,7 @@ private:
 
     bool m_b_Running;
     bool m_b_Initialized;
+    bool m_b_TrainingMode;
 
     float m_f_DeltaTime;
     Uint64 m_u64_LastFrameTime;

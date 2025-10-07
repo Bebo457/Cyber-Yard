@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-### Windows (Visual Studio)
+### Windows (Visual Studio Code)
 
 ```powershell
 # 1. Install dependencies using vcpkg
@@ -64,7 +64,7 @@ make -j$(sysctl -n hw.ncpu)
 cd C:\
 git clone https://github.com/Microsoft/vcpkg.git
 cd vcpkg
-.\bootstrap-vcpkg.bat
+.\bootstrap-vcpkg.bat -disableMetrics
 ```
 
 2. **Install dependencies:**
@@ -75,7 +75,7 @@ cd vcpkg
 
 3. **Configure project:**
 ```powershell
-cd "YOUR_FOLDER\Scotland-Yard-Plus-Plus"
+cd "YOUR_FOLDER\Scotland-Yard-Plus-Plus/program/"
 mkdir build
 cd build
 cmake .. -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake

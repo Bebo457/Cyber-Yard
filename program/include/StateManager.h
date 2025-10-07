@@ -1,7 +1,7 @@
 #ifndef SCOTLANDYARD_CORE_STATEMANAGER_H
 #define SCOTLANDYARD_CORE_STATEMANAGER_H
 
-#include "core/IGameState.h"
+#include "IGameState.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
