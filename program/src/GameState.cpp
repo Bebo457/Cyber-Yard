@@ -301,6 +301,7 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_MOUSEBUTTONDOWN) {
         int i_X = event.button.x;
         int i_Y = event.button.y;
+    }
 }
 
 // Generowanie wierzchołków koła
