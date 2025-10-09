@@ -6,7 +6,7 @@
 
 ```powershell
 # 1. Install dependencies using vcpkg
-vcpkg install sdl2 glew
+vcpkg install sdl2 glew sdl2-ttf
 
 # 2. Configure CMake
 mkdir build
@@ -25,7 +25,7 @@ cmake --build . --config Release
 ```bash
 # 1. Install dependencies
 sudo apt-get update
-sudo apt-get install cmake build-essential libsdl2-dev libglew-dev
+sudo apt-get install cmake build-essential libsdl2-dev libglew-dev libsdl2-ttf-dev libgl1-mesa-dev
 
 # 2. Build
 mkdir build && cd build
@@ -40,7 +40,7 @@ make -j$(nproc)
 
 ```bash
 # 1. Install dependencies
-brew install cmake sdl2 glew
+brew install cmake sdl2 glew sdl2_ttf
 
 # 2. Build
 mkdir build && cd build
@@ -71,6 +71,7 @@ cd vcpkg
 ```powershell
 .\vcpkg install sdl2:x64-windows
 .\vcpkg install glew:x64-windows
+.\vcpkg install sdl2-ttf:x64-windows
 ```
 
 3. **Configure project:**

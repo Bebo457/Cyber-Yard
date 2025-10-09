@@ -4,6 +4,13 @@
 #include "GameState.h"
 #include <GL/glew.h>
 #include <iostream>
+#include <filesystem>
+#include <vector>
+
+#ifdef _WIN32
+    #include <windows.h>
+    #include <shlobj.h>
+#endif
 
 namespace ScotlandYard {
 namespace Core {
@@ -79,12 +86,17 @@ bool Application::Initialize() {
         return false;
     }
 
-    m_p_Font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24);
+    // Find and load system font
+    std::string fontPath = FindSystemFont();
+    if (!fontPath.empty()) {
+        m_p_Font = TTF_OpenFont(fontPath.c_str(), 24);
+    }
+    
     if (!m_p_Font) {
-        m_p_Font = TTF_OpenFont("/usr/share/fonts/TTF/arial.ttf", 24);
-        if (!m_p_Font) {
-            std::cerr << "Font loading failed: " << TTF_GetError() << std::endl;
-        }
+        std::cerr << "Font loading failed: " << TTF_GetError() << std::endl;
+        // Continue without font - application will work but may not display text
+    } else {
+        std::cout << "Successfully loaded font: " << fontPath << std::endl;
     }
 
     m_gl_Context = SDL_GL_CreateContext(m_p_Window);
@@ -208,6 +220,48 @@ void Application::Shutdown() {
     }
 
     m_b_Initialized = false;
+}
+
+std::string Application::FindSystemFont() {
+    // List of common font paths to try, prioritized by platform
+    std::vector<std::string> fontPaths = {
+#ifdef _WIN32
+        // Windows system fonts
+        "C:\\Windows\\Fonts\\arial.ttf",
+        "C:\\Windows\\Fonts\\calibri.ttf",
+        "C:\\Windows\\Fonts\\tahoma.ttf",
+        "C:\\Windows\\Fonts\\verdana.ttf",
+        "C:\\Windows\\Fonts\\times.ttf",
+        "C:\\Windows\\Fonts\\consola.ttf"
+#elif __linux__
+        // Linux system fonts
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/arial.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        "/usr/share/fonts/truetype/roboto/Roboto-Regular.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf"
+#elif __APPLE__
+        // macOS system fonts
+        "/System/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Times.ttc",
+        "/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf"
+#endif
+    };
+
+    // Try each font path
+    for (const auto& fontPath : fontPaths) {
+        if (std::filesystem::exists(fontPath)) {
+            std::cout << "Found system font: " << fontPath << std::endl;
+            return fontPath;
+        }
+    }
+
+    // If no system font found, return empty string
+    std::cerr << "Warning: No system font found. Application may not display text correctly." << std::endl;
+    return "";
 }
 
 } // namespace Core
