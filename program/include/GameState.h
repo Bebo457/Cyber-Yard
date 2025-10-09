@@ -4,6 +4,10 @@
 #include "IGameState.h"
 
 namespace ScotlandYard {
+namespace Core {
+    class Application;
+}
+
 namespace States {
 
 class GameState : public Core::IGameState {
@@ -15,9 +19,9 @@ public:
     void OnExit() override;
     void OnPause() override;
     void OnResume() override;
-    void Update(float deltaTime) override;
-    void Render() override;
-    void HandleEvent(const SDL_Event& event) override;
+    void Update(float f_DeltaTime) override;
+    void Render(Core::Application* p_App) override;
+    void HandleEvent(const SDL_Event& event, Core::Application* p_App) override;
 
 private:
     bool m_b_GameActive;

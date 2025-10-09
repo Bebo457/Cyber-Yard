@@ -9,12 +9,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-#SDL2, OpenGL, GLEW ====================================
+#SDL2, SDL2_ttf, OpenGL, GLEW ====================================
 
 find_package(SDL2 REQUIRED)
 if(NOT SDL2_FOUND)
     message(FATAL_ERROR "SDL2 not found. Please install")
 endif()
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2_TTF REQUIRED SDL2_ttf)
 
 find_package(OpenGL REQUIRED)
 if(NOT OPENGL_FOUND)
@@ -57,6 +60,7 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${SDL2_INCLUDE_DIRS}
+    ${SDL2_TTF_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
     ${GLEW_INCLUDE_DIRS}
 )
@@ -64,6 +68,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link lib
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${SDL2_LIBRARIES}
+    ${SDL2_TTF_LIBRARIES}
     ${OPENGL_LIBRARIES}
     ${GLEW_LIBRARIES}
 )

@@ -1,4 +1,5 @@
 #include "GameState.h"
+#include "Application.h"
 #include <GL/glew.h>
 
 namespace ScotlandYard {
@@ -28,16 +29,22 @@ void GameState::OnResume() {
     m_b_GameActive = true;
 }
 
-void GameState::Update(float deltaTime) {
+void GameState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;
 }
 
-void GameState::Render() {
+void GameState::Render(Core::Application* p_App) {
+    // Use OpenGL for game rendering
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    // Game rendering code will go here
+    
+    // Swap OpenGL buffers for game
+    SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 }
 
-void GameState::HandleEvent(const SDL_Event& event) {
+void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_KEYDOWN) {
         switch (event.key.keysym.sym) {
             case SDLK_ESCAPE:
@@ -46,8 +53,8 @@ void GameState::HandleEvent(const SDL_Event& event) {
     }
 
     if (event.type == SDL_MOUSEBUTTONDOWN) {
-        int x = event.button.x;
-        int y = event.button.y;
+        int i_X = event.button.x;
+        int i_Y = event.button.y;
     }
 }
 

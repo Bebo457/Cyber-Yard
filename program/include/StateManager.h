@@ -10,6 +10,8 @@
 namespace ScotlandYard {
 namespace Core {
 
+class Application;
+
 class StateManager {
 public:
     StateManager();
@@ -18,13 +20,13 @@ public:
     StateManager(const StateManager&) = delete;
     StateManager& operator=(const StateManager&) = delete;
 
-    void RegisterState(const std::string& name, std::unique_ptr<IGameState> pState);
-    void PushState(const std::string& name);
+    void RegisterState(const std::string& s_Name, std::unique_ptr<IGameState> u_State);
+    void PushState(const std::string& s_Name);
     void PopState();
-    void ChangeState(const std::string& name);
-    void Update(float deltaTime);
-    void Render();
-    void HandleEvent(const SDL_Event& event);
+    void ChangeState(const std::string& s_Name);
+    void Update(float f_DeltaTime);
+    void Render(Application* p_App);
+    void HandleEvent(const SDL_Event& event, Application* p_App);
 
     bool IsEmpty() const { return m_StateStack.empty(); }
 

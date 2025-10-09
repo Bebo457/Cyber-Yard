@@ -14,6 +14,8 @@ Application::Application(const std::string& title, int width, int height, bool t
     , m_i_Height(height)
     , m_p_Window(nullptr)
     , m_gl_Context(nullptr)
+    , m_p_Renderer(nullptr)
+    , m_p_Font(nullptr)
     , m_b_Running(false)
     , m_b_Initialized(false)
     , m_b_TrainingMode(trainingMode)
@@ -40,6 +42,12 @@ bool Application::Initialize() {
         return false;
     }
 
+    if (TTF_Init() == -1) {
+        std::cerr << "SDL_ttf initialization failed: " << TTF_GetError() << std::endl;
+        SDL_Quit();
+        return false;
+    }
+
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -57,14 +65,35 @@ bool Application::Initialize() {
 
     if (!m_p_Window) {
         std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
+        TTF_Quit();
         SDL_Quit();
         return false;
+    }
+
+    m_p_Renderer = SDL_CreateRenderer(m_p_Window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!m_p_Renderer) {
+        std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
+        SDL_DestroyWindow(m_p_Window);
+        TTF_Quit();
+        SDL_Quit();
+        return false;
+    }
+
+    m_p_Font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24);
+    if (!m_p_Font) {
+        m_p_Font = TTF_OpenFont("/usr/share/fonts/TTF/arial.ttf", 24);
+        if (!m_p_Font) {
+            std::cerr << "Font loading failed: " << TTF_GetError() << std::endl;
+        }
     }
 
     m_gl_Context = SDL_GL_CreateContext(m_p_Window);
     if (!m_gl_Context) {
         std::cerr << "OpenGL context creation failed: " << SDL_GetError() << std::endl;
+        if (m_p_Font) TTF_CloseFont(m_p_Font);
+        SDL_DestroyRenderer(m_p_Renderer);
         SDL_DestroyWindow(m_p_Window);
+        TTF_Quit();
         SDL_Quit();
         return false;
     }
@@ -74,7 +103,10 @@ bool Application::Initialize() {
     if (glewError != GLEW_OK) {
         std::cerr << "GLEW initialization failed: " << glewGetErrorString(glewError) << std::endl;
         SDL_GL_DeleteContext(m_gl_Context);
+        if (m_p_Font) TTF_CloseFont(m_p_Font);
+        SDL_DestroyRenderer(m_p_Renderer);
         SDL_DestroyWindow(m_p_Window);
+        TTF_Quit();
         SDL_Quit();
         return false;
     }
@@ -129,18 +161,19 @@ void Application::HandleEvents() {
         if (event.type == SDL_QUIT) {
             m_b_Running = false;
         }
-        m_p_StateManager->HandleEvent(event);
+        m_p_StateManager->HandleEvent(event, this);
     }
 }
 
-void Application::Update(float deltaTime) {
-    m_p_StateManager->Update(deltaTime);
+void Application::Update(float f_DeltaTime) {
+    m_p_StateManager->Update(f_DeltaTime);
 }
 
 void Application::Render() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    m_p_StateManager->Render();
-    SDL_GL_SwapWindow(m_p_Window);
+    // Use SDL2 renderer for menu, OpenGL for game
+    if (m_p_StateManager) {
+        m_p_StateManager->Render(this);
+    }
 }
 
 void Application::Shutdown() {
@@ -149,6 +182,16 @@ void Application::Shutdown() {
     m_p_StateManager.reset();
 
     if (!m_b_TrainingMode) {
+        if (m_p_Font) {
+            TTF_CloseFont(m_p_Font);
+            m_p_Font = nullptr;
+        }
+
+        if (m_p_Renderer) {
+            SDL_DestroyRenderer(m_p_Renderer);
+            m_p_Renderer = nullptr;
+        }
+
         if (m_gl_Context) {
             SDL_GL_DeleteContext(m_gl_Context);
             m_gl_Context = nullptr;
@@ -159,6 +202,7 @@ void Application::Shutdown() {
             m_p_Window = nullptr;
         }
 
+        TTF_Quit();
         SDL_Quit();
     }
 

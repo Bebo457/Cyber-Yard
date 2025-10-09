@@ -14,23 +14,23 @@ StateManager::~StateManager() {
     }
 }
 
-void StateManager::RegisterState(const std::string& name, std::unique_ptr<IGameState> pState) {
-    m_map_States[name] = std::move(pState);
+void StateManager::RegisterState(const std::string& s_Name, std::unique_ptr<IGameState> u_State) {
+    m_map_States[s_Name] = std::move(u_State);
 }
 
-void StateManager::PushState(const std::string& name) {
-    auto it = m_map_States.find(name);
+void StateManager::PushState(const std::string& s_Name) {
+    auto it = m_map_States.find(s_Name);
     if (it == m_map_States.end()) {
-        throw std::runtime_error("State not found: " + name);
+        throw std::runtime_error("State not found: " + s_Name);
     }
 
     if (!m_StateStack.empty()) {
         m_StateStack.top()->OnPause();
     }
 
-    IGameState* pState = it->second.get();
-    m_StateStack.push(pState);
-    pState->OnEnter();
+    IGameState* p_State = it->second.get();
+    m_StateStack.push(p_State);
+    p_State->OnEnter();
 }
 
 void StateManager::PopState() {
@@ -46,10 +46,10 @@ void StateManager::PopState() {
     }
 }
 
-void StateManager::ChangeState(const std::string& name) {
-    auto it = m_map_States.find(name);
+void StateManager::ChangeState(const std::string& s_Name) {
+    auto it = m_map_States.find(s_Name);
     if (it == m_map_States.end()) {
-        throw std::runtime_error("State not found: " + name);
+        throw std::runtime_error("State not found: " + s_Name);
     }
 
     while (!m_StateStack.empty()) {
@@ -57,26 +57,26 @@ void StateManager::ChangeState(const std::string& name) {
         m_StateStack.pop();
     }
 
-    IGameState* pState = it->second.get();
-    m_StateStack.push(pState);
-    pState->OnEnter();
+    IGameState* p_State = it->second.get();
+    m_StateStack.push(p_State);
+    p_State->OnEnter();
 }
 
-void StateManager::Update(float deltaTime) {
+void StateManager::Update(float f_DeltaTime) {
     if (!m_StateStack.empty()) {
-        m_StateStack.top()->Update(deltaTime);
+        m_StateStack.top()->Update(f_DeltaTime);
     }
 }
 
-void StateManager::Render() {
+void StateManager::Render(Application* p_App) {
     if (!m_StateStack.empty()) {
-        m_StateStack.top()->Render();
+        m_StateStack.top()->Render(p_App);
     }
 }
 
-void StateManager::HandleEvent(const SDL_Event& event) {
+void StateManager::HandleEvent(const SDL_Event& event, Application* p_App) {
     if (!m_StateStack.empty()) {
-        m_StateStack.top()->HandleEvent(event);
+        m_StateStack.top()->HandleEvent(event, p_App);
     }
 }
 
