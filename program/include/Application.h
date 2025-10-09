@@ -32,6 +32,7 @@ public:
     bool IsTrainingMode() const { return m_b_TrainingMode; }
     SDL_Renderer* GetRenderer() const { return m_p_Renderer; }
     TTF_Font* GetFont() const { return m_p_Font; }
+    StateManager* GetStateManager() const { return m_p_StateManager.get(); }
 
 private:
     void HandleEvents();

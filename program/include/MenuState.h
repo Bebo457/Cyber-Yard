@@ -7,6 +7,7 @@
 namespace ScotlandYard {
 namespace Core {
     class Application;
+    class StateManager;
 }
 
 namespace States {

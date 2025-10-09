@@ -1,5 +1,6 @@
 #include "MenuState.h"
 #include "Application.h"
+#include "StateManager.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
@@ -81,6 +82,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             case SDLK_RETURN:
                 switch (m_i_SelectedOption) {
                     case 0:
+                        p_App->GetStateManager()->ChangeState("game");
                         break;
                     case 1:
                         break;
@@ -105,6 +107,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                     m_i_SelectedOption = i;
                     switch (i) {
                         case 0: 
+                            p_App->GetStateManager()->ChangeState("game");
                             break;
                         case 1: 
                             break;
