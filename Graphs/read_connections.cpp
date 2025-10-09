@@ -2,8 +2,18 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
+#include <cctype>
 
 using namespace std;
+
+// Trim whitespace from string
+std::string trim(const std::string& str) {
+    size_t first = str.find_first_not_of(" \t\n\r\f\v");
+    if (first == std::string::npos) return "";
+    size_t last = str.find_last_not_of(" \t\n\r\f\v");
+    return str.substr(first, (last - first + 1));
+}
 
 struct Node; // forward declaration for Edge
 
@@ -125,16 +135,27 @@ std::vector<int> parseGroup(const std::string& group) {
     std::stringstream ss(group);
     std::string item;
     while (std::getline(ss, item, ';')) {
-        values.push_back(std::stoi(item));
+        item = trim(item);
+        if (!item.empty()) {
+            try {
+                values.push_back(std::stoi(item));
+            } catch (const std::exception&) {
+                // Skip invalid items
+            }
+        }
     }
     return values;
 }
 
 void read_map(string filename1, Node nodes[]){
     std::ifstream file(filename1);
+    if (!file.is_open()) {
+        std::cerr << "Error: Cannot open file '" << filename1 << "'.\n";
+        return;
+    }
     std::string line;
 
-        while (std::getline(file, line)) {
+    while (std::getline(file, line)) {
         std::stringstream ss(line);
         std::string a1_str, group_str;
         std::vector<std::string> groups;
@@ -142,19 +163,18 @@ void read_map(string filename1, Node nodes[]){
         std::getline(ss, a1_str, ',');
         int a1 = std::stoi(a1_str);
 
-        // Wczytaj pozostałe grupy
+        // Read remaining groups
         while (std::getline(ss, group_str, ',')) {
             groups.push_back(group_str);
         }
 
-        // Tworzenie polaczen
+        // Creating connections
         for (size_t i = 0; i < groups.size(); ++i) {
             std::vector<int> values = parseGroup(groups[i]);
-            int typ = static_cast<int>(i + 1); // b=1, c=2, d=3
+            int type = static_cast<int>(i + 1); // taxi=1, bus=2, underground=3, ferry=4
             for (int val : values) {
-                // funkcja1(a1, val, typ);
-                nodes[a1].connectTo(&nodes[val], typ);
-                std::cout << "Nodes connected " << a1 << " to " << val << " by " << typ << "\n";
+                nodes[a1].connectTo(&nodes[val], type);
+                std::cout << "Nodes connected " << a1 << " to " << val << " by " << type << "\n";
             }
         }
     }
