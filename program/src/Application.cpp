@@ -92,7 +92,8 @@ bool Application::Initialize() {
 void Application::LoadStates() {
     m_p_StateManager->RegisterState("menu", std::make_unique<States::MenuState>());
     m_p_StateManager->RegisterState("game", std::make_unique<States::GameState>());
-    m_p_StateManager->ChangeState("menu");
+    // m_p_StateManager->ChangeState("menu"); // Start with the menu state
+    m_p_StateManager->ChangeState("game"); // Start with the game state
 }
 
 void Application::Run() {

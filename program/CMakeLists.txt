@@ -26,6 +26,11 @@ if(NOT GLEW_FOUND)
     message(FATAL_ERROR "GLEW not found. Please install")
 endif()
 
+find_package(glm REQUIRED)
+if(NOT glm_FOUND)
+    message(FATAL_ERROR "GLM not found. Please install")
+endif()
+
 # SOURCE FILES =========================================
 set(SOURCES
     src/main.cpp
@@ -66,6 +71,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${SDL2_LIBRARIES}
     ${OPENGL_LIBRARIES}
     ${GLEW_LIBRARIES}
+    glm::glm
 )
 
 # Platform-specific

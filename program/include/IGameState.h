@@ -2,6 +2,7 @@
 #define SCOTLANDYARD_CORE_IGAMESTATE_H
 
 #include <SDL2/SDL.h>
+#include <GL/glew.h> 
 
 namespace ScotlandYard {
 namespace Core {
