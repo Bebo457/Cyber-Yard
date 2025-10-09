@@ -7,6 +7,8 @@
 namespace ScotlandYard {
 namespace Core {
 
+class Application;
+
 class IGameState {
 public:
     virtual ~IGameState() = default;
@@ -15,9 +17,9 @@ public:
     virtual void OnExit() = 0;
     virtual void OnPause() = 0;
     virtual void OnResume() = 0;
-    virtual void Update(float deltaTime) = 0;
-    virtual void Render() = 0;
-    virtual void HandleEvent(const SDL_Event& event) = 0;
+    virtual void Update(float f_DeltaTime) = 0;
+    virtual void Render(Application* p_App) = 0;
+    virtual void HandleEvent(const SDL_Event& event, Application* p_App) = 0;
 };
 
 } // namespace Core
