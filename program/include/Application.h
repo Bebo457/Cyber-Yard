@@ -37,6 +37,7 @@ private:
     void HandleEvents();
     void Update(float deltaTime);
     void Render();
+    std::string FindSystemFont();
 
 private:
     std::string m_s_Title;
