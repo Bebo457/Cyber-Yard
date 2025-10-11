@@ -2,7 +2,6 @@
 #define SCOTLANDYARD_CORE_APPLICATION_H
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
 #include <string>
 #include <memory>
 
@@ -30,15 +29,12 @@ public:
     int GetHeight() const { return m_i_Height; }
     float GetDeltaTime() const { return m_f_DeltaTime; }
     bool IsTrainingMode() const { return m_b_TrainingMode; }
-    SDL_Renderer* GetRenderer() const { return m_p_Renderer; }
-    TTF_Font* GetFont() const { return m_p_Font; }
     StateManager* GetStateManager() const { return m_p_StateManager.get(); }
 
 private:
     void HandleEvents();
     void Update(float deltaTime);
     void Render();
-    std::string FindSystemFont();
 
 private:
     std::string m_s_Title;
@@ -47,8 +43,6 @@ private:
 
     SDL_Window* m_p_Window;
     SDL_GLContext m_gl_Context;
-    SDL_Renderer* m_p_Renderer;
-    TTF_Font* m_p_Font;
 
     std::unique_ptr<StateManager> m_p_StateManager;
 

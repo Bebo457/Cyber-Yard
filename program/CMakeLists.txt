@@ -17,17 +17,6 @@ if(NOT SDL2_FOUND)
     message(FATAL_ERROR "SDL2 not found. Please install SDL2 development libraries")
 endif()
 
-# SDL2_ttf - try CONFIG first (vcpkg), then PkgConfig (system packages)
-find_package(SDL2_ttf CONFIG QUIET)
-if(NOT SDL2_ttf_FOUND)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(SDL2_TTF REQUIRED SDL2_ttf)
-    else()
-        message(FATAL_ERROR "SDL2_ttf not found. Please install SDL2_ttf development libraries")
-    endif()
-endif()
-
 find_package(OpenGL REQUIRED)
 if(NOT OPENGL_FOUND)
     message(FATAL_ERROR "OpenGL not found. Please install OpenGL development libraries")
@@ -41,6 +30,11 @@ endif()
 find_package(glm REQUIRED)
 if(NOT glm_FOUND)
     message(FATAL_ERROR "GLM not found. Please install")
+endif()
+
+find_package(Freetype REQUIRED)
+if(NOT FREETYPE_FOUND)
+    message(FATAL_ERROR "FreeType not found. Please install FreeType development libraries")
 endif()
 
 # SOURCE FILES =========================================
@@ -76,12 +70,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${SDL2_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
     ${GLEW_INCLUDE_DIRS}
+    ${FREETYPE_INCLUDE_DIRS}
 )
-
-# Add SDL2_ttf include directories if using PkgConfig
-if(SDL2_TTF_FOUND)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_TTF_INCLUDE_DIRS})
-endif()
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -89,20 +79,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${OPENGL_LIBRARIES}
     ${GLEW_LIBRARIES}
     glm::glm
+    ${FREETYPE_LIBRARIES}
 )
-
-# Link SDL2_ttf - different methods depending on how it was found
-if(TARGET SDL2_ttf::SDL2_ttf)
-    # vcpkg/CONFIG method
-    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2_ttf::SDL2_ttf)
-elseif(TARGET SDL2_ttf::SDL2_ttf-static)
-    # vcpkg static
-    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2_ttf::SDL2_ttf-static)
-elseif(SDL2_TTF_FOUND)
-    # PkgConfig method (Linux/system packages)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${SDL2_TTF_LIBRARIES})
-    target_compile_options(${PROJECT_NAME} PRIVATE ${SDL2_TTF_CFLAGS_OTHER})
-endif()
 
 # Platform-specific
 if(WIN32)

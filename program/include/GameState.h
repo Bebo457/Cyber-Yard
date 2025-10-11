@@ -6,7 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vector>
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 namespace ScotlandYard {
 namespace Core {
@@ -31,28 +31,26 @@ public:
 private:
     bool m_b_GameActive;
 
-    // VAO i VBO dla planszy
-    GLuint VAO_plane = 0;
-    GLuint VBO_plane = 0;
-    GLuint shaderProgram_plane = 0;
+    GLuint m_VAO_Plane;
+    GLuint m_VBO_Plane;
+    GLuint m_ShaderProgram_Plane;
 
-    // VAO i VBO dla kółek
-    std::vector<glm::vec2> circlePositions; // pozycje kółek (x, z)
-    GLuint circleShaderProgram = 0;
-    GLuint circleVAO = 0;
-    GLuint circleVBO = 0;
-    int circleVertexCount = 0;
+    std::vector<glm::vec2> m_vec_CirclePositions;
+    GLuint m_ShaderProgram_Circle;
+    GLuint m_VAO_Circle;
+    GLuint m_VBO_Circle;
+    int m_i_CircleVertexCount;
 
-    SDL_Window* m_p_Window = nullptr;
+    SDL_Window* m_p_Window;
 
-    float rotation = 0.0f;
+    float m_f_Rotation;
 
-    int m_i_Width = 800;   // szerokość okna
-    int m_i_Height = 600;  // wysokość okna
+    int m_i_Width;
+    int m_i_Height;
 
-    GLuint textureID = 0;
+    GLuint m_TextureID;
 
-    std::vector<float> generateCircleVertices(float radius, int segments);
+    std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
 };
 
 } // namespace States
