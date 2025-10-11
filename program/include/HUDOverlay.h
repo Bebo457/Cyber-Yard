@@ -63,5 +63,7 @@ namespace UI {
     void SetTicketStates(const std::vector<TicketSlot>& slots);
     void SetTopBar(const std::vector<std::string>& labels, const std::vector<Color>& pillColors);
 
+    void DrawRoundedRectScreen(float x0, float y0, float x1, float y1, Color c, int radiusPx);
+
 } // namespace UI
 } // namespace ScotlandYard

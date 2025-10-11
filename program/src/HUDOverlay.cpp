@@ -329,6 +329,26 @@ namespace UI {
         return g_ShaderProgram_Rounded && g_ShaderProgram_Texture;
     }
 
+        // Helper: convert screen pixels (origin bottom-left) to NDC used by drawRoundedRect
+        void DrawRoundedRectScreen(float x0, float y0, float x1, float y1, Color c, int radiusPx) {
+            ensurePipelines();
+            // convert px coords to NDC [-1,1] with aspect handled by pxToNDC which uses viewport height
+            auto pxToNdcX = [&](float px) {
+                return (px / float(g_i_ViewportWidth)) * 2.0f - 1.0f;
+            };
+           
+            auto pxToNdcY = [&](float py) {
+                return (py / float(g_i_ViewportHeight)) * 2.0f - 1.0f;
+            };
+
+            float nx0 = pxToNdcX(x0);
+            float nx1 = pxToNdcX(x1);
+            float ny0 = pxToNdcY(y0);
+            float ny1 = pxToNdcY(y1);
+
+            drawRoundedRect(nx0, ny0, nx1, ny1, c, pxToNDC(radiusPx));
+        }
+
     void ShutdownHUD() {
 #if !HUD_NO_TEXT
         for (auto& kv : g_textCache) {
