@@ -2,15 +2,25 @@
 #define SCOTLANDYARD_STATES_MENUSTATE_H
 
 #include "IGameState.h"
-#include <SDL2/SDL.h>
+#include <GL/glew.h>
+#include <map>
+#include <string>
 
 namespace ScotlandYard {
 namespace Core {
     class Application;
-    class StateManager;
 }
 
 namespace States {
+
+struct Character {
+    GLuint m_TextureID;
+    int m_i_Width;
+    int m_i_Height;
+    int m_i_BearingX;
+    int m_i_BearingY;
+    int m_i_Advance;
+};
 
 class MenuState : public Core::IGameState {
 public:
@@ -27,23 +37,24 @@ public:
 
 private:
     int m_i_SelectedOption;
-    
+
     struct Button {
-        int i_X, i_Y, i_Width, i_Height;
-        const char* p_Text;
-        SDL_Texture* p_Texture;
-        int i_TextWidth, i_TextHeight;
+        float f_X, f_Y, f_Width, f_Height;
+        std::string s_Text;
     };
-    
+
     Button m_Buttons[3];
-    SDL_Texture* m_p_TitleTexture;
-    int m_i_TitleWidth, m_i_TitleHeight;
-    bool m_b_TexturesCreated;
-    
-    void InitializeButtons(Core::Application* p_App);
-    void CreateTextures(Core::Application* p_App);
-    void DestroyTextures();
-    void RenderButton(Core::Application* p_App, const Button& button, bool b_Selected);
+
+    GLuint m_VAO;
+    GLuint m_VBO;
+    GLuint m_ShaderProgram;
+
+    std::map<char, Character> m_map_Characters;
+
+    void InitializeOpenGL();
+    void LoadFont();
+    void RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale, float f_R, float f_G, float f_B);
+    void RenderButton(const Button& button, bool b_Selected, int i_WindowWidth, int i_WindowHeight);
 };
 
 } // namespace States

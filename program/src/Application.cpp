@@ -21,8 +21,6 @@ Application::Application(const std::string& title, int width, int height, bool t
     , m_i_Height(height)
     , m_p_Window(nullptr)
     , m_gl_Context(nullptr)
-    , m_p_Renderer(nullptr)
-    , m_p_Font(nullptr)
     , m_b_Running(false)
     , m_b_Initialized(false)
     , m_b_TrainingMode(trainingMode)
@@ -49,12 +47,6 @@ bool Application::Initialize() {
         return false;
     }
 
-    if (TTF_Init() == -1) {
-        std::cerr << "SDL_ttf initialization failed: " << TTF_GetError() << std::endl;
-        SDL_Quit();
-        return false;
-    }
-
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -72,40 +64,14 @@ bool Application::Initialize() {
 
     if (!m_p_Window) {
         std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
-        TTF_Quit();
         SDL_Quit();
         return false;
-    }
-
-    m_p_Renderer = SDL_CreateRenderer(m_p_Window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (!m_p_Renderer) {
-        std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
-        SDL_DestroyWindow(m_p_Window);
-        TTF_Quit();
-        SDL_Quit();
-        return false;
-    }
-
-    // Find and load system font
-    std::string fontPath = FindSystemFont();
-    if (!fontPath.empty()) {
-        m_p_Font = TTF_OpenFont(fontPath.c_str(), 24);
-    }
-    
-    if (!m_p_Font) {
-        std::cerr << "Font loading failed: " << TTF_GetError() << std::endl;
-        // Continue without font - application will work but may not display text
-    } else {
-        std::cout << "Successfully loaded font: " << fontPath << std::endl;
     }
 
     m_gl_Context = SDL_GL_CreateContext(m_p_Window);
     if (!m_gl_Context) {
         std::cerr << "OpenGL context creation failed: " << SDL_GetError() << std::endl;
-        if (m_p_Font) TTF_CloseFont(m_p_Font);
-        SDL_DestroyRenderer(m_p_Renderer);
         SDL_DestroyWindow(m_p_Window);
-        TTF_Quit();
         SDL_Quit();
         return false;
     }
@@ -115,10 +81,7 @@ bool Application::Initialize() {
     if (glewError != GLEW_OK) {
         std::cerr << "GLEW initialization failed: " << glewGetErrorString(glewError) << std::endl;
         SDL_GL_DeleteContext(m_gl_Context);
-        if (m_p_Font) TTF_CloseFont(m_p_Font);
-        SDL_DestroyRenderer(m_p_Renderer);
         SDL_DestroyWindow(m_p_Window);
-        TTF_Quit();
         SDL_Quit();
         return false;
     }
@@ -136,8 +99,7 @@ bool Application::Initialize() {
 void Application::LoadStates() {
     m_p_StateManager->RegisterState("menu", std::make_unique<States::MenuState>());
     m_p_StateManager->RegisterState("game", std::make_unique<States::GameState>());
-    m_p_StateManager->ChangeState("menu"); // Start with the menu state
-    // m_p_StateManager->ChangeState("game"); // Start with the game state
+    m_p_StateManager->ChangeState("menu");
 }
 
 void Application::Run() {
@@ -195,16 +157,6 @@ void Application::Shutdown() {
     m_p_StateManager.reset();
 
     if (!m_b_TrainingMode) {
-        if (m_p_Font) {
-            TTF_CloseFont(m_p_Font);
-            m_p_Font = nullptr;
-        }
-
-        if (m_p_Renderer) {
-            SDL_DestroyRenderer(m_p_Renderer);
-            m_p_Renderer = nullptr;
-        }
-
         if (m_gl_Context) {
             SDL_GL_DeleteContext(m_gl_Context);
             m_gl_Context = nullptr;
@@ -215,53 +167,10 @@ void Application::Shutdown() {
             m_p_Window = nullptr;
         }
 
-        TTF_Quit();
         SDL_Quit();
     }
 
     m_b_Initialized = false;
-}
-
-std::string Application::FindSystemFont() {
-    // List of common font paths to try, prioritized by platform
-    std::vector<std::string> fontPaths = {
-#ifdef _WIN32
-        // Windows system fonts
-        "C:\\Windows\\Fonts\\arial.ttf",
-        "C:\\Windows\\Fonts\\calibri.ttf",
-        "C:\\Windows\\Fonts\\tahoma.ttf",
-        "C:\\Windows\\Fonts\\verdana.ttf",
-        "C:\\Windows\\Fonts\\times.ttf",
-        "C:\\Windows\\Fonts\\consola.ttf"
-#elif __linux__
-        // Linux system fonts
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/arial.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
-        "/usr/share/fonts/truetype/roboto/Roboto-Regular.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf"
-#elif __APPLE__
-        // macOS system fonts
-        "/System/Library/Fonts/Arial.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/System/Library/Fonts/Times.ttc",
-        "/Library/Fonts/Arial.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf"
-#endif
-    };
-
-    // Try each font path
-    for (const auto& fontPath : fontPaths) {
-        if (std::filesystem::exists(fontPath)) {
-            std::cout << "Found system font: " << fontPath << std::endl;
-            return fontPath;
-        }
-    }
-
-    // If no system font found, return empty string
-    std::cerr << "Warning: No system font found. Application may not display text correctly." << std::endl;
-    return "";
 }
 
 } // namespace Core

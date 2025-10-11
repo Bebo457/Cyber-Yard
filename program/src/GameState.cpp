@@ -2,9 +2,8 @@
 #include "Application.h"
 #include <GL/glew.h>
 
-//Loader obrazów
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include "../external/stb_image.h"
 
 #include "HUDOverlay.h"
 
@@ -13,6 +12,18 @@ namespace States {
 
 GameState::GameState()
     : m_b_GameActive(false)
+    , m_VAO_Plane(0)
+    , m_VBO_Plane(0)
+    , m_ShaderProgram_Plane(0)
+    , m_ShaderProgram_Circle(0)
+    , m_VAO_Circle(0)
+    , m_VBO_Circle(0)
+    , m_i_CircleVertexCount(0)
+    , m_p_Window(nullptr)
+    , m_f_Rotation(0.0f)
+    , m_i_Width(800)
+    , m_i_Height(600)
+    , m_TextureID(0)
 {
 }
 
@@ -38,23 +49,22 @@ void GameState::OnEnter() {
     // ==============================
     // Pozycje kółek
     // ==============================
-    circlePositions = {
+    m_vec_CirclePositions = {
         {-0.9f, -0.9f},
         {-0.5f, -0.9f},
         { 0.0f, -0.9f},
         { 0.5f, -0.9f},
         { 0.9f, -0.9f}
-        // dodaj kolejne według planszy
     };
 
     // ==============================
     // VAO/VBO planszy
     // ==============================
-    glGenVertexArrays(1, &VAO_plane);
-    glGenBuffers(1, &VBO_plane);
+    glGenVertexArrays(1, &m_VAO_Plane);
+    glGenBuffers(1, &m_VBO_Plane);
 
-    glBindVertexArray(VAO_plane);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO_plane);
+    glBindVertexArray(m_VAO_Plane);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Plane);
     glBufferData(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
@@ -71,17 +81,17 @@ void GameState::OnEnter() {
     // ==============================
     // VAO/VBO kółek
     // ==============================
-    float radius = 0.05f;
-    int segments = 30;
-    std::vector<float> circleVertices = generateCircleVertices(radius, segments);
-    circleVertexCount = static_cast<int>(circleVertices.size() / 3);
+    float f_Radius = 0.05f;
+    int i_Segments = 30;
+    std::vector<float> vec_CircleVertices = generateCircleVertices(f_Radius, i_Segments);
+    m_i_CircleVertexCount = static_cast<int>(vec_CircleVertices.size() / 3);
 
-    glGenVertexArrays(1, &circleVAO);
-    glGenBuffers(1, &circleVBO);
+    glGenVertexArrays(1, &m_VAO_Circle);
+    glGenBuffers(1, &m_VBO_Circle);
 
-    glBindVertexArray(circleVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, circleVBO);
-    glBufferData(GL_ARRAY_BUFFER, circleVertices.size() * sizeof(float), circleVertices.data(), GL_STATIC_DRAW);
+    glBindVertexArray(m_VAO_Circle);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Circle);
+    glBufferData(GL_ARRAY_BUFFER, vec_CircleVertices.size() * sizeof(float), vec_CircleVertices.data(), GL_STATIC_DRAW);
 
     // tylko pozycja
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -126,10 +136,10 @@ void GameState::OnEnter() {
     glShaderSource(fragmentShader, 1, &fragmentShaderSrc, nullptr);
     glCompileShader(fragmentShader);
 
-    shaderProgram_plane = glCreateProgram();
-    glAttachShader(shaderProgram_plane, vertexShader);
-    glAttachShader(shaderProgram_plane, fragmentShader);
-    glLinkProgram(shaderProgram_plane);
+    m_ShaderProgram_Plane = glCreateProgram();
+    glAttachShader(m_ShaderProgram_Plane, vertexShader);
+    glAttachShader(m_ShaderProgram_Plane, fragmentShader);
+    glLinkProgram(m_ShaderProgram_Plane);
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
@@ -162,10 +172,10 @@ void GameState::OnEnter() {
     glShaderSource(cFragmentShader, 1, &circleFragmentShaderSrc, nullptr);
     glCompileShader(cFragmentShader);
 
-    circleShaderProgram = glCreateProgram();
-    glAttachShader(circleShaderProgram, cVertexShader);
-    glAttachShader(circleShaderProgram, cFragmentShader);
-    glLinkProgram(circleShaderProgram);
+    m_ShaderProgram_Circle = glCreateProgram();
+    glAttachShader(m_ShaderProgram_Circle, cVertexShader);
+    glAttachShader(m_ShaderProgram_Circle, cFragmentShader);
+    glLinkProgram(m_ShaderProgram_Circle);
 
     glDeleteShader(cVertexShader);
     glDeleteShader(cFragmentShader);
@@ -174,12 +184,12 @@ void GameState::OnEnter() {
     // Ładowanie tekstury z pliku
     // ========================================
     int texWidth, texHeight, texChannels;
-    unsigned char* data = stbi_load("C:/Users/milos/Desktop/Testy/Cyber-Yard/program/assets/Scotland_Yard_schematic.png", &texWidth, &texHeight, &texChannels, 0);
+    unsigned char* data = stbi_load("assets/textures/Scotland_Yard_schematic.png", &texWidth, &texHeight, &texChannels, 0);
     if (!data) {
         printf("Nie udalo sie zaladowac tekstury: \n");
     } else {
-        glGenTextures(1, &textureID);
-        glBindTexture(GL_TEXTURE_2D, textureID);
+        glGenTextures(1, &m_TextureID);
+        glBindTexture(GL_TEXTURE_2D, m_TextureID);
 
         // parametry tekstury
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -203,12 +213,34 @@ void GameState::OnEnter() {
 }
 
 void GameState::OnExit() {
-    glDeleteVertexArrays(1, &VAO_plane);
-    glDeleteBuffers(1, &VBO_plane);
-    glDeleteProgram(shaderProgram_plane);
-    glDeleteProgram(circleShaderProgram);
-    if (textureID)
-        glDeleteTextures(1, &textureID);
+    if (m_VAO_Plane) {
+        glDeleteVertexArrays(1, &m_VAO_Plane);
+        m_VAO_Plane = 0;
+    }
+    if (m_VBO_Plane) {
+        glDeleteBuffers(1, &m_VBO_Plane);
+        m_VBO_Plane = 0;
+    }
+    if (m_VAO_Circle) {
+        glDeleteVertexArrays(1, &m_VAO_Circle);
+        m_VAO_Circle = 0;
+    }
+    if (m_VBO_Circle) {
+        glDeleteBuffers(1, &m_VBO_Circle);
+        m_VBO_Circle = 0;
+    }
+    if (m_ShaderProgram_Plane) {
+        glDeleteProgram(m_ShaderProgram_Plane);
+        m_ShaderProgram_Plane = 0;
+    }
+    if (m_ShaderProgram_Circle) {
+        glDeleteProgram(m_ShaderProgram_Circle);
+        m_ShaderProgram_Circle = 0;
+    }
+    if (m_TextureID) {
+        glDeleteTextures(1, &m_TextureID);
+        m_TextureID = 0;
+    }
     m_b_GameActive = false;
 }
 
@@ -222,19 +254,21 @@ void GameState::OnResume() {
 
 void GameState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;
-    // rotation += deltaTime * 50.0f; // obrót w stopniach na sekundę
 }
 
 void GameState::Render(Core::Application* p_App) {
-    // Use OpenGL for game rendering
+    m_i_Width = p_App->GetWidth();
+    m_i_Height = p_App->GetHeight();
+
+    glEnable(GL_DEPTH_TEST);
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glUseProgram(shaderProgram_plane);
+    glUseProgram(m_ShaderProgram_Plane);
 
     // Ustawienie macierzy modelu (obrót)
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::rotate(model, glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+    model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Widok (kamera)
     glm::mat4 view = glm::lookAt(
@@ -252,37 +286,35 @@ void GameState::Render(Core::Application* p_App) {
 
     glm::mat4 MVP = projection * view * model;
 
-    GLuint mvpLoc = glGetUniformLocation(shaderProgram_plane, "MVP");
+    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Plane, "MVP");
     glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
 
     // Ustawienie tekstury
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textureID);
-    GLuint texLoc = glGetUniformLocation(shaderProgram_plane, "ourTexture");
+    glBindTexture(GL_TEXTURE_2D, m_TextureID);
+    GLuint texLoc = glGetUniformLocation(m_ShaderProgram_Plane, "ourTexture");
     glUniform1i(texLoc, 0);
 
     // Rysowanie planszy
-    glBindVertexArray(VAO_plane);
+    glBindVertexArray(m_VAO_Plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 
     // Rysowanie kółek
-    glUseProgram(circleShaderProgram); // prosty shader kolorowy czerwony
+    glUseProgram(m_ShaderProgram_Circle);
 
-    for (auto& pos : circlePositions) {
+    for (auto& pos : m_vec_CirclePositions) {
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y)); // Y lekko nad planszą
+        model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
         glm::mat4 MVP = projection * view * model;
 
-        GLuint mvpLoc = glGetUniformLocation(circleShaderProgram, "MVP");
+        GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
 
-        glBindVertexArray(circleVAO);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, circleVertexCount);
+        glBindVertexArray(m_VAO_Circle);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
         glBindVertexArray(0);
     }
-
-    UI::RenderSimpleHUD();
 
     // Zmiana buforów (SDL)
     SDL_GL_SwapWindow(m_p_Window);
@@ -308,25 +340,24 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     }
 }
 
-// Generowanie wierzchołków koła
-std::vector<float> GameState::generateCircleVertices(float radius, int segments) {
-    std::vector<float> vertices;
+std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segments) {
+    std::vector<float> vec_Vertices;
 
-    // Środek koła
-    vertices.push_back(0.0f); // X
-    vertices.push_back(0.01f); // Y lekko nad płaszczyzną
-    vertices.push_back(0.0f); // Z
+    vec_Vertices.push_back(0.0f);
+    vec_Vertices.push_back(0.01f);
+    vec_Vertices.push_back(0.0f);
 
-    for (int i = 0; i <= segments; i++) {
-        float theta = 2.0f * 3.1415926f * i / segments;
-        float x = radius * cos(theta);
-        float z = radius * sin(theta);
-        vertices.push_back(x);
-        vertices.push_back(0.01f);
-        vertices.push_back(z);
+    constexpr float k_Pi = 3.14159265358979323846f;
+    for (int i = 0; i <= i_Segments; i++) {
+        float f_Theta = 2.0f * k_Pi * i / i_Segments;
+        float f_X = f_Radius * cos(f_Theta);
+        float f_Z = f_Radius * sin(f_Theta);
+        vec_Vertices.push_back(f_X);
+        vec_Vertices.push_back(0.01f);
+        vec_Vertices.push_back(f_Z);
     }
 
-    return vertices;
+    return vec_Vertices;
 }
 
 } // namespace States
