@@ -316,14 +316,8 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
-    UI::RenderSimpleHUD();
+    ScotlandYard::UI::RenderSimpleHUD();
 
-    // Zmiana buforów (SDL)
-    SDL_GL_SwapWindow(m_p_Window);
-    
-    // Game rendering code will go here
-    
-    // Swap OpenGL buffers for game
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 }
 

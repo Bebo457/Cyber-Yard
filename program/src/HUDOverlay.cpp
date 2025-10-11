@@ -9,32 +9,36 @@
 
 #define HUD_NO_TEXT 1 // without font yet
 
+namespace ScotlandYard {
 namespace UI {
 
     namespace {
-        HUDStyle                g_style{};
-        int                     g_vpW = 1280, g_vpH = 720;
+        HUDStyle                g_HUDStyle{};
+        int                     g_i_ViewportWidth = 1280;
+        int                     g_i_ViewportHeight = 720;
 
-        // OpenGL shaders and bufors
-        GLuint g_progRounded = 0;
-        GLuint g_progTex = 0;
+        // OpenGL shaders and buffers
+        GLuint g_ShaderProgram_Rounded = 0;
+        GLuint g_ShaderProgram_Texture = 0;
 
-        GLuint g_vaoRounded = 0, g_vboRounded = 0;
-        GLuint g_vaoTex = 0, g_vboTex = 0;
+        GLuint g_VAO_Rounded = 0;
+        GLuint g_VBO_Rounded = 0;
+        GLuint g_VAO_Texture = 0;
+        GLuint g_VBO_Texture = 0;
 
-        float pxToNDC(float px) { return (2.0f * px) / float(g_vpH); }
+        float pxToNDC(float px) { return (2.0f * px) / float(g_i_ViewportHeight); }
 
-        std::vector<TicketSlot> g_slots(24);
+        std::vector<TicketSlot> g_vec_TicketSlots(k_TicketSlotCount);
 
-        std::vector<std::string> g_pills = {
+        std::vector<std::string> g_vec_PillLabels = {
             "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus"
         };
-        std::vector<Color> g_pillColors = {
-            {0.0f / 255.f, 0.0f / 255.f, 0.0f / 255.f, 1.0f },   // Black
-            {233 / 255.f,145 / 255.f, 83 / 255.f, 1.0f },   // 2x (orange)
-            {250 / 255.f,219 / 255.f, 55 / 255.f, 1.0f },   // TAXI (yellow)
-            {214 / 255.f,102 / 255.f,168 / 255.f, 1.0f },   // Metro (magenta)
-            { 95 / 255.f,146 / 255.f, 88 / 255.f, 1.0f },   // Bus (green)
+        std::vector<Color> g_vec_PillColors = {
+            {0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 1.0f },   // Black
+            {233.0f / 255.0f, 145.0f / 255.0f, 83.0f / 255.0f, 1.0f },   // 2x (orange)
+            {250.0f / 255.0f, 219.0f / 255.0f, 55.0f / 255.0f, 1.0f },   // TAXI (yellow)
+            {214.0f / 255.0f, 102.0f / 255.0f, 168.0f / 255.0f, 1.0f },   // Metro (magenta)
+            { 95.0f / 255.0f, 146.0f / 255.0f, 88.0f / 255.0f, 1.0f },   // Bus (green)
         };
 
         // SHADERS
@@ -94,23 +98,23 @@ namespace UI {
         }
 
         void ensurePipelines() {
-            if (!g_progRounded) {
+            if (!g_ShaderProgram_Rounded) {
                 GLuint vs = compile(GL_VERTEX_SHADER, VS_R);
                 GLuint fs = compile(GL_FRAGMENT_SHADER, FS_R);
-                g_progRounded = link(vs, fs);
+                g_ShaderProgram_Rounded = link(vs, fs);
             }
-            if (!g_progTex) {
+            if (!g_ShaderProgram_Texture) {
                 GLuint vs = compile(GL_VERTEX_SHADER, VS_TEX);
                 GLuint fs = compile(GL_FRAGMENT_SHADER, FS_TEX);
-                g_progTex = link(vs, fs);
+                g_ShaderProgram_Texture = link(vs, fs);
             }
 
             // VAO/VBO for rounded-rect (2D positions)
-            if (!g_vaoRounded) {
-                glGenVertexArrays(1, &g_vaoRounded);
-                glGenBuffers(1, &g_vboRounded);
-                glBindVertexArray(g_vaoRounded);
-                glBindBuffer(GL_ARRAY_BUFFER, g_vboRounded);
+            if (!g_VAO_Rounded) {
+                glGenVertexArrays(1, &g_VAO_Rounded);
+                glGenBuffers(1, &g_VBO_Rounded);
+                glBindVertexArray(g_VAO_Rounded);
+                glBindBuffer(GL_ARRAY_BUFFER, g_VBO_Rounded);
                 glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
                 glEnableVertexAttribArray(0);
                 glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
@@ -118,12 +122,12 @@ namespace UI {
                 glBindBuffer(GL_ARRAY_BUFFER, 0);
             }
 
-            // VAO/VBOfor text (position + UV)
-            if (!g_vaoTex) {
-                glGenVertexArrays(1, &g_vaoTex);
-                glGenBuffers(1, &g_vboTex);
-                glBindVertexArray(g_vaoTex);
-                glBindBuffer(GL_ARRAY_BUFFER, g_vboTex);
+            // VAO/VBO for text (position + UV)
+            if (!g_VAO_Texture) {
+                glGenVertexArrays(1, &g_VAO_Texture);
+                glGenBuffers(1, &g_VBO_Texture);
+                glBindVertexArray(g_VAO_Texture);
+                glBindBuffer(GL_ARRAY_BUFFER, g_VBO_Texture);
                 glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
                 glEnableVertexAttribArray(0);
                 glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
@@ -136,13 +140,13 @@ namespace UI {
 
         void drawRoundedRect(float x0, float y0, float x1, float y1, Color c, float radiusNDC) {
             const float verts[] = { x0,y0,  x1,y0,  x0,y1,  x1,y0,  x1,y1,  x0,y1 };
-            glUseProgram(g_progRounded);
-            glUniform4f(glGetUniformLocation(g_progRounded, "uRect"), x0, y0, x1, y1);
-            glUniform1f(glGetUniformLocation(g_progRounded, "uRadius"), radiusNDC);
-            glUniform4f(glGetUniformLocation(g_progRounded, "uColor"), c.r, c.g, c.b, c.a);
+            glUseProgram(g_ShaderProgram_Rounded);
+            glUniform4f(glGetUniformLocation(g_ShaderProgram_Rounded, "uRect"), x0, y0, x1, y1);
+            glUniform1f(glGetUniformLocation(g_ShaderProgram_Rounded, "uRadius"), radiusNDC);
+            glUniform4f(glGetUniformLocation(g_ShaderProgram_Rounded, "uColor"), c.r, c.g, c.b, c.a);
 
-            glBindVertexArray(g_vaoRounded);
-            glBindBuffer(GL_ARRAY_BUFFER, g_vboRounded);
+            glBindVertexArray(g_VAO_Rounded);
+            glBindBuffer(GL_ARRAY_BUFFER, g_VBO_Rounded);
             glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -178,8 +182,8 @@ namespace UI {
 
             // slot (px)
             auto ndcToPx = [&](float x, float y) {
-                int px = int((x * 0.5f + 0.5f) * g_vpW);
-                int py = int((1.0f - (y * 0.5f + 0.5f)) * g_vpH);
+                int px = int((x * 0.5f + 0.5f) * g_i_ViewportWidth);
+                int py = int((1.0f - (y * 0.5f + 0.5f)) * g_i_ViewportHeight);
                 return std::pair<int, int>(px, py);
                 };
             auto [lx, ty] = ndcToPx(x0, y1);
@@ -195,8 +199,8 @@ namespace UI {
             float cx = lx + sw * 0.5f;
             float cy = ty + sh * 0.5f;
 
-            auto pxToNdcX = [&](float p) { return (p / float(g_vpW)) * 2.0f - 1.0f; };
-            auto pxToNdcY = [&](float p) { return 1.0f - (p / float(g_vpH)) * 2.0f; };
+            auto pxToNdcX = [&](float p) { return (p / float(g_i_ViewportWidth)) * 2.0f - 1.0f; };
+            auto pxToNdcY = [&](float p) { return 1.0f - (p / float(g_i_ViewportHeight)) * 2.0f; };
 
             float qx0 = pxToNdcX(cx - qw * 0.5f);
             float qx1 = pxToNdcX(cx + qw * 0.5f);
@@ -208,14 +212,14 @@ namespace UI {
                 qx1,qy1, 1,1,  qx1,qy0, 1,0,  qx0,qy0, 0,0
             };
 
-            glUseProgram(g_progTex);
-            glUniform4f(glGetUniformLocation(g_progTex, "uColor"), mul.r, mul.g, mul.b, mul.a);
+            glUseProgram(g_ShaderProgram_Texture);
+            glUniform4f(glGetUniformLocation(g_ShaderProgram_Texture, "uColor"), mul.r, mul.g, mul.b, mul.a);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, tex);
-            glUniform1i(glGetUniformLocation(g_progTex, "uTex"), 0);
+            glUniform1i(glGetUniformLocation(g_ShaderProgram_Texture, "uTex"), 0);
 
-            glBindVertexArray(g_vaoTex);
-            glBindBuffer(GL_ARRAY_BUFFER, g_vboTex);
+            glBindVertexArray(g_VAO_Texture);
+            glBindBuffer(GL_ARRAY_BUFFER, g_VBO_Texture);
             glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -235,24 +239,24 @@ namespace UI {
         void computeBars(float& tX0, float& tX1, float& tY0, float& tY1,
             float& bX0, float& bX1, float& bY0, float& bY1)
         {
-            const float iy = std::clamp(g_style.insetY, 0.0f, 0.20f);
-            const float it = std::clamp(g_style.topInsetX, 0.0f, 0.45f);
-            const float ib = std::clamp(g_style.botInsetX, 0.0f, 0.45f);
+            const float iy = std::clamp(g_HUDStyle.insetY, 0.0f, k_DefaultInsetYMax);
+            const float it = std::clamp(g_HUDStyle.topInsetX, 0.0f, k_DefaultInsetXMax);
+            const float ib = std::clamp(g_HUDStyle.botInsetX, 0.0f, k_DefaultInsetXMax);
 
             tX0 = -1.0f + it; tX1 = 1.0f - it;
-            tY0 = g_style.topY0 - iy; tY1 = g_style.topY1 - iy;
+            tY0 = g_HUDStyle.topY0 - iy; tY1 = g_HUDStyle.topY1 - iy;
 
             bX0 = -1.0f + ib; bX1 = 1.0f - ib;
-            bY0 = g_style.botY0 + iy; bY1 = g_style.botY1 + iy;
+            bY0 = g_HUDStyle.botY0 + iy; bY1 = g_HUDStyle.botY1 + iy;
         }
 
         void drawTopBar(float x0, float y0, float x1, float y1) {
-            drawRoundedRect(x0, y0, x1, y1, g_style.barColor, pxToNDC(g_style.barRadiusPx));
+            drawRoundedRect(x0, y0, x1, y1, g_HUDStyle.barColor, pxToNDC(g_HUDStyle.barRadiusPx));
 
-            // layout of tcikets
-            const float padY = pxToNDC(g_style.pillsPadYPx);
-            const float padX = pxToNDC(g_style.pillsPadXPx);
-            const float gap = pxToNDC(g_style.pillsGapPx);
+            // layout of tickets
+            const float padY = pxToNDC(g_HUDStyle.pillsPadYPx);
+            const float padX = pxToNDC(g_HUDStyle.pillsPadXPx);
+            const float gap = pxToNDC(g_HUDStyle.pillsGapPx);
 
             float innerX0 = x0 + gap;
             float innerX1 = x1 - gap;
@@ -262,9 +266,9 @@ namespace UI {
 
             float cur = innerX0;
 
-            for (size_t i = 0; i < g_pills.size(); ++i) {
-                const std::string& txt = g_pills[i];
-                const Color pc = g_pillColors[i < g_pillColors.size() ? i : 0];
+            for (size_t i = 0; i < g_vec_PillLabels.size(); ++i) {
+                const std::string& txt = g_vec_PillLabels[i];
+                const Color pc = g_vec_PillColors[i < g_vec_PillColors.size() ? i : 0];
 
                 float minCapW = h * 1.8f;
                 float approxW = minCapW + gap;
@@ -273,42 +277,45 @@ namespace UI {
                 float capX1 = std::min(cur + approxW, innerX1);
                 if (capX1 <= capX0) break;
 
-                drawRoundedRect(capX0, innerY0, capX1, innerY1, { pc.r,pc.g,pc.b, 1.0f }, pxToNDC(g_style.slotRadiusPx));
+                drawRoundedRect(capX0, innerY0, capX1, innerY1, { pc.r,pc.g,pc.b, 1.0f }, pxToNDC(g_HUDStyle.slotRadiusPx));
 
                 // text inside (not working yet)
-                drawTextCentered(txt, capX0 + padX * 0.5f, innerY0, capX1 - padX * 0.5f, innerY1, g_style.textColor);
+                drawTextCentered(txt, capX0 + padX * 0.5f, innerY0, capX1 - padX * 0.5f, innerY1, g_HUDStyle.textColor);
 
                 cur = capX1 + gap;
                 if (cur >= innerX1) break;
             }
         }
 
+        constexpr float k_BottomBarGapPx = 10.0f;
+        constexpr float k_BottomBarMarginPx = 6.0f;
+        constexpr float k_BottomBarGapMultiplier = 0.6f;
+
         void drawBottomBar(float x0, float y0, float x1, float y1) {
-            drawRoundedRect(x0, y0, x1, y1, g_style.barColor, pxToNDC(g_style.barRadiusPx));
+            drawRoundedRect(x0, y0, x1, y1, g_HUDStyle.barColor, pxToNDC(g_HUDStyle.barRadiusPx));
 
             // slots from 1..24 (for tickets of Mr X)
-            const int   N = 24;
-            const float gap = pxToNDC(10.0f);
-            const float margin = pxToNDC(6.0f);
+            const float gap = pxToNDC(k_BottomBarGapPx);
+            const float margin = pxToNDC(k_BottomBarMarginPx);
 
             float sx0 = x0 + gap;
             float sx1 = x1 - gap;
-            float sy0 = y0 + gap * 0.6f;
-            float sy1 = y1 - gap * 0.6f;
+            float sy0 = y0 + gap * k_BottomBarGapMultiplier;
+            float sy1 = y1 - gap * k_BottomBarGapMultiplier;
 
-            float totalW = (sx1 - sx0) - (N - 1) * margin;
-            float slotW = totalW / float(N);
+            float totalW = (sx1 - sx0) - (k_TicketSlotCount - 1) * margin;
+            float slotW = totalW / float(k_TicketSlotCount);
 
             float x = sx0;
-            for (int i = 0; i < N; ++i) {
-                Color c = g_slots[i].color;
-                if (c.a < 0.0f) c = g_style.slotColor;
+            for (int i = 0; i < k_TicketSlotCount; ++i) {
+                Color c = g_vec_TicketSlots[i].color;
+                if (c.a < 0.0f) c = g_HUDStyle.slotColor;
 
-                drawRoundedRect(x, sy0, x + slotW, sy1, c, pxToNDC(g_style.slotRadiusPx));
+                drawRoundedRect(x, sy0, x + slotW, sy1, c, pxToNDC(g_HUDStyle.slotRadiusPx));
 
                 // number (not working, todo)
                 char buf[4]; std::snprintf(buf, sizeof(buf), "%d", i + 1);
-                drawTextCentered(buf, x, sy0, x + slotW, sy1, g_style.textColor);
+                drawTextCentered(buf, x, sy0, x + slotW, sy1, g_HUDStyle.textColor);
 
                 x += slotW + margin;
             }
@@ -319,7 +326,7 @@ namespace UI {
     // API
     bool InitHUD() {
         ensurePipelines();
-        return g_progRounded && g_progTex;
+        return g_ShaderProgram_Rounded && g_ShaderProgram_Texture;
     }
 
     void ShutdownHUD() {
@@ -330,18 +337,18 @@ namespace UI {
         g_textCache.clear();
 #endif
 
-        if (g_vboRounded) { glDeleteBuffers(1, &g_vboRounded); g_vboRounded = 0; }
-        if (g_vaoRounded) { glDeleteVertexArrays(1, &g_vaoRounded); g_vaoRounded = 0; }
-        if (g_vboTex) { glDeleteBuffers(1, &g_vboTex);     g_vboTex = 0; }
-        if (g_vaoTex) { glDeleteVertexArrays(1, &g_vaoTex); g_vaoTex = 0; }
+        if (g_VBO_Rounded) { glDeleteBuffers(1, &g_VBO_Rounded); g_VBO_Rounded = 0; }
+        if (g_VAO_Rounded) { glDeleteVertexArrays(1, &g_VAO_Rounded); g_VAO_Rounded = 0; }
+        if (g_VBO_Texture) { glDeleteBuffers(1, &g_VBO_Texture); g_VBO_Texture = 0; }
+        if (g_VAO_Texture) { glDeleteVertexArrays(1, &g_VAO_Texture); g_VAO_Texture = 0; }
     }
 
     void SetViewport(int w, int h) {
-        g_vpW = std::max(1, w);
-        g_vpH = std::max(1, h);
+        g_i_ViewportWidth = std::max(1, w);
+        g_i_ViewportHeight = std::max(1, h);
     }
 
-    void SetHUDStyle(const HUDStyle& style) { g_style = style; }
+    void SetHUDStyle(const HUDStyle& style) { g_HUDStyle = style; }
 
     // font not working yet — stub
     void SetFont(void* /*font*/) {
@@ -349,20 +356,20 @@ namespace UI {
     }
 
     void SetTicketStates(const std::vector<TicketSlot>& slots) {
-        g_slots = slots;
-        if (g_slots.size() < 24) g_slots.resize(24);
-        if (g_slots.size() > 24) g_slots.resize(24);
+        g_vec_TicketSlots = slots;
+        if (g_vec_TicketSlots.size() < k_TicketSlotCount) g_vec_TicketSlots.resize(k_TicketSlotCount);
+        if (g_vec_TicketSlots.size() > k_TicketSlotCount) g_vec_TicketSlots.resize(k_TicketSlotCount);
     }
 
     void SetTopBar(const std::vector<std::string>& labels,
         const std::vector<Color>& pillColors)
     {
-        if (!labels.empty()) g_pills = labels;
-        if (!pillColors.empty()) g_pillColors = pillColors;
+        if (!labels.empty()) g_vec_PillLabels = labels;
+        if (!pillColors.empty()) g_vec_PillColors = pillColors;
     }
 
     void RenderHUD() {
-        if (!g_progRounded || !g_progTex) if (!InitHUD()) return;
+        if (!g_ShaderProgram_Rounded || !g_ShaderProgram_Texture) if (!InitHUD()) return;
 
         GLboolean depthWas = glIsEnabled(GL_DEPTH_TEST);
         GLboolean blendWas = glIsEnabled(GL_BLEND);
@@ -381,3 +388,4 @@ namespace UI {
     }
 
 } // namespace UI
+} // namespace ScotlandYard

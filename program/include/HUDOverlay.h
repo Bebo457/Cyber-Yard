@@ -3,10 +3,16 @@
 #include <string>
 #include <functional>
 
+namespace ScotlandYard {
 namespace UI {
 
     struct Color { float r, g, b, a; };
 
+    constexpr float k_DefaultViewportWidth = 1280.0f;
+    constexpr float k_DefaultViewportHeight = 720.0f;
+    constexpr int k_TicketSlotCount = 24;
+    constexpr float k_DefaultInsetYMax = 0.20f;
+    constexpr float k_DefaultInsetXMax = 0.45f;
 
     struct HUDStyle {
         // vertical positions of HUD (NDC: +1 up)
@@ -54,4 +60,8 @@ namespace UI {
     void RenderHUD();
     inline void RenderSimpleHUD() { RenderHUD(); }
 
+    void SetTicketStates(const std::vector<TicketSlot>& slots);
+    void SetTopBar(const std::vector<std::string>& labels, const std::vector<Color>& pillColors);
+
 } // namespace UI
+} // namespace ScotlandYard
