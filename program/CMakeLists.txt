@@ -53,6 +53,7 @@ set(SOURCES
     src/NeuralNetworkManager.cpp
     src/MenuState.cpp
     src/GameState.cpp
+    src/HUDOverlay.cpp
 )
 
 set(HEADERS
@@ -64,6 +65,7 @@ set(HEADERS
     include/NeuralNetworkManager.h
     include/MenuState.h
     include/GameState.h
+    include/HUDOverlay.h
 )
 
 # EXE =================================================

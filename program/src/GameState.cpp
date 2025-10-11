@@ -6,6 +6,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#include "HUDOverlay.h"
+
 namespace ScotlandYard {
 namespace States {
 
@@ -279,6 +281,8 @@ void GameState::Render(Core::Application* p_App) {
         glDrawArrays(GL_TRIANGLE_FAN, 0, circleVertexCount);
         glBindVertexArray(0);
     }
+
+    UI::RenderSimpleHUD();
 
     // Zmiana buforów (SDL)
     SDL_GL_SwapWindow(m_p_Window);
