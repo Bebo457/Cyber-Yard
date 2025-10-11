@@ -316,6 +316,8 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
+    UI::RenderSimpleHUD();
+
     // Zmiana buforów (SDL)
     SDL_GL_SwapWindow(m_p_Window);
     
