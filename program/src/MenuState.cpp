@@ -219,17 +219,41 @@ void MenuState::Render(Core::Application* p_App) {
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
     float f_TitleScale = 2.0f; 
+    const float f_SpecialScaleMul = 1.35f; // multiplier for the larger letters
     std::string s_Title = "CYBER YARD";
     float f_TitleWidth = 0.0f;
-    for (auto c : s_Title) {
+    std::vector<float> charScales;
+    charScales.reserve(s_Title.size());
+    // Measure width using per-character scales (first and last visible letters larger)
+    int i_LastIndex = -1;
+    for (int i = (int)s_Title.size() - 1; i >= 0; --i) {
+        if (s_Title[i] != ' ') { i_LastIndex = i; break; }
+    }
+    for (size_t idx = 0; idx < s_Title.size(); ++idx) {
+        char c = s_Title[idx];
+        bool b_IsEdge = (idx == 0) || (static_cast<int>(idx) == i_LastIndex);
+        float f_ThisScale = b_IsEdge ? (f_TitleScale * f_SpecialScaleMul) : f_TitleScale;
+        charScales.push_back(f_ThisScale);
         auto it = characters.find(c);
         if (it != characters.end()) {
-            f_TitleWidth += (it->second.m_i_Advance >> 6) * f_TitleScale;
+            f_TitleWidth += (it->second.m_i_Advance >> 6) * f_ThisScale;
         }
     }
     float f_TitleX = (i_WindowWidth - f_TitleWidth) / 2.0f;
     float f_TitleY = i_WindowHeight - 140.0f; 
-    RenderTextBold(s_Title, f_TitleX, f_TitleY, f_TitleScale, 1.0f, 0.84f, 0.0f, p_App);
+    float f_CursorX = f_TitleX;
+    for (size_t i = 0; i < s_Title.size(); ++i) {
+        char c = s_Title[i];
+        float f_ThisScale = charScales[i];
+        std::string s(1, c);
+        RenderTextBold(s, f_CursorX, f_TitleY, f_ThisScale, 1.0f, 0.84f, 0.0f, p_App);
+        auto it = characters.find(c);
+        if (it != characters.end()) {
+            f_CursorX += (it->second.m_i_Advance >> 6) * f_ThisScale;
+        } else {
+            f_CursorX += 8.0f * f_ThisScale;
+        }
+    }
 
     float f_ButtonSpacing = 28.0f;
     float f_TotalHeight = MenuState::BUTTON_COUNT * m_Buttons[0].f_Height + (MenuState::BUTTON_COUNT - 1) * f_ButtonSpacing;
