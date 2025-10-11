@@ -2,11 +2,22 @@
 #define SCOTLANDYARD_CORE_APPLICATION_H
 
 #include <SDL2/SDL.h>
+#include <GL/glew.h>
 #include <string>
 #include <memory>
+#include <map>
 
 namespace ScotlandYard {
 namespace Core {
+
+struct Character {
+    GLuint m_TextureID;
+    int m_i_Width;
+    int m_i_Height;
+    int m_i_BearingX;
+    int m_i_BearingY;
+    int m_i_Advance;
+};
 
 class StateManager;
 
@@ -31,10 +42,18 @@ public:
     bool IsTrainingMode() const { return m_b_TrainingMode; }
     StateManager* GetStateManager() const { return m_p_StateManager.get(); }
 
+    const std::map<char, Character>& GetCharacterMap() const { return m_map_Characters; }
+    GLuint GetTextShaderProgram() const { return m_ShaderProgram_Text; }
+    GLuint GetTextVAO() const { return m_VAO_Text; }
+    GLuint GetTextVBO() const { return m_VBO_Text; }
+
 private:
     void HandleEvents();
     void Update(float deltaTime);
     void Render();
+
+    bool InitializeFreeType();
+    void ShutdownFreeType();
 
 private:
     std::string m_s_Title;
@@ -52,6 +71,11 @@ private:
 
     float m_f_DeltaTime;
     Uint64 m_u64_LastFrameTime;
+
+    std::map<char, Character> m_map_Characters;
+    GLuint m_ShaderProgram_Text;
+    GLuint m_VAO_Text;
+    GLuint m_VBO_Text;
 };
 
 } // namespace Core

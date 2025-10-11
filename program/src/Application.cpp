@@ -3,6 +3,8 @@
 #include "MenuState.h"
 #include "GameState.h"
 #include <GL/glew.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 #include <iostream>
 #include <filesystem>
 #include <vector>
@@ -26,6 +28,9 @@ Application::Application(const std::string& title, int width, int height, bool t
     , m_b_TrainingMode(trainingMode)
     , m_f_DeltaTime(0.0f)
     , m_u64_LastFrameTime(0)
+    , m_ShaderProgram_Text(0)
+    , m_VAO_Text(0)
+    , m_VBO_Text(0)
 {
 }
 
@@ -91,6 +96,15 @@ bool Application::Initialize() {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glEnable(GL_DEPTH_TEST);
 
+    //FreeType text rendering
+    if (!InitializeFreeType()) {
+        std::cerr << "FreeType initialization failed" << std::endl;
+        SDL_GL_DeleteContext(m_gl_Context);
+        SDL_DestroyWindow(m_p_Window);
+        SDL_Quit();
+        return false;
+    }
+
     m_p_StateManager = std::make_unique<StateManager>();
     m_b_Initialized = true;
     return true;
@@ -145,9 +159,186 @@ void Application::Update(float f_DeltaTime) {
 }
 
 void Application::Render() {
-    // Use SDL2 renderer for menu, OpenGL for game
     if (m_p_StateManager) {
         m_p_StateManager->Render(this);
+    }
+}
+
+bool Application::InitializeFreeType() {
+    const char* p_VertexShaderSrc = R"(
+        #version 330 core
+        layout (location = 0) in vec4 vertex;
+        out vec2 TexCoords;
+        uniform mat4 projection;
+        void main() {
+            gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
+            TexCoords = vertex.zw;
+        }
+    )";
+
+    const char* p_FragmentShaderSrc = R"(
+        #version 330 core
+        in vec2 TexCoords;
+        out vec4 color;
+        uniform sampler2D text;
+        uniform vec3 textColor;
+        void main() {
+            vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
+            color = vec4(textColor, 1.0) * sampled;
+        }
+    )";
+
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &p_VertexShaderSrc, nullptr);
+    glCompileShader(vertexShader);
+
+    GLint i_Success;
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetShaderInfoLog(vertexShader, 512, nullptr, infoLog);
+        std::cerr << "Text vertex shader compilation failed: " << infoLog << std::endl;
+        return false;
+    }
+
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &p_FragmentShaderSrc, nullptr);
+    glCompileShader(fragmentShader);
+
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetShaderInfoLog(fragmentShader, 512, nullptr, infoLog);
+        std::cerr << "Text fragment shader compilation failed: " << infoLog << std::endl;
+        glDeleteShader(vertexShader);
+        return false;
+    }
+
+    m_ShaderProgram_Text = glCreateProgram();
+    glAttachShader(m_ShaderProgram_Text, vertexShader);
+    glAttachShader(m_ShaderProgram_Text, fragmentShader);
+    glLinkProgram(m_ShaderProgram_Text);
+
+    glGetProgramiv(m_ShaderProgram_Text, GL_LINK_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetProgramInfoLog(m_ShaderProgram_Text, 512, nullptr, infoLog);
+        std::cerr << "Text shader program linking failed: " << infoLog << std::endl;
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        return false;
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    // Create VAO and VBO for text rendering
+    glGenVertexArrays(1, &m_VAO_Text);
+    glGenBuffers(1, &m_VBO_Text);
+    glBindVertexArray(m_VAO_Text);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Text);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, nullptr, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    // Initialize FreeType and load font
+    FT_Library ft;
+    if (FT_Init_FreeType(&ft)) {
+        std::cerr << "Could not init FreeType Library" << std::endl;
+        return false;
+    }
+
+    FT_Face face;
+    bool b_FontLoaded = false;
+
+#ifdef _WIN32
+    if (FT_New_Face(ft, "C:\\Windows\\Fonts\\arial.ttf", 0, &face) == 0) {
+        b_FontLoaded = true;
+    }
+#elif __linux__
+    if (FT_New_Face(ft, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &face) == 0) {
+        b_FontLoaded = true;
+    }
+#elif __APPLE__
+    if (FT_New_Face(ft, "/System/Library/Fonts/Arial.ttf", 0, &face) == 0) {
+        b_FontLoaded = true;
+    }
+#endif
+
+    if (!b_FontLoaded) {
+        std::cerr << "Failed to load system font" << std::endl;
+        FT_Done_FreeType(ft);
+        return false;
+    }
+
+    FT_Set_Pixel_Sizes(face, 0, 24);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // Load ASCII character set
+    for (unsigned char c = 0; c < 128; c++) {
+        if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
+            std::cerr << "Failed to load Glyph: " << c << std::endl;
+            continue;
+        }
+
+        GLuint texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RED,
+            face->glyph->bitmap.width,
+            face->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face->glyph->bitmap.buffer
+        );
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        Character character = {
+            texture,
+            static_cast<int>(face->glyph->bitmap.width),
+            static_cast<int>(face->glyph->bitmap.rows),
+            face->glyph->bitmap_left,
+            face->glyph->bitmap_top,
+            static_cast<int>(face->glyph->advance.x)
+        };
+        m_map_Characters.insert(std::pair<char, Character>(c, character));
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(ft);
+
+    return true;
+}
+
+void Application::ShutdownFreeType() {
+    for (auto& pair : m_map_Characters) {
+        glDeleteTextures(1, &pair.second.m_TextureID);
+    }
+    m_map_Characters.clear();
+
+    if (m_VAO_Text) {
+        glDeleteVertexArrays(1, &m_VAO_Text);
+        m_VAO_Text = 0;
+    }
+    if (m_VBO_Text) {
+        glDeleteBuffers(1, &m_VBO_Text);
+        m_VBO_Text = 0;
+    }
+
+    if (m_ShaderProgram_Text) {
+        glDeleteProgram(m_ShaderProgram_Text);
+        m_ShaderProgram_Text = 0;
     }
 }
 
@@ -157,6 +348,8 @@ void Application::Shutdown() {
     m_p_StateManager.reset();
 
     if (!m_b_TrainingMode) {
+        ShutdownFreeType();
+
         if (m_gl_Context) {
             SDL_GL_DeleteContext(m_gl_Context);
             m_gl_Context = nullptr;
