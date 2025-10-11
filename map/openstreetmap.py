@@ -19,6 +19,6 @@ nodes, edges = ox.graph_to_gdfs(G)
 street_names = edges['name'].unique()
 print(street_names)
 
-ox.save_graphml(G, filepath="manhattan.graphml")
+ox.save_graphml(G, filepath="london.graphml")
 
-edges.to_file("manhattan_edges.shp")
+edges.to_file("london_edges.shp")
