@@ -2,7 +2,6 @@
 #include <vector>
 #include <string>
 #include <functional>
-#include <SDL2/SDL_ttf.h>
 
 namespace UI {
 
@@ -50,8 +49,7 @@ namespace UI {
     void SetHUDStyle(const HUDStyle& style);
 
     // font not working yet
-    void SetFont(TTF_Font* font);
-
+    void SetFont(void* /*font*/);
 
     void RenderHUD();
     inline void RenderSimpleHUD() { RenderHUD(); }

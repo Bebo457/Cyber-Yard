@@ -4,13 +4,25 @@
 #include <unordered_map>
 #include <algorithm>
 #include <cstdio>
+#include <string>
+#include <vector>
+
+#define HUD_NO_TEXT 1 // without font yet
 
 namespace UI {
 
     namespace {
         HUDStyle                g_style{};
         int                     g_vpW = 1280, g_vpH = 720;
-        TTF_Font* g_font = nullptr;
+
+        // OpenGL shaders and bufors
+        GLuint g_progRounded = 0;
+        GLuint g_progTex = 0;
+
+        GLuint g_vaoRounded = 0, g_vboRounded = 0;
+        GLuint g_vaoTex = 0, g_vboTex = 0;
+
+        float pxToNDC(float px) { return (2.0f * px) / float(g_vpH); }
 
         std::vector<TicketSlot> g_slots(24);
 
@@ -25,16 +37,6 @@ namespace UI {
             { 95 / 255.f,146 / 255.f, 88 / 255.f, 1.0f },   // Bus (green)
         };
 
-        // OpenGL shaders and bufors
-        GLuint g_progRounded = 0;
-        GLuint g_progTex = 0;
-
-        GLuint g_vaoRounded = 0, g_vboRounded = 0;
-        GLuint g_vaoTex = 0, g_vboTex = 0;
-
-        float pxToNDC(float px) { return (2.0f * px) / float(g_vpH); } 
-
-        
         // SHADERS
         const char* VS_R = R"(#version 330 core
         layout(location=0) in vec2 aPos; // NDC quad nad prostokątem
@@ -72,7 +74,7 @@ namespace UI {
         out vec2 vUV;
         void main(){ vUV=aUV; gl_Position=vec4(aPos,0.0,1.0); })";
 
-                const char* FS_TEX = R"(#version 330 core
+        const char* FS_TEX = R"(#version 330 core
         in vec2 vUV; uniform sampler2D uTex; uniform vec4 uColor;
         out vec4 FragColor;
         void main(){ vec4 t = texture(uTex, vUV); FragColor = vec4(uColor.rgb, uColor.a) * t; })";
@@ -132,7 +134,6 @@ namespace UI {
             }
         }
 
-
         void drawRoundedRect(float x0, float y0, float x1, float y1, Color c, float radiusNDC) {
             const float verts[] = { x0,y0,  x1,y0,  x0,y1,  x1,y0,  x1,y1,  x0,y1 };
             glUseProgram(g_progRounded);
@@ -149,10 +150,11 @@ namespace UI {
             glUseProgram(0);
         }
 
+#if !HUD_NO_TEXT
         struct GlyphTex { GLuint tex = 0; int w = 0, h = 0; };
-        std::unordered_map<std::string, GlyphTex> g_textCache;
+        static std::unordered_map<std::string, GlyphTex> g_textCache;
 
-        GLuint surfaceToTexture(SDL_Surface* s) {
+        static GLuint surfaceToTexture(SDL_Surface* s) {
             if (!s) return 0;
             SDL_Surface* conv = SDL_ConvertSurfaceFormat(s, SDL_PIXELFORMAT_ABGR8888, 0);
             if (!conv) return 0;
@@ -167,23 +169,8 @@ namespace UI {
             return tex;
         }
 
-        GlyphTex bakeTextTexture(const std::string& text, int px, SDL_Color color) {
-            GlyphTex gt;
-            if (!g_font || text.empty()) return gt;
-
-
-        #if SDL_TTF_VERSION_ATLEAST(2,20,0)
-                    TTF_SetFontSize(g_font, px);
-        #endif
-                    SDL_Surface* surf = TTF_RenderUTF8_Blended(g_font, text.c_str(), color);
-                    if (!surf) return gt;
-                    gt.tex = surfaceToTexture(surf);
-                    gt.w = surf->w; gt.h = surf->h;
-                    SDL_FreeSurface(surf);
-                    return gt;
-                }
-
-        void drawTextureCentered(GLuint tex, int texW, int texH,
+        // todo turn on after adding font
+        static void drawTextureCentered(GLuint tex, int texW, int texH,
             float x0, float y0, float x1, float y1,
             Color mul = { 1,1,1,1 })
         {
@@ -235,33 +222,14 @@ namespace UI {
             glBindVertexArray(0);
             glBindTexture(GL_TEXTURE_2D, 0);
             glUseProgram(0);
-
         }
 
-        void drawTextCentered(const std::string& text, float x0, float y0, float x1, float y1,
-            Color col = { 1,1,1,1 })
-        {
-            if (!g_font || text.empty()) return;
-
-            auto ndcToPxY = [&](float y) {
-                return int((1.0f - (y * 0.5f + 0.5f)) * g_vpH);
-                };
-            int rectHpx = ndcToPxY(y0) - ndcToPxY(y1);
-            int fontPx = std::max(12, int(rectHpx * 0.60f));
-
-            SDL_Color sdlCol = { Uint8(col.r * 255), Uint8(col.g * 255), Uint8(col.b * 255), Uint8(col.a * 255) };
-            std::string key = text + "@" + std::to_string(fontPx);
-            GlyphTex gt{};
-            auto it = g_textCache.find(key);
-            if (it == g_textCache.end()) {
-                gt = bakeTextTexture(text, fontPx, sdlCol);
-                if (gt.tex) g_textCache.emplace(key, gt);
-            }
-            else {
-                gt = it->second;
-            }
-            if (gt.tex) drawTextureCentered(gt.tex, gt.w, gt.h, x0, y0, x1, y1, { 1,1,1,1 });
-        }
+        
+        static void drawTextCentered(const std::string&, float, float, float, float, Color) { /* NO-OP */ }
+#else
+        
+        static void drawTextCentered(const std::string&, float, float, float, float, Color) { /* NO-OP */ }
+#endif
 
         // LAYOUT
         void computeBars(float& tX0, float& tX1, float& tY0, float& tY1,
@@ -355,17 +323,17 @@ namespace UI {
     }
 
     void ShutdownHUD() {
+#if !HUD_NO_TEXT
         for (auto& kv : g_textCache) {
             if (kv.second.tex) glDeleteTextures(1, &kv.second.tex);
         }
         g_textCache.clear();
+#endif
 
         if (g_vboRounded) { glDeleteBuffers(1, &g_vboRounded); g_vboRounded = 0; }
         if (g_vaoRounded) { glDeleteVertexArrays(1, &g_vaoRounded); g_vaoRounded = 0; }
         if (g_vboTex) { glDeleteBuffers(1, &g_vboTex);     g_vboTex = 0; }
         if (g_vaoTex) { glDeleteVertexArrays(1, &g_vaoTex); g_vaoTex = 0; }
-
-        g_font = nullptr;
     }
 
     void SetViewport(int w, int h) {
@@ -375,7 +343,10 @@ namespace UI {
 
     void SetHUDStyle(const HUDStyle& style) { g_style = style; }
 
-    void SetFont(TTF_Font* font) { g_font = font; }
+    // font not working yet — stub
+    void SetFont(void* /*font*/) {
+        // NO-OP
+    }
 
     void SetTicketStates(const std::vector<TicketSlot>& slots) {
         g_slots = slots;
