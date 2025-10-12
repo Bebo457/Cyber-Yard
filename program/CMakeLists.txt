@@ -102,6 +102,11 @@ if(WIN32)
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
         )
     endif()
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/assets
+            ${CMAKE_BINARY_DIR}/assets
+    )
 elseif(UNIX AND NOT APPLE)
     # Linux-specific settings
     target_link_libraries(${PROJECT_NAME} PRIVATE
