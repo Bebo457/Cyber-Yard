@@ -209,6 +209,11 @@ void GameState::OnEnter() {
         
     }
 
+    UI::LoadCameraIconPNG("assets/icons/camera_icon.png");
+    UI::SetCameraToggleCallback([this]() {
+        m_bCamera3D = !m_bCamera3D;
+        });
+
     glEnable(GL_DEPTH_TEST);
 }
 
@@ -270,19 +275,22 @@ void GameState::Render(Core::Application* p_App) {
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    // Widok (kamera)
-    glm::mat4 view = glm::lookAt(
-        glm::vec3(0.0f, 2.0f, 5.0f),
-        glm::vec3(0.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 1.0f, 0.0f)
-    );
+    glm::mat4 view, projection;
 
-    // Projekcja (perspektywa)
-    glm::mat4 projection = glm::perspective(
-        glm::radians(45.0f),
-        (float)m_i_Width / (float)m_i_Height,
-        0.1f, 100.0f
-    );
+    if (m_bCamera3D) {
+        // cam 3D
+        view = glm::lookAt(glm::vec3(0.0f, 2.0f, 5.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f));
+        projection = glm::perspective(glm::radians(45.0f),
+            (float)m_i_Width / (float)m_i_Height,
+            0.1f, 100.0f);
+    }
+    else {
+        // 2D rzutowanie (top-down)
+        view = glm::mat4(1.0f);
+        projection = glm::ortho(-1.5f, 1.5f, -1.0f, 1.0f, -10.0f, 10.0f);
+    }
 
     glm::mat4 MVP = projection * view * model;
 
@@ -316,7 +324,9 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
-    ScotlandYard::UI::RenderSimpleHUD();
+    ScotlandYard::UI::SetRound(1);
+    ScotlandYard::UI::RenderHUD(p_App);
+
 
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 }
@@ -333,6 +343,8 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_MOUSEBUTTONDOWN) {
         int i_X = event.button.x;
         int i_Y = event.button.y;
+
+        UI::HandleMouseClick(i_X, i_Y);
     }
 }
 

@@ -3,6 +3,10 @@
 #include <string>
 #include <functional>
 
+namespace ScotlandYard { namespace Core { class Application; } }
+
+
+
 namespace ScotlandYard {
 namespace UI {
 
@@ -13,6 +17,7 @@ namespace UI {
     constexpr int k_TicketSlotCount = 24;
     constexpr float k_DefaultInsetYMax = 0.20f;
     constexpr float k_DefaultInsetXMax = 0.45f;
+
 
     struct HUDStyle {
         // vertical positions of HUD (NDC: +1 up)
@@ -36,16 +41,17 @@ namespace UI {
         int slotRadiusPx = 5;
 
         // Layout top-bara
-        float pillsGapPx = 8.0f;   // margin
-        float pillsPadXPx = 14.0f;  // horizontal padding
-        float pillsPadYPx = 6.0f;   // vertical padding
-        float pillsFontScale = 0.75f;
+        float pillsGapPx = 8.0f;
+        float pillsPadXPx = 14.0f;
+        float pillsPadYPx = 6.0f;
     };
 
     struct TicketSlot {
         Color color = { -1.f, -1.f, -1.f, -1.f };
-        bool  used = false; // na przyszłość
+        bool  used = false;
     };
+
+
 
     bool InitHUD();
     void ShutdownHUD();
@@ -53,17 +59,21 @@ namespace UI {
     void SetViewport(int width, int height);
 
     void SetHUDStyle(const HUDStyle& style);
-
-    // font not working yet
-    void SetFont(void* /*font*/);
+    void SetTicketStates(const std::vector<TicketSlot>& slots);
+    void SetTopBar(const std::vector<std::string>& labels,
+        const std::vector<Color>& pillColors);
+    void SetRound(int round_1_to_24);
 
     void RenderHUD();
-    inline void RenderSimpleHUD() { RenderHUD(); }
-
-    void SetTicketStates(const std::vector<TicketSlot>& slots);
-    void SetTopBar(const std::vector<std::string>& labels, const std::vector<Color>& pillColors);
+    void RenderHUD(Core::Application* p_App);
+    void BindTextFromApp(Core::Application* p_App);
 
     void DrawRoundedRectScreen(float x0, float y0, float x1, float y1, Color c, int radiusPx);
+
+    void LoadCameraIconPNG(const char* path);
+    void SetCameraToggleCallback(std::function<void()> cb);
+    void HandleMouseClick(int x_px, int y_px);
+
 
 } // namespace UI
 } // namespace ScotlandYard

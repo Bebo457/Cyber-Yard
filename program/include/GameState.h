@@ -30,6 +30,7 @@ public:
 
 private:
     bool m_b_GameActive;
+    bool m_bCamera3D = true; // start 3D
 
     GLuint m_VAO_Plane;
     GLuint m_VBO_Plane;
