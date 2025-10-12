@@ -115,12 +115,12 @@ void MenuState::RenderText(const std::string& s_Text, float f_X, float f_Y, floa
 }
 
 void MenuState::RenderTextBold(const std::string& s_Text, float f_X, float f_Y, float f_Scale, float f_R, float f_G, float f_B, Core::Application* p_App) {
-    float px = std::max(1.0f, f_Scale * 1.0f);
-    const float offsets[6][2] = {
-        {0.0f, 0.0f}, {px, 0.0f}, {0.0f, px}, {px, px}, {-px, 0.0f}, {0.0f, -px}
+    float f_px = std::max(1.0f, f_Scale * 1.0f);
+    const float f_offsets[6][2] = {
+        {0.0f, 0.0f}, {f_px, 0.0f}, {0.0f, f_px}, {f_px, f_px}, {-f_px, 0.0f}, {0.0f, -f_px}
     };
     for (int i = 0; i < 6; ++i) {
-        RenderText(s_Text, f_X + offsets[i][0], f_Y + offsets[i][1], f_Scale, f_R, f_G, f_B, p_App);
+        RenderText(s_Text, f_X + f_offsets[i][0], f_Y + f_offsets[i][1], f_Scale, f_R, f_G, f_B, p_App);
     }
 }
 
@@ -139,10 +139,10 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
     glBindTexture(GL_TEXTURE_2D, m_WhiteTexture);
     glUniform1i(glGetUniformLocation(shaderProgram, "text"), 0);
 
-    float x = button.f_X;
-    float y = button.f_Y;
-    float w = button.f_Width;
-    float h = button.f_Height;
+    float x = button.m_f_X;
+    float y = button.m_f_Y;
+    float w = button.m_f_Width;
+    float h = button.m_f_Height;
     float shadowOffset = 6.0f;
     glm::vec4 shadowColor(0.12f, 0.14f, 0.16f, 1.0f);
     float sx = x;
@@ -185,7 +185,7 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
     float f_TextWidth = 0.0f;
     float maxTopOffset = -1e6f;  
     float minBottomOffset = 1e6f;
-    for (auto c : button.s_Text) {
+    for (auto c : button.m_s_Text) {
         auto it = characters.find(c);
         if (it != characters.end()) {
             const auto& ch = it->second;
@@ -203,7 +203,7 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
         float textCenterOffset = (maxTopOffset + minBottomOffset) * 0.5f;
         f_TextY = by0 + (by1 - by0) * 0.5f - textCenterOffset;
     }
-    RenderText(button.s_Text, f_TextX, f_TextY, f_TextScale, 1.0f, 1.0f, 1.0f, p_App);
+    RenderText(button.m_s_Text, f_TextX, f_TextY, f_TextScale, 1.0f, 1.0f, 1.0f, p_App);
 }
 
 void MenuState::Render(Core::Application* p_App) {
@@ -261,12 +261,12 @@ void MenuState::Render(Core::Application* p_App) {
     }
 
     float f_ButtonSpacing = 28.0f;
-    float f_TotalHeight = MenuState::BUTTON_COUNT * m_Buttons[0].f_Height + (MenuState::BUTTON_COUNT - 1) * f_ButtonSpacing;
+    float f_TotalHeight = MenuState::BUTTON_COUNT * m_Buttons[0].m_f_Height + (MenuState::BUTTON_COUNT - 1) * f_ButtonSpacing;
     float f_StartY = (i_WindowHeight - f_TotalHeight) / 2.0f - 30.0f;
 
     for (int i = 0; i < MenuState::BUTTON_COUNT; i++) {
-        m_Buttons[i].f_X = (i_WindowWidth - m_Buttons[i].f_Width) / 2.0f;
-        m_Buttons[i].f_Y = f_StartY + (MenuState::BUTTON_COUNT - 1 - i) * (m_Buttons[i].f_Height + f_ButtonSpacing);
+        m_Buttons[i].m_f_X = (i_WindowWidth - m_Buttons[i].m_f_Width) / 2.0f;
+        m_Buttons[i].m_f_Y = f_StartY + (MenuState::BUTTON_COUNT - 1 - i) * (m_Buttons[i].m_f_Height + f_ButtonSpacing);
     RenderButton(m_Buttons[i], i, i == m_i_SelectedOption, i_WindowWidth, i_WindowHeight, p_App);
     }
 
@@ -310,8 +310,8 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
         f_MouseY = f_WindowHeight - f_MouseY;
 
         for (int i = 0; i < MenuState::BUTTON_COUNT; i++) {
-            if (f_MouseX >= m_Buttons[i].f_X && f_MouseX <= m_Buttons[i].f_X + m_Buttons[i].f_Width &&
-                f_MouseY >= m_Buttons[i].f_Y && f_MouseY <= m_Buttons[i].f_Y + m_Buttons[i].f_Height) {
+            if (f_MouseX >= m_Buttons[i].m_f_X && f_MouseX <= m_Buttons[i].m_f_X + m_Buttons[i].m_f_Width &&
+                f_MouseY >= m_Buttons[i].m_f_Y && f_MouseY <= m_Buttons[i].m_f_Y + m_Buttons[i].m_f_Height) {
                 m_i_HoverOption = i;
                 m_i_SelectedOption = i;
                 switch (i) {
@@ -340,8 +340,8 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
 
         int i_HoverIndex = -1;
         for (int i = 0; i < MenuState::BUTTON_COUNT; i++) {
-            if (f_MouseX >= m_Buttons[i].f_X && f_MouseX <= m_Buttons[i].f_X + m_Buttons[i].f_Width &&
-                f_MouseY >= m_Buttons[i].f_Y && f_MouseY <= m_Buttons[i].f_Y + m_Buttons[i].f_Height) {
+            if (f_MouseX >= m_Buttons[i].m_f_X && f_MouseX <= m_Buttons[i].m_f_X + m_Buttons[i].m_f_Width &&
+                f_MouseY >= m_Buttons[i].m_f_Y && f_MouseY <= m_Buttons[i].m_f_Y + m_Buttons[i].m_f_Height) {
                 i_HoverIndex = i;
                 break;
             }

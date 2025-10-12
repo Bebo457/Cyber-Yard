@@ -33,8 +33,8 @@ private:
     GLuint m_WhiteTexture;
 
     struct Button {
-        float f_X, f_Y, f_Width, f_Height;
-        std::string s_Text;
+        float m_f_X, m_f_Y, m_f_Width, m_f_Height;
+        std::string m_s_Text;
     };
 
     Button m_Buttons[BUTTON_COUNT];
