@@ -287,9 +287,22 @@ void GameState::Render(Core::Application* p_App) {
             0.1f, 100.0f);
     }
     else {
-        // 2D rzutowanie (top-down)
-        view = glm::mat4(1.0f);
-        projection = glm::ortho(-1.5f, 1.5f, -1.0f, 1.0f, -10.0f, 10.0f);
+        // 2D ortho - look top-down
+        view = glm::lookAt(
+            glm::vec3(0.0f, 10.0f, 0.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 0.0f, -1.0f)
+        );
+
+        float f_Aspect = (float)m_i_Width / (float)m_i_Height;
+        float f_HalfHeight = 1.1f;
+        float f_HalfWidth = f_HalfHeight * f_Aspect;
+
+        projection = glm::ortho(
+            -f_HalfWidth, f_HalfWidth,
+            -f_HalfHeight, f_HalfHeight,
+            0.1f, 20.0f
+        );
     }
 
     glm::mat4 MVP = projection * view * model;
