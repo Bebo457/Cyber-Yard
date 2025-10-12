@@ -9,16 +9,17 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 namespace ScotlandYard {
 namespace States {
 
 MenuState::MenuState()
     : m_i_SelectedOption(0)
+    , m_i_HoverOption(-1)
+    , m_WhiteTexture(0)
 {
-    m_i_HoverOption = -1;
     for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
-    // Make buttons wider and slightly taller so they are more visible
     m_Buttons[0] = {0.0f, 0.0f, 320.0f, 70.0f, "New Game"};
     m_Buttons[1] = {0.0f, 0.0f, 320.0f, 70.0f, "Load Game"};
     m_Buttons[2] = {0.0f, 0.0f, 320.0f, 70.0f, "Settings"};
@@ -30,10 +31,26 @@ MenuState::~MenuState() {
 
 void MenuState::OnEnter() {
     m_i_SelectedOption = 0;
+
+    // texture for rendering solid colors
+    if (!m_WhiteTexture) {
+        unsigned char white = 255;
+        glGenTextures(1, &m_WhiteTexture);
+        glBindTexture(GL_TEXTURE_2D, m_WhiteTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, &white);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 }
 
 void MenuState::OnExit() {
-    
+    if (m_WhiteTexture) {
+        glDeleteTextures(1, &m_WhiteTexture);
+        m_WhiteTexture = 0;
+    }
 }
 
 void MenuState::OnPause() {
@@ -118,20 +135,8 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
     glUseProgram(shaderProgram);
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(glm::ortho(0.0f, (float)i_WindowWidth, 0.0f, (float)i_WindowHeight)));
 
-
-    static GLuint s_WhiteTexture = 0;
-    if (s_WhiteTexture == 0) {
-        unsigned char white = 255;
-        glGenTextures(1, &s_WhiteTexture);
-        glBindTexture(GL_TEXTURE_2D, s_WhiteTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, &white);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    }
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, s_WhiteTexture);
+    glBindTexture(GL_TEXTURE_2D, m_WhiteTexture);
     glUniform1i(glGetUniformLocation(shaderProgram, "text"), 0);
 
     float x = button.f_X;
@@ -224,7 +229,7 @@ void MenuState::Render(Core::Application* p_App) {
     float f_TitleWidth = 0.0f;
     std::vector<float> charScales;
     charScales.reserve(s_Title.size());
-    // Measure width using per-character scales (first and last visible letters larger)
+
     int i_LastIndex = -1;
     for (int i = (int)s_Title.size() - 1; i >= 0; --i) {
         if (s_Title[i] != ' ') { i_LastIndex = i; break; }

@@ -30,6 +30,7 @@ private:
     int m_i_HoverOption;
     static constexpr int BUTTON_COUNT = 4;
     float m_f_FrameAlpha[BUTTON_COUNT];
+    GLuint m_WhiteTexture;
 
     struct Button {
         float f_X, f_Y, f_Width, f_Height;
