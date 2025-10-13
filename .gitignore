@@ -2,6 +2,10 @@
 venv/
 cache/
 
+#any random build
+*/build/
+build/
+
 # Build directories
 program/build/
 program/bin/
