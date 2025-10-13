@@ -184,7 +184,9 @@ void GameState::OnEnter() {
     // Ładowanie tekstury z pliku
     // ========================================
     int texWidth, texHeight, texChannels;
-    unsigned char* data = stbi_load("assets/textures/Scotland_Yard_schematic.png", &texWidth, &texHeight, &texChannels, 0);
+    std::string texturePath = std::string(ASSETS_DIR) + "/textures/Scotland_Yard_schematic.png";
+    unsigned char* data = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, 0);
+
     if (!data) {
         printf("Nie udalo sie zaladowac tekstury: \n");
     } else {
@@ -209,7 +211,8 @@ void GameState::OnEnter() {
         
     }
 
-    UI::LoadCameraIconPNG("assets/icons/camera_icon.png");
+    std::string iconPath = std::string(ASSETS_DIR) + "/icons/camera_icon.png";
+    UI::LoadCameraIconPNG(iconPath.c_str());
     UI::SetCameraToggleCallback([this]() {
         m_bCamera3D = !m_bCamera3D;
         });
