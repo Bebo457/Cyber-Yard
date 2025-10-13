@@ -30,7 +30,8 @@ public:
 
 private:
     bool m_b_GameActive;
-    bool m_bCamera3D = true; // start 3D
+    bool m_b_Camera3D;
+    bool m_b_TexturesLoaded;
 
     GLuint m_VAO_Plane;
     GLuint m_VBO_Plane;
@@ -51,7 +52,24 @@ private:
 
     GLuint m_TextureID;
 
+    // Camera system
+    glm::vec3 m_vec3_CameraPosition;
+    glm::vec3 m_vec3_CameraVelocity;
+    glm::vec3 m_vec3_CameraFront;
+    glm::vec3 m_vec3_CameraUp;
+
+    static constexpr float k_CameraAcceleration = 1000.0f;
+    static constexpr float k_MaxCameraSpeed = 10000.0f;
+    static constexpr float k_CameraFriction = 0.28f;
+
     std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
+    void LoadTextures(Core::Application* p_App);
+
+    void AccelerateCameraForward(float f_DeltaTime);
+    void AccelerateCameraBackward(float f_DeltaTime);
+    void AccelerateCameraLeft(float f_DeltaTime);
+    void AccelerateCameraRight(float f_DeltaTime);
+    void UpdateCameraPhysics(float f_DeltaTime);
 };
 
 } // namespace States

@@ -47,6 +47,17 @@ public:
     GLuint GetTextVAO() const { return m_VAO_Text; }
     GLuint GetTextVBO() const { return m_VBO_Text; }
 
+    GLuint LoadTexture(const std::string& s_Path);
+    void UnloadTexture(GLuint textureID);
+    std::string GetAssetPath(const std::string& s_RelativePath) const;
+
+    GLuint GetHUDRoundedShader() const { return m_ShaderProgram_HUDRounded; }
+    GLuint GetHUDTextureShader() const { return m_ShaderProgram_HUDTexture; }
+    GLuint GetHUDRoundedVAO() const { return m_VAO_HUDRounded; }
+    GLuint GetHUDRoundedVBO() const { return m_VBO_HUDRounded; }
+    GLuint GetHUDTextureVAO() const { return m_VAO_HUDTexture; }
+    GLuint GetHUDTextureVBO() const { return m_VBO_HUDTexture; }
+
 private:
     void HandleEvents();
     void Update(float deltaTime);
@@ -54,6 +65,8 @@ private:
 
     bool InitializeFreeType();
     void ShutdownFreeType();
+    bool InitializeHUDResources();
+    void ShutdownHUDResources();
 
 private:
     std::string m_s_Title;
@@ -76,6 +89,15 @@ private:
     GLuint m_ShaderProgram_Text;
     GLuint m_VAO_Text;
     GLuint m_VBO_Text;
+
+    std::map<std::string, GLuint> m_map_TextureCache;
+
+    GLuint m_ShaderProgram_HUDRounded;
+    GLuint m_ShaderProgram_HUDTexture;
+    GLuint m_VAO_HUDRounded;
+    GLuint m_VBO_HUDRounded;
+    GLuint m_VAO_HUDTexture;
+    GLuint m_VBO_HUDTexture;
 };
 
 } // namespace Core

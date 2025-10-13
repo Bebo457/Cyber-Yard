@@ -148,7 +148,7 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
     float sx = x;
     float sy = y - shadowOffset;
 
-    ScotlandYard::UI::DrawRoundedRectScreen(sx, sy, sx + w, sy + h, { shadowColor.r, shadowColor.g, shadowColor.b, shadowColor.a }, 8);
+    ScotlandYard::UI::DrawRoundedRectScreen(sx, sy, sx + w, sy + h, { shadowColor.r, shadowColor.g, shadowColor.b, shadowColor.a }, 8, p_App);
 
     ScotlandYard::UI::Color baseColor = { 1.0f, 0.84f, 0.0f, 1.0f };
 
@@ -171,15 +171,15 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
     float f_FrameAlphaLocal = m_f_FrameAlpha[i_Index];
     if (f_FrameAlphaLocal > 1e-4f) {
         ScotlandYard::UI::Color frame = { 1.0f, 1.0f, 1.0f, f_FrameAlphaLocal };
-        float f_Pad = 4.0f + f_FrameAlphaLocal * 6.0f; 
-        ScotlandYard::UI::DrawRoundedRectScreen(bx0 - f_Pad, by0 - f_Pad, bx1 + f_Pad, by1 + f_Pad, frame, 16);
+        float f_Pad = 4.0f + f_FrameAlphaLocal * 6.0f;
+        ScotlandYard::UI::DrawRoundedRectScreen(bx0 - f_Pad, by0 - f_Pad, bx1 + f_Pad, by1 + f_Pad, frame, 16, p_App);
     }
 
-    ScotlandYard::UI::DrawRoundedRectScreen(bx0, by0, bx1, by1, buttonColor, 12);
+    ScotlandYard::UI::DrawRoundedRectScreen(bx0, by0, bx1, by1, buttonColor, 12, p_App);
 
     float borderPx = 3.0f;
     ScotlandYard::UI::Color borderColor = { 0.08f, 0.08f, 0.08f, 1.0f };
-    ScotlandYard::UI::DrawRoundedRectScreen(x - borderPx/2.0f, y - borderPx/2.0f, x + w + borderPx/2.0f, y + h + borderPx/2.0f, borderColor, 12);
+    ScotlandYard::UI::DrawRoundedRectScreen(x - borderPx/2.0f, y - borderPx/2.0f, x + w + borderPx/2.0f, y + h + borderPx/2.0f, borderColor, 12, p_App);
 
     float f_TextScale = 1.0f;
     float f_TextWidth = 0.0f;

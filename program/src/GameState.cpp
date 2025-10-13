@@ -12,6 +12,8 @@ namespace States {
 
 GameState::GameState()
     : m_b_GameActive(false)
+    , m_b_Camera3D(true)
+    , m_b_TexturesLoaded(false)
     , m_VAO_Plane(0)
     , m_VBO_Plane(0)
     , m_ShaderProgram_Plane(0)
@@ -24,6 +26,10 @@ GameState::GameState()
     , m_i_Width(800)
     , m_i_Height(600)
     , m_TextureID(0)
+    , m_vec3_CameraPosition(0.0f, 1.5f, 4.0f)
+    , m_vec3_CameraVelocity(0.0f, 0.0f, 0.0f)
+    , m_vec3_CameraFront(0.0f, -0.3f, -1.0f)
+    , m_vec3_CameraUp(0.0f, 1.0f, 0.0f)
 {
 }
 
@@ -180,44 +186,26 @@ void GameState::OnEnter() {
     glDeleteShader(cVertexShader);
     glDeleteShader(cFragmentShader);
 
-    // ========================================
-    // Ładowanie tekstury z pliku
-    // ========================================
-    int texWidth, texHeight, texChannels;
-    std::string texturePath = std::string(ASSETS_DIR) + "/textures/Scotland_Yard_schematic.png";
-    unsigned char* data = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, 0);
-
-    if (!data) {
-        printf("Nie udalo sie zaladowac tekstury: \n");
-    } else {
-        glGenTextures(1, &m_TextureID);
-        glBindTexture(GL_TEXTURE_2D, m_TextureID);
-
-        // parametry tekstury
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        GLenum format = GL_RGB;
-        if (texChannels == 4)
-            format = GL_RGBA;
-
-        glTexImage2D(GL_TEXTURE_2D, 0, format, texWidth, texHeight, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-        stbi_image_free(data);
-        printf("Tekstura zaladowana pomyslnie: %dx%d\n", texWidth, texHeight);
-        
-    }
-
-    std::string iconPath = std::string(ASSETS_DIR) + "/icons/camera_icon.png";
-    UI::LoadCameraIconPNG(iconPath.c_str());
     UI::SetCameraToggleCallback([this]() {
-        m_bCamera3D = !m_bCamera3D;
+        m_b_Camera3D = !m_b_Camera3D;
         });
 
     glEnable(GL_DEPTH_TEST);
+}
+
+void GameState::LoadTextures(Core::Application* p_App) {
+    if (m_b_TexturesLoaded) return;
+
+    std::string s_TexturePath = p_App->GetAssetPath("textures/Scotland_Yard_schematic.png");
+    m_TextureID = p_App->LoadTexture(s_TexturePath);
+    if (m_TextureID == 0) {
+        printf("Failed to load board texture\n");
+    }
+
+    std::string s_IconPath = p_App->GetAssetPath("icons/camera_icon.png");
+    UI::LoadCameraIconPNG(s_IconPath.c_str(), p_App);
+
+    m_b_TexturesLoaded = true;
 }
 
 void GameState::OnExit() {
@@ -262,9 +250,13 @@ void GameState::OnResume() {
 
 void GameState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;
+    UpdateCameraPhysics(f_DeltaTime);
 }
 
 void GameState::Render(Core::Application* p_App) {
+    // Load textures on first render
+    LoadTextures(p_App);
+
     m_i_Width = p_App->GetWidth();
     m_i_Height = p_App->GetHeight();
 
@@ -274,23 +266,24 @@ void GameState::Render(Core::Application* p_App) {
 
     glUseProgram(m_ShaderProgram_Plane);
 
-    // Ustawienie macierzy modelu (obrót)
+    // Model matrix (rotation)
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 
     glm::mat4 view, projection;
 
-    if (m_bCamera3D) {
-        // cam 3D
-        view = glm::lookAt(glm::vec3(0.0f, 2.0f, 5.0f),
-            glm::vec3(0.0f, 0.0f, 0.0f),
-            glm::vec3(0.0f, 1.0f, 0.0f));
+    if (m_b_Camera3D) {
+        glm::vec3 vec3_CameraTarget = m_vec3_CameraPosition + m_vec3_CameraFront;
+        view = glm::lookAt(m_vec3_CameraPosition, vec3_CameraTarget, m_vec3_CameraUp);
         projection = glm::perspective(glm::radians(45.0f),
             (float)m_i_Width / (float)m_i_Height,
             0.1f, 100.0f);
     }
     else {
-        // 2D ortho - look top-down
+        // 2D orthographic (top-down)
+        m_vec3_CameraPosition = glm::vec3(0.0f, 2.0f, 5.0f);
+        m_vec3_CameraVelocity = glm::vec3(0.0f, 0.0f, 0.0f);
+
         view = glm::lookAt(
             glm::vec3(0.0f, 10.0f, 0.0f),
             glm::vec3(0.0f, 0.0f, 0.0f),
@@ -349,9 +342,27 @@ void GameState::Render(Core::Application* p_App) {
 
 void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_KEYDOWN) {
+        float f_DeltaTime = p_App->GetDeltaTime();
+
         switch (event.key.keysym.sym) {
             case SDLK_ESCAPE:
-                // Można np. ustawić flagę wyjścia
+                // Can set exit flag or can not I dont know do what you want, but like can we do what we want?
+                break;
+
+            case SDLK_w:
+                AccelerateCameraForward(f_DeltaTime);
+                break;
+
+            case SDLK_s:
+                AccelerateCameraBackward(f_DeltaTime);
+                break;
+
+            case SDLK_a:
+                AccelerateCameraLeft(f_DeltaTime);
+                break;
+
+            case SDLK_d:
+                AccelerateCameraRight(f_DeltaTime);
                 break;
         }
     }
@@ -382,6 +393,80 @@ std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segme
     }
 
     return vec_Vertices;
+}
+
+void GameState::AccelerateCameraForward(float f_DeltaTime) {
+    if (!m_b_Camera3D) return;
+
+    glm::vec3 vec3_Forward = glm::normalize(m_vec3_CameraFront);
+    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, vec3_Forward);
+
+    if (f_CurrentSpeed < k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity += vec3_Forward * k_CameraAcceleration * f_DeltaTime;
+
+        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
+        if (f_NewSpeed > k_MaxCameraSpeed) {
+            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
+        }
+    }
+}
+
+void GameState::AccelerateCameraBackward(float f_DeltaTime) {
+    if (!m_b_Camera3D) return;
+
+    glm::vec3 vec3_Forward = glm::normalize(m_vec3_CameraFront);
+    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, -vec3_Forward);
+
+    if (f_CurrentSpeed < k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity += -vec3_Forward * k_CameraAcceleration * f_DeltaTime;
+
+        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
+        if (f_NewSpeed > k_MaxCameraSpeed) {
+            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
+        }
+    }
+}
+
+void GameState::AccelerateCameraLeft(float f_DeltaTime) {
+    if (!m_b_Camera3D) return;
+
+    glm::vec3 vec3_Left = glm::normalize(glm::cross(m_vec3_CameraUp, m_vec3_CameraFront));
+    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, vec3_Left);
+
+    if (f_CurrentSpeed < k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity += vec3_Left * k_CameraAcceleration * f_DeltaTime;
+
+        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
+        if (f_NewSpeed > k_MaxCameraSpeed) {
+            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
+        }
+    }
+}
+
+void GameState::AccelerateCameraRight(float f_DeltaTime) {
+    if (!m_b_Camera3D) return;
+
+    glm::vec3 vec3_Right = glm::normalize(glm::cross(m_vec3_CameraFront, m_vec3_CameraUp));
+    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, vec3_Right);
+
+    if (f_CurrentSpeed < k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity += vec3_Right * k_CameraAcceleration * f_DeltaTime;
+
+        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
+        if (f_NewSpeed > k_MaxCameraSpeed) {
+            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
+        }
+    }
+}
+
+void GameState::UpdateCameraPhysics(float f_DeltaTime) {
+    if (!m_b_Camera3D) return;
+
+    // Apply friction
+    m_vec3_CameraVelocity *= k_CameraFriction;
+
+    // Update position
+    m_vec3_CameraPosition += m_vec3_CameraVelocity * f_DeltaTime;
 }
 
 } // namespace States

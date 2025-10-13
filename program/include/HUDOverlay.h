@@ -64,13 +64,11 @@ namespace UI {
         const std::vector<Color>& pillColors);
     void SetRound(int round_1_to_24);
 
-    void RenderHUD();
     void RenderHUD(Core::Application* p_App);
-    void BindTextFromApp(Core::Application* p_App);
 
-    void DrawRoundedRectScreen(float x0, float y0, float x1, float y1, Color c, int radiusPx);
+    void DrawRoundedRectScreen(float x0, float y0, float x1, float y1, Color c, int radiusPx, Core::Application* p_App);
 
-    void LoadCameraIconPNG(const char* path);
+    void LoadCameraIconPNG(const char* path, Core::Application* p_App);
     void SetCameraToggleCallback(std::function<void()> cb);
     void HandleMouseClick(int x_px, int y_px);
 

@@ -9,6 +9,9 @@
 #include <filesystem>
 #include <vector>
 
+#define STB_IMAGE_IMPLEMENTATION_APP
+#include "../external/stb_image.h"
+
 #ifdef _WIN32
     #include <windows.h>
     #include <shlobj.h>
@@ -31,6 +34,12 @@ Application::Application(const std::string& title, int width, int height, bool t
     , m_ShaderProgram_Text(0)
     , m_VAO_Text(0)
     , m_VBO_Text(0)
+    , m_ShaderProgram_HUDRounded(0)
+    , m_ShaderProgram_HUDTexture(0)
+    , m_VAO_HUDRounded(0)
+    , m_VBO_HUDRounded(0)
+    , m_VAO_HUDTexture(0)
+    , m_VBO_HUDTexture(0)
 {
 }
 
@@ -107,6 +116,16 @@ bool Application::Initialize() {
     //FreeType text rendering
     if (!InitializeFreeType()) {
         std::cerr << "FreeType initialization failed" << std::endl;
+        SDL_GL_DeleteContext(m_gl_Context);
+        SDL_DestroyWindow(m_p_Window);
+        SDL_Quit();
+        return false;
+    }
+
+    // HUD resources
+    if (!InitializeHUDResources()) {
+        std::cerr << "HUD resources initialization failed" << std::endl;
+        ShutdownFreeType();
         SDL_GL_DeleteContext(m_gl_Context);
         SDL_DestroyWindow(m_p_Window);
         SDL_Quit();
@@ -353,12 +372,254 @@ void Application::ShutdownFreeType() {
     }
 }
 
+bool Application::InitializeHUDResources() {
+    // HUD Rounded Rectangle Shader
+    const char* VS_R = R"(#version 330 core
+        layout(location=0) in vec2 aPos;
+        out vec2 vPos;
+        void main(){ vPos=aPos; gl_Position=vec4(aPos,0.0,1.0); })";
+
+    const char* FS_R = R"(#version 330 core
+        in vec2 vPos;
+        uniform vec4 uRect;
+        uniform float uRadius;
+        uniform vec4 uColor;
+        out vec4 FragColor;
+        float sdRoundBox(in vec2 p, in vec2 b, in float r){
+            vec2 d = abs(p) - b + vec2(r);
+            return length(max(d,0.0)) - r;
+        }
+        void main(){
+            vec2 c  = 0.5*(uRect.xy + uRect.zw);
+            vec2 hs = 0.5*vec2(uRect.z - uRect.x, uRect.w - uRect.y);
+            vec2 lp = vPos - c;
+            float d = sdRoundBox(lp, hs, uRadius);
+            float aa = fwidth(d) * 1.5;
+            float alpha = 1.0 - smoothstep(0.0, aa, d);
+            vec4 col = vec4(uColor.rgb, uColor.a*alpha);
+            if (col.a <= 0.001) discard;
+            FragColor = col;
+        })";
+
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &VS_R, nullptr);
+    glCompileShader(vs);
+
+    GLint i_Success;
+    glGetShaderiv(vs, GL_COMPILE_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetShaderInfoLog(vs, 512, nullptr, infoLog);
+        std::cerr << "HUD rounded vertex shader compilation failed: " << infoLog << std::endl;
+        return false;
+    }
+
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &FS_R, nullptr);
+    glCompileShader(fs);
+
+    glGetShaderiv(fs, GL_COMPILE_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetShaderInfoLog(fs, 512, nullptr, infoLog);
+        std::cerr << "HUD rounded fragment shader compilation failed: " << infoLog << std::endl;
+        glDeleteShader(vs);
+        return false;
+    }
+
+    m_ShaderProgram_HUDRounded = glCreateProgram();
+    glAttachShader(m_ShaderProgram_HUDRounded, vs);
+    glAttachShader(m_ShaderProgram_HUDRounded, fs);
+    glLinkProgram(m_ShaderProgram_HUDRounded);
+
+    glGetProgramiv(m_ShaderProgram_HUDRounded, GL_LINK_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetProgramInfoLog(m_ShaderProgram_HUDRounded, 512, nullptr, infoLog);
+        std::cerr << "HUD rounded shader program linking failed: " << infoLog << std::endl;
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        return false;
+    }
+
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    // HUD Texture Shader
+    const char* VS_TEX = R"(#version 330 core
+        layout(location=0) in vec2 aPos;
+        layout(location=1) in vec2 aUV;
+        out vec2 vUV;
+        void main(){ vUV=aUV; gl_Position=vec4(aPos,0.0,1.0); })";
+
+    const char* FS_TEX = R"(#version 330 core
+        in vec2 vUV; uniform sampler2D uTex; uniform vec4 uColor;
+        out vec4 FragColor;
+        void main(){ vec4 t = texture(uTex, vUV); FragColor = vec4(uColor.rgb, uColor.a) * t; })";
+
+    vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &VS_TEX, nullptr);
+    glCompileShader(vs);
+
+    glGetShaderiv(vs, GL_COMPILE_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetShaderInfoLog(vs, 512, nullptr, infoLog);
+        std::cerr << "HUD texture vertex shader compilation failed: " << infoLog << std::endl;
+        return false;
+    }
+
+    fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &FS_TEX, nullptr);
+    glCompileShader(fs);
+
+    glGetShaderiv(fs, GL_COMPILE_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetShaderInfoLog(fs, 512, nullptr, infoLog);
+        std::cerr << "HUD texture fragment shader compilation failed: " << infoLog << std::endl;
+        glDeleteShader(vs);
+        return false;
+    }
+
+    m_ShaderProgram_HUDTexture = glCreateProgram();
+    glAttachShader(m_ShaderProgram_HUDTexture, vs);
+    glAttachShader(m_ShaderProgram_HUDTexture, fs);
+    glLinkProgram(m_ShaderProgram_HUDTexture);
+
+    glGetProgramiv(m_ShaderProgram_HUDTexture, GL_LINK_STATUS, &i_Success);
+    if (!i_Success) {
+        char infoLog[512];
+        glGetProgramInfoLog(m_ShaderProgram_HUDTexture, 512, nullptr, infoLog);
+        std::cerr << "HUD texture shader program linking failed: " << infoLog << std::endl;
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        return false;
+    }
+
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    // VAO/VBO for rounded-rect
+    glGenVertexArrays(1, &m_VAO_HUDRounded);
+    glGenBuffers(1, &m_VBO_HUDRounded);
+    glBindVertexArray(m_VAO_HUDRounded);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_HUDRounded);
+    glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // VAO/VBO for texture
+    glGenVertexArrays(1, &m_VAO_HUDTexture);
+    glGenBuffers(1, &m_VBO_HUDTexture);
+    glBindVertexArray(m_VAO_HUDTexture);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_HUDTexture);
+    glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    return true;
+}
+
+void Application::ShutdownHUDResources() {
+    if (m_VBO_HUDRounded) {
+        glDeleteBuffers(1, &m_VBO_HUDRounded);
+        m_VBO_HUDRounded = 0;
+    }
+    if (m_VAO_HUDRounded) {
+        glDeleteVertexArrays(1, &m_VAO_HUDRounded);
+        m_VAO_HUDRounded = 0;
+    }
+    if (m_VBO_HUDTexture) {
+        glDeleteBuffers(1, &m_VBO_HUDTexture);
+        m_VBO_HUDTexture = 0;
+    }
+    if (m_VAO_HUDTexture) {
+        glDeleteVertexArrays(1, &m_VAO_HUDTexture);
+        m_VAO_HUDTexture = 0;
+    }
+    if (m_ShaderProgram_HUDRounded) {
+        glDeleteProgram(m_ShaderProgram_HUDRounded);
+        m_ShaderProgram_HUDRounded = 0;
+    }
+    if (m_ShaderProgram_HUDTexture) {
+        glDeleteProgram(m_ShaderProgram_HUDTexture);
+        m_ShaderProgram_HUDTexture = 0;
+    }
+}
+
+GLuint Application::LoadTexture(const std::string& s_Path) {
+    // Check cache first
+    auto it = m_map_TextureCache.find(s_Path);
+    if (it != m_map_TextureCache.end()) {
+        return it->second;
+    }
+
+    // Load using stbi_load
+    int i_Width, i_Height, i_Channels;
+    unsigned char* p_Data = stbi_load(s_Path.c_str(), &i_Width, &i_Height, &i_Channels, 0);
+    if (!p_Data) {
+        std::cerr << "[Application] Failed to load texture: " << s_Path << std::endl;
+        return 0;
+    }
+
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+
+    GLenum format = (i_Channels == 4) ? GL_RGBA : ((i_Channels == 3) ? GL_RGB : GL_RED);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, i_Width, i_Height, 0, format, GL_UNSIGNED_BYTE, p_Data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    stbi_image_free(p_Data);
+
+    m_map_TextureCache[s_Path] = textureID;
+    return textureID;
+}
+
+void Application::UnloadTexture(GLuint textureID) {
+    if (textureID == 0) return;
+
+    // Find and remove from cache
+    for (auto it = m_map_TextureCache.begin(); it != m_map_TextureCache.end(); ++it) {
+        if (it->second == textureID) {
+            m_map_TextureCache.erase(it);
+            break;
+        }
+    }
+
+    glDeleteTextures(1, &textureID);
+}
+
+std::string Application::GetAssetPath(const std::string& s_RelativePath) const {
+    return "assets/" + s_RelativePath;
+}
+
 void Application::Shutdown() {
     if (!m_b_Initialized) return;
 
     m_p_StateManager.reset();
 
     if (!m_b_TrainingMode) {
+        // Clean up texture cache
+        for (auto& pair : m_map_TextureCache) {
+            glDeleteTextures(1, &pair.second);
+        }
+        m_map_TextureCache.clear();
+
+        ShutdownHUDResources();
         ShutdownFreeType();
 
         if (m_gl_Context) {
