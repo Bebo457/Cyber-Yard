@@ -30,6 +30,7 @@ GameState::GameState()
     , m_vec3_CameraVelocity(0.0f, 0.0f, 0.0f)
     , m_vec3_CameraFront(0.0f, -0.3f, -1.0f)
     , m_vec3_CameraUp(0.0f, 1.0f, 0.0f)
+    , m_f_CameraAngle(k_MaxCameraAngle)
 {
 }
 
@@ -250,6 +251,29 @@ void GameState::OnResume() {
 
 void GameState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;
+
+    if (m_b_Camera3D) {
+        m_vec3_CameraFront.x = 0.0f;
+        m_vec3_CameraFront.y = sin(m_f_CameraAngle);
+        m_vec3_CameraFront.z = -cos(m_f_CameraAngle);
+        m_vec3_CameraFront = glm::normalize(m_vec3_CameraFront);
+
+        const Uint8* p_KeyState = SDL_GetKeyboardState(nullptr);
+
+        if (p_KeyState[SDL_SCANCODE_W]) {
+            AccelerateCameraForward(f_DeltaTime);
+        }
+        if (p_KeyState[SDL_SCANCODE_S]) {
+            AccelerateCameraBackward(f_DeltaTime);
+        }
+        if (p_KeyState[SDL_SCANCODE_A]) {
+            AccelerateCameraLeft(f_DeltaTime);
+        }
+        if (p_KeyState[SDL_SCANCODE_D]) {
+            AccelerateCameraRight(f_DeltaTime);
+        }
+    }
+
     UpdateCameraPhysics(f_DeltaTime);
 }
 
@@ -275,9 +299,7 @@ void GameState::Render(Core::Application* p_App) {
     if (m_b_Camera3D) {
         glm::vec3 vec3_CameraTarget = m_vec3_CameraPosition + m_vec3_CameraFront;
         view = glm::lookAt(m_vec3_CameraPosition, vec3_CameraTarget, m_vec3_CameraUp);
-        projection = glm::perspective(glm::radians(45.0f),
-            (float)m_i_Width / (float)m_i_Height,
-            0.1f, 100.0f);
+        projection = glm::perspective(glm::radians(45.0f), (float)m_i_Width / (float)m_i_Height, 0.1f, 100.0f);
     }
     else {
         // 2D orthographic (top-down)
@@ -342,27 +364,9 @@ void GameState::Render(Core::Application* p_App) {
 
 void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_KEYDOWN) {
-        float f_DeltaTime = p_App->GetDeltaTime();
-
         switch (event.key.keysym.sym) {
             case SDLK_ESCAPE:
-                // Can set exit flag or can not I dont know do what you want, but like can we do what we want?
-                break;
-
-            case SDLK_w:
-                AccelerateCameraForward(f_DeltaTime);
-                break;
-
-            case SDLK_s:
-                AccelerateCameraBackward(f_DeltaTime);
-                break;
-
-            case SDLK_a:
-                AccelerateCameraLeft(f_DeltaTime);
-                break;
-
-            case SDLK_d:
-                AccelerateCameraRight(f_DeltaTime);
+                // Can set exit flag
                 break;
         }
     }
@@ -372,6 +376,18 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
         int i_Y = event.button.y;
 
         UI::HandleMouseClick(i_X, i_Y);
+    }
+
+    if (event.type == SDL_MOUSEWHEEL && m_b_Camera3D) {
+        float f_ScrollDelta = event.wheel.y * k_CameraYawSensitivity;
+        m_f_CameraAngle -= f_ScrollDelta;
+
+        if (m_f_CameraAngle < k_MinCameraAngle) {
+            m_f_CameraAngle = k_MinCameraAngle;
+        }
+        if (m_f_CameraAngle > k_MaxCameraAngle) {
+            m_f_CameraAngle = k_MaxCameraAngle;
+        }
     }
 }
 
@@ -398,75 +414,67 @@ std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segme
 void GameState::AccelerateCameraForward(float f_DeltaTime) {
     if (!m_b_Camera3D) return;
 
-    glm::vec3 vec3_Forward = glm::normalize(m_vec3_CameraFront);
-    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, vec3_Forward);
+    // parallel to ground
+    glm::vec3 vec3_Forward = glm::normalize(glm::vec3(m_vec3_CameraFront.x, 0.0f, m_vec3_CameraFront.z));
+    m_vec3_CameraVelocity += vec3_Forward * k_CameraAcceleration * f_DeltaTime;
 
-    if (f_CurrentSpeed < k_MaxCameraSpeed) {
-        m_vec3_CameraVelocity += vec3_Forward * k_CameraAcceleration * f_DeltaTime;
-
-        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
-        if (f_NewSpeed > k_MaxCameraSpeed) {
-            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
-        }
+    float f_Speed = glm::length(m_vec3_CameraVelocity);
+    if (f_Speed > k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
     }
 }
 
 void GameState::AccelerateCameraBackward(float f_DeltaTime) {
     if (!m_b_Camera3D) return;
 
-    glm::vec3 vec3_Forward = glm::normalize(m_vec3_CameraFront);
-    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, -vec3_Forward);
+    glm::vec3 vec3_Forward = glm::normalize(glm::vec3(m_vec3_CameraFront.x, 0.0f, m_vec3_CameraFront.z));
+    m_vec3_CameraVelocity += -vec3_Forward * k_CameraAcceleration * f_DeltaTime;
 
-    if (f_CurrentSpeed < k_MaxCameraSpeed) {
-        m_vec3_CameraVelocity += -vec3_Forward * k_CameraAcceleration * f_DeltaTime;
-
-        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
-        if (f_NewSpeed > k_MaxCameraSpeed) {
-            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
-        }
+    float f_Speed = glm::length(m_vec3_CameraVelocity);
+    if (f_Speed > k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
     }
 }
 
 void GameState::AccelerateCameraLeft(float f_DeltaTime) {
     if (!m_b_Camera3D) return;
 
-    glm::vec3 vec3_Left = glm::normalize(glm::cross(m_vec3_CameraUp, m_vec3_CameraFront));
-    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, vec3_Left);
+    glm::vec3 vec3_Forward = glm::normalize(glm::vec3(m_vec3_CameraFront.x, 0.0f, m_vec3_CameraFront.z));
+    glm::vec3 vec3_Left = glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), vec3_Forward));
+    m_vec3_CameraVelocity += vec3_Left * k_CameraAcceleration * f_DeltaTime;
 
-    if (f_CurrentSpeed < k_MaxCameraSpeed) {
-        m_vec3_CameraVelocity += vec3_Left * k_CameraAcceleration * f_DeltaTime;
-
-        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
-        if (f_NewSpeed > k_MaxCameraSpeed) {
-            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
-        }
+    float f_Speed = glm::length(m_vec3_CameraVelocity);
+    if (f_Speed > k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
     }
 }
 
 void GameState::AccelerateCameraRight(float f_DeltaTime) {
     if (!m_b_Camera3D) return;
 
-    glm::vec3 vec3_Right = glm::normalize(glm::cross(m_vec3_CameraFront, m_vec3_CameraUp));
-    float f_CurrentSpeed = glm::dot(m_vec3_CameraVelocity, vec3_Right);
+    glm::vec3 vec3_Forward = glm::normalize(glm::vec3(m_vec3_CameraFront.x, 0.0f, m_vec3_CameraFront.z));
+    glm::vec3 vec3_Right = glm::normalize(glm::cross(vec3_Forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    m_vec3_CameraVelocity += vec3_Right * k_CameraAcceleration * f_DeltaTime;
 
-    if (f_CurrentSpeed < k_MaxCameraSpeed) {
-        m_vec3_CameraVelocity += vec3_Right * k_CameraAcceleration * f_DeltaTime;
-
-        float f_NewSpeed = glm::length(m_vec3_CameraVelocity);
-        if (f_NewSpeed > k_MaxCameraSpeed) {
-            m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
-        }
+    float f_Speed = glm::length(m_vec3_CameraVelocity);
+    if (f_Speed > k_MaxCameraSpeed) {
+        m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
     }
 }
 
 void GameState::UpdateCameraPhysics(float f_DeltaTime) {
     if (!m_b_Camera3D) return;
 
-    // Apply friction
+    //friction
     m_vec3_CameraVelocity *= k_CameraFriction;
+    if (glm::length(m_vec3_CameraVelocity) < 0.01f) {
+        m_vec3_CameraVelocity = glm::vec3(0.0f);
+    }
 
     // Update position
+    float f_OriginalY = m_vec3_CameraPosition.y;
     m_vec3_CameraPosition += m_vec3_CameraVelocity * f_DeltaTime;
+    m_vec3_CameraPosition.y = f_OriginalY;
 }
 
 } // namespace States

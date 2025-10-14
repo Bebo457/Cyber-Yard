@@ -57,10 +57,14 @@ private:
     glm::vec3 m_vec3_CameraVelocity;
     glm::vec3 m_vec3_CameraFront;
     glm::vec3 m_vec3_CameraUp;
-
-    static constexpr float k_CameraAcceleration = 1000.0f;
-    static constexpr float k_MaxCameraSpeed = 10000.0f;
-    static constexpr float k_CameraFriction = 0.28f;
+    float m_f_CameraAngle;
+    
+    static constexpr float k_CameraYawSensitivity = 0.01f;
+    static constexpr float k_CameraAcceleration = 12.0f;
+    static constexpr float k_MaxCameraSpeed = 150.0f;
+    static constexpr float k_CameraFriction = 0.97f;
+    static constexpr float k_MinCameraAngle = -1.5708f;  // -90 degrees
+    static constexpr float k_MaxCameraAngle = -0.2915f;
 
     std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
     void LoadTextures(Core::Application* p_App);
