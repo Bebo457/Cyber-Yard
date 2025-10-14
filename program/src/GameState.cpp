@@ -31,6 +31,8 @@ GameState::GameState()
     , m_vec3_CameraFront(0.0f, -0.3f, -1.0f)
     , m_vec3_CameraUp(0.0f, 1.0f, 0.0f)
     , m_f_CameraAngle(k_MaxCameraAngle)
+    , m_f_CameraAngleVelocity(0.0f)
+    , m_vec3_Saved3DCameraPosition(0.0f, 1.5f, 4.0f)
 {
 }
 
@@ -253,10 +255,37 @@ void GameState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;
 
     if (m_b_Camera3D) {
+        m_f_CameraAngleVelocity *= k_CameraScrollFriction;
+        if (fabs(m_f_CameraAngleVelocity) < 0.0001f) {
+            m_f_CameraAngleVelocity = 0.0f;
+        }
+
+        m_f_CameraAngle += m_f_CameraAngleVelocity;
+
+        if (m_f_CameraAngle < k_MinCameraAngle) {
+            m_f_CameraAngle = k_MinCameraAngle;
+            m_f_CameraAngleVelocity = 0.0f;
+        }
+        if (m_f_CameraAngle > k_MaxCameraAngle) {
+            m_f_CameraAngle = k_MaxCameraAngle;
+            m_f_CameraAngleVelocity = 0.0f;
+        }
+
         m_vec3_CameraFront.x = 0.0f;
         m_vec3_CameraFront.y = sin(m_f_CameraAngle);
         m_vec3_CameraFront.z = -cos(m_f_CameraAngle);
         m_vec3_CameraFront = glm::normalize(m_vec3_CameraFront);
+
+        if (fabs(m_f_CameraAngleVelocity) > 0.0001f) {
+            glm::vec3 vec3_Forward = glm::normalize(glm::vec3(m_vec3_CameraFront.x, 0.0f, m_vec3_CameraFront.z));
+            float f_ForwardAcceleration = -m_f_CameraAngleVelocity * k_CameraScrollToForwardRatio;
+            m_vec3_CameraVelocity += vec3_Forward * f_ForwardAcceleration;
+
+            float f_Speed = glm::length(m_vec3_CameraVelocity);
+            if (f_Speed > k_MaxCameraSpeed) {
+                m_vec3_CameraVelocity = glm::normalize(m_vec3_CameraVelocity) * k_MaxCameraSpeed;
+            }
+        }
 
         const Uint8* p_KeyState = SDL_GetKeyboardState(nullptr);
 
@@ -297,13 +326,13 @@ void GameState::Render(Core::Application* p_App) {
     glm::mat4 view, projection;
 
     if (m_b_Camera3D) {
+        m_vec3_CameraPosition = m_vec3_Saved3DCameraPosition;
         glm::vec3 vec3_CameraTarget = m_vec3_CameraPosition + m_vec3_CameraFront;
         view = glm::lookAt(m_vec3_CameraPosition, vec3_CameraTarget, m_vec3_CameraUp);
         projection = glm::perspective(glm::radians(45.0f), (float)m_i_Width / (float)m_i_Height, 0.1f, 100.0f);
     }
     else {
-        // 2D orthographic (top-down)
-        m_vec3_CameraPosition = glm::vec3(0.0f, 2.0f, 5.0f);
+        // 2D ortographic (top-down)
         m_vec3_CameraVelocity = glm::vec3(0.0f, 0.0f, 0.0f);
 
         view = glm::lookAt(
@@ -379,15 +408,8 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     }
 
     if (event.type == SDL_MOUSEWHEEL && m_b_Camera3D) {
-        float f_ScrollDelta = event.wheel.y * k_CameraYawSensitivity;
-        m_f_CameraAngle -= f_ScrollDelta;
-
-        if (m_f_CameraAngle < k_MinCameraAngle) {
-            m_f_CameraAngle = k_MinCameraAngle;
-        }
-        if (m_f_CameraAngle > k_MaxCameraAngle) {
-            m_f_CameraAngle = k_MaxCameraAngle;
-        }
+        float f_ScrollInput = event.wheel.y * k_CameraScrollAcceleration;
+        m_f_CameraAngleVelocity -= f_ScrollInput;
     }
 }
 
@@ -471,10 +493,10 @@ void GameState::UpdateCameraPhysics(float f_DeltaTime) {
         m_vec3_CameraVelocity = glm::vec3(0.0f);
     }
 
-    // Update position
-    float f_OriginalY = m_vec3_CameraPosition.y;
-    m_vec3_CameraPosition += m_vec3_CameraVelocity * f_DeltaTime;
-    m_vec3_CameraPosition.y = f_OriginalY;
+    // update position
+    float f_OriginalY = m_vec3_Saved3DCameraPosition.y;
+    m_vec3_Saved3DCameraPosition += m_vec3_CameraVelocity * f_DeltaTime;
+    m_vec3_Saved3DCameraPosition.y = f_OriginalY;
 }
 
 } // namespace States
