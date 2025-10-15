@@ -107,7 +107,7 @@ if(WIN32)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/assets
-            ${CMAKE_BINARY_DIR}/assets
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
     )
 elseif(UNIX AND NOT APPLE)
     # Linux-specific settings
@@ -116,9 +116,9 @@ elseif(UNIX AND NOT APPLE)
         dl
     )
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets"
     )
 
 elseif(APPLE)

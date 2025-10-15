@@ -66,10 +66,8 @@ bool Application::Initialize() {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    // Request 4x MSAA for smoother edges
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
-    // Request sRGB-capable framebuffer for correct gamma on colors
     SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
 
     m_p_Window = SDL_CreateWindow(
@@ -109,7 +107,6 @@ bool Application::Initialize() {
     glViewport(0, 0, m_i_Width, m_i_Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glEnable(GL_DEPTH_TEST);
-    // Enable multisampling and sRGB framebuffer if supported
     glEnable(GL_MULTISAMPLE);
     glEnable(GL_FRAMEBUFFER_SRGB);
 
@@ -328,7 +325,6 @@ bool Application::InitializeFreeType() {
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    // Use trilinear filtering with mipmaps for smoother scaling
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -604,7 +600,11 @@ void Application::UnloadTexture(GLuint textureID) {
 }
 
 std::string Application::GetAssetPath(const std::string& s_RelativePath) const {
-    return "assets/" + s_RelativePath;
+    #ifdef ASSETS_DIR
+        return std::string(ASSETS_DIR) + "/" + s_RelativePath;
+    #else
+        return "assets/" + s_RelativePath;
+    #endif
 }
 
 void Application::Shutdown() {
