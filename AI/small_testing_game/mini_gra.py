@@ -1,23 +1,20 @@
 import pygame
 import sys
 import numpy as np
+import random
 
 pygame.init()
 WIDTH, HEIGHT = 1200, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-
 pygame.display.set_caption("Scotland Yard")
 
-FONT = pygame.font.SysFont("arial", 36)
+FONT = pygame.font.SysFont("arial", 24)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GRAY = (200, 200, 200)
 BLUE = (50, 100, 200)
-
-#wartości punktów startowych pobrane od chata
-PUNKTY_STARTOWE = [13, 14, 15, 18, 19, 21, 23, 26, 29, 34,
-                   35, 42, 44, 45, 46, 51, 53, 61, 62, 67,
-                   68, 69, 74, 75, 78, 79, 82, 86, 94]
+YELLOW = (255, 255, 0)
+RED = (200, 0, 0)
 
 KOLORY_GRACZY = {
     'mr_x': (0, 0, 0),
@@ -31,29 +28,18 @@ kolory_polaczen = {
     'water': ((0, 0, 255), 4)
 }
 
-def kolor_stacji(typy):
-    if len(typy) == 1 and typy[0] == 'taxi':
-        return (128, 128, 128)
-    elif 'water' in typy:
-        return (0, 0, 255)
-    elif 'underground' in typy:
-        return (255, 0, 0)
-    elif 'bus' in typy:
-        return (0, 200, 0)
-    else:
-        return (128, 0, 128)
-
+# ======= funkcje pomocnicze =======
 def znajdz_zakres(punkty):
     xs = [d['x'] for d in punkty.values()]
     ys = [d['y'] for d in punkty.values()]
     return min(xs), max(xs), min(ys), max(ys)
 
 def skaluj(x, y, min_x, max_x, min_y, max_y, width, height, margin=50):
-    # przeskaluj współrzędne do rozmiaru okna z marginesem
     scale_x = (width - 2 * margin) / (max_x - min_x)
     scale_y = (height - 2 * margin) / (max_y - min_y)
-    sx = margin + (x - min_x) * scale_x
-    sy = margin + (y - min_y) * scale_y
+    scale = min(scale_x, scale_y)
+    sx = margin + (x - min_x) * scale
+    sy = margin + (y - min_y) * scale
     return int(sx), int(sy)
 
 def losuj_pola_startowe(karty, liczba_policjantow):
@@ -62,153 +48,6 @@ def losuj_pola_startowe(karty, liczba_policjantow):
     mr_x = karty.pop()
     police = karty[:liczba_policjantow]
     return mr_x, police
-
-class Game:
-    def __init__(self, mr_x_player, police_players):
-        self.mr_x = mr_x_player
-        self.police = police_players
-        self.turn = 0
-        self.running = True
-        self.punkty = wczytaj_punkty('punkty.txt')
-        self.polaczenia = wczytaj_polaczenia('polaczenia.txt')
-        self.min_x, self.max_x, self.min_y, self.max_y = znajdz_zakres(self.punkty)
-        mr_x_start, police_starts = losuj_pola_startowe(list(self.punkty.keys()), len(police_players))
-        self.pozycje = {
-            'mr_x': mr_x_start,
-            'police': police_starts
-        }
-
-    def update(self):
-        # Tu będzie logika aktualizacji stanu gry (np. ruchy graczy)
-        pass
-
-    def draw_map(self, screen):
-        # Rysuj połączenia
-        for typ in ['water', 'underground', 'bus', 'taxi']:
-            kolor, grubosc = kolory_polaczen[typ]
-            for a, b, t in self.polaczenia:
-                if t == typ:
-                    x1, y1 = skaluj(self.punkty[a]['x'], self.punkty[a]['y'],
-                                    self.min_x, self.max_x, self.min_y, self.max_y,
-                                    WIDTH, HEIGHT)
-                    x2, y2 = skaluj(self.punkty[b]['x'], self.punkty[b]['y'],
-                                    self.min_x, self.max_x, self.min_y, self.max_y,
-                                    WIDTH, HEIGHT)
-                    pygame.draw.line(screen, kolor, (x1, y1), (x2, y2), grubosc)
-
-        # Rysuj stacje
-        for nr, dane in self.punkty.items():
-            x, y = skaluj(dane['x'], dane['y'],
-                          self.min_x, self.max_x, self.min_y, self.max_y,
-                          WIDTH, HEIGHT)
-
-            typy = dane['typy']
-            scale_factor = min(WIDTH, HEIGHT) / 1200
-
-            promienie = {
-                'underground': int(30 * scale_factor),
-                'bus': int(20 * scale_factor),
-                'taxi': int(10 * scale_factor),
-                'water': int(10 * scale_factor)
-            }
-
-            for typ in ['underground', 'bus', 'taxi', 'water']:
-                if typ in typy:
-                    kolor, _ = kolory_polaczen[typ]
-                    r = promienie[typ]
-                    pygame.draw.circle(screen, kolor, (x, y), r)
-
-            max_r = max([promienie[t] for t in typy if t in promienie], default=10)
-            pygame.draw.circle(screen, (0, 0, 0), (x, y), max_r, 2)
-
-        # Rysuj Mr. X i policje
-        x, y = skaluj(self.punkty[self.pozycje['mr_x']]['x'], self.punkty[self.pozycje['mr_x']]['y'],
-                      self.min_x, self.max_x, self.min_y, self.max_y, WIDTH, HEIGHT)
-        x_surf = FONT.render("X", True, KOLORY_GRACZY['mr_x'])
-        x_rect = x_surf.get_rect(center=(x, y))
-        screen.blit(x_surf, x_rect)
-
-        for i, pos in enumerate(self.pozycje['police']):
-            kolor = KOLORY_GRACZY['police']
-            x, y = skaluj(self.punkty[pos]['x'], self.punkty[pos]['y'],
-                          self.min_x, self.max_x, self.min_y, self.max_y, WIDTH, HEIGHT)
-            x_surf = FONT.render("X", True, kolor)
-            x_rect = x_surf.get_rect(center=(x, y))
-            screen.blit(x_surf, x_rect)
-
-    def draw(self, screen):
-        screen.fill((255, 255, 255))
-        self.draw_map(screen)
-        pygame.display.flip()
-
-    def run(self):
-        while self.running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-
-            self.update()
-            self.draw(screen)
-
-class HumanPlayer:
-    def __init__(self, role):
-        self.role = role
-
-    def get_move(self, game_state):
-        # odczyt ruchu z interfejsu (np. kliknięcie)
-        pass
-
-class MrXAI:
-    def __init__(self, role):
-        self.role = role
-
-    def get_move(self, game_state):
-        # logika AI Mr. X
-        pass
-
-class PoliceAI:
-    def __init__(self, role):
-        self.role = role
-
-    def get_move(self, game_state):
-        # logika AI policji
-        pass
-
-class Button:
-    def __init__(self, text, x, y, width, height, callback):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.callback = callback
-
-    def draw(self, surface):
-        pygame.draw.rect(surface, GRAY, self.rect)
-        pygame.draw.rect(surface, BLUE, self.rect, 3)
-        text_surf = FONT.render(self.text, True, BLUE)
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        surface.blit(text_surf, text_rect)
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(event.pos):
-            self.callback()
-
-# Funkcje trybów
-def start_as_police():
-    mr_x = MrXAI('mr_x')
-    police = [HumanPlayer('police') for _ in range(5)]
-    game = Game(mr_x, police)
-    game.run()
-
-def start_as_mr_x():
-    mr_x = HumanPlayer('mr_x')
-    police = [PoliceAI('police') for _ in range(5)]
-    game = Game(mr_x, police)
-    game.run()
-
-def start_ai_vs_ai():
-    mr_x = MrXAI('mr_x')
-    police = [PoliceAI('police') for _ in range(5)]
-    game = Game(mr_x, police)
-    game.run()
 
 def wczytaj_punkty(filename):
     punkty = {}
@@ -233,29 +72,325 @@ def wczytaj_polaczenia(filename):
             polaczenia.append((a, b, typ))
     return polaczenia
 
+# ======= klasy =======
+class Pawn:
+    def __init__(self, name, position, color, is_mr_x=False):
+        self.name = name
+        self.position = position
+        self.color = color
+        self.is_mr_x = is_mr_x
+        self.moved_this_turn = False
+        
+        if is_mr_x:
+            self.tickets = {'taxi': float('inf'), 'bus': float('inf'), 'underground': float('inf'), 'water': 5}
+        else:
+            self.tickets = {'taxi': 11, 'bus': 8, 'underground': 4, 'water': 0}
+
+    def move_to(self, new_position, transport=None):
+        self.position = new_position
+        self.moved_this_turn = True
+        if transport:
+            if self.tickets[transport] != float('inf'):
+                self.tickets[transport] -= 1
+
+class HumanPlayer:
+    def __init__(self, role):
+        self.role = role
+    def get_move(self, game_state):
+        return None
+
+class MrXAI:
+    def __init__(self, role):
+        self.role = role
+    def get_move(self, game_state):
+        options = game_state.get_available_moves(game_state.mr_x)
+        return random.choice(options) if options else None  
+
+class PoliceAI:
+    def __init__(self, role):
+        self.role = role
+    def get_move(self, game_state, pawn):
+        options = game_state.get_available_moves(pawn)
+        return random.choice(options) if options else None  
+
+# ======= Game =======
+class Game:
+    def __init__(self, mr_x_player, police_players):
+        self.mr_x_player = mr_x_player
+        self.police_players = police_players
+        self.running = True
+
+        self.punkty = wczytaj_punkty('punkty.txt')
+        self.polaczenia = wczytaj_polaczenia('polaczenia.txt')
+        self.min_x, self.max_x, self.min_y, self.max_y = znajdz_zakres(self.punkty)
+
+        mr_x_start, police_starts = losuj_pola_startowe(list(self.punkty.keys()), len(police_players))
+        self.mr_x = Pawn("Mr. X", mr_x_start, KOLORY_GRACZY['mr_x'], True)
+        self.police = [Pawn(f"Police {i + 1}", pos, KOLORY_GRACZY['police']) for i, pos in enumerate(police_starts)]
+
+        self.turn_phase = "mr_x"
+        self.selected_pawn = None
+        self.highlighted_nodes = set()
+        self.turn_number = 1
+        self.max_turns = 22
+        self.mr_x_moves = []
+
+        self.ai_mode = all(isinstance(p, (MrXAI, PoliceAI)) for p in [mr_x_player, *police_players])
+        self.mixed_mode = not self.ai_mode and any(isinstance(p, (MrXAI, PoliceAI)) for p in [mr_x_player, *police_players])
+
+        self.reset_pawn_moves()
+        self.update_highlighted_nodes()
+        self.selected_for_tickets = None
+
+    # --- logika biletów ---
+    def get_available_moves(self, pawn):
+        moves = []
+        for a, b, typ in self.polaczenia:
+            if a == pawn.position:
+                dest = b
+            elif b == pawn.position:
+                dest = a
+            else:
+                continue
+            if pawn.tickets[typ] > 0:
+                moves.append((dest, typ))
+        return moves
+
+    def reset_pawn_moves(self):
+        self.mr_x.moved_this_turn = False
+        for p in self.police:
+            p.moved_this_turn = False
+
+    def are_connected(self, a, b):
+        return any((x == a and y == b) or (x == b and y == a) for x, y, t in self.polaczenia)
+
+    def get_neighbors(self, node):
+        return [b for a, b, t in self.polaczenia if a == node] + [a for a, b, t in self.polaczenia if b == node]
+
+    def update_highlighted_nodes(self):
+        self.highlighted_nodes.clear()
+        if self.turn_phase == "mr_x" and isinstance(self.mr_x_player, HumanPlayer):
+            if not self.mr_x.moved_this_turn:
+                self.highlighted_nodes = set(dest for dest, typ in self.get_available_moves(self.mr_x))
+        elif self.turn_phase == "police":
+            for p, pl in zip(self.police, self.police_players):
+                if isinstance(pl, HumanPlayer) and not p.moved_this_turn:
+                    self.highlighted_nodes.update(dest for dest, typ in self.get_available_moves(p))
+
+    def move_mr_x(self, move):
+        dest, typ = move
+        self.mr_x_moves.append(typ)
+        self.mr_x.move_to(dest, typ)
+
+    def handle_click(self, pos):
+        for nr, dane in self.punkty.items():
+            x, y = skaluj(dane['x'], dane['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+            if (pos[0] - x) ** 2 + (pos[1] - y) ** 2 < 15 ** 2:
+                self.handle_node_click(nr)
+                self.check_pawn_selection_for_tickets(nr)
+                break
+
+    def check_pawn_selection_for_tickets(self, node):
+        for pawn in [self.mr_x] + self.police:
+            if pawn.position == node:
+                self.selected_for_tickets = pawn
+                return
+        self.selected_for_tickets = None
+
+    def handle_node_click(self, node):
+        if self.selected_pawn is None:
+            if self.turn_phase == "mr_x" and isinstance(self.mr_x_player, HumanPlayer):
+                if node == self.mr_x.position and not self.mr_x.moved_this_turn:
+                    self.selected_pawn = self.mr_x
+                    self.highlighted_nodes = set(dest for dest, typ in self.get_available_moves(self.mr_x))
+            elif self.turn_phase == "police":
+                for p, player in zip(self.police, self.police_players):
+                    if isinstance(player, HumanPlayer) and node == p.position and not p.moved_this_turn:
+                        self.selected_pawn = p
+                        self.highlighted_nodes = set(dest for dest, typ in self.get_available_moves(p))
+                        break
+        else:
+            available = self.get_available_moves(self.selected_pawn)
+            for dest, typ in available:
+                if dest == node:
+                    self.selected_pawn.move_to(dest, typ)
+                    if self.selected_pawn.is_mr_x:
+                        self.mr_x_moves.append(typ)
+                    self.selected_pawn = None
+                    self.highlighted_nodes.clear()
+                    self.check_game_end()
+                    if self.turn_phase == "mr_x":
+                        self.turn_phase = "police"
+                    else:
+                        all_humans_moved = all(
+                            p.moved_this_turn for p, player in zip(self.police, self.police_players)
+                            if isinstance(player, HumanPlayer)
+                        )
+                        if all_humans_moved:
+                            self.turn_phase = "mr_x"
+                            self.reset_pawn_moves()
+                            self.turn_number += 1
+                            if self.turn_number > self.max_turns:
+                                print("KONIEC GRY – Mr. X nie został złapany!")
+                                self.running = False
+                    self.update_highlighted_nodes()
+                    break
+            else:
+                self.selected_pawn = None
+                self.highlighted_nodes.clear()
+                self.update_highlighted_nodes()
+
+    def execute_ai_turn(self):
+        if self.turn_phase == "mr_x" and isinstance(self.mr_x_player, MrXAI):
+            move = self.mr_x_player.get_move(self)
+            if move:
+                self.move_mr_x(move)
+            self.check_game_end()
+            self.turn_phase = "police"
+            self.update_highlighted_nodes()
+            return
+
+        if self.turn_phase == "police":
+            for pawn, ai in zip(self.police, self.police_players):
+                if isinstance(ai, PoliceAI) and not pawn.moved_this_turn:
+                    move = ai.get_move(self, pawn)
+                    if move:
+                        pawn.move_to(move[0], move[1])
+            self.check_game_end()
+            self.turn_phase = "mr_x"
+            self.reset_pawn_moves()
+            self.turn_number += 1
+            if self.turn_number > self.max_turns:
+                print("KONIEC GRY – Mr. X nie został złapany!")
+                self.running = False
+            self.update_highlighted_nodes()
+
+    def check_game_end(self):
+        for p in self.police:
+            if p.position == self.mr_x.position:
+                print("KONIEC GRY – Mr. X złapany!")
+                self.running = False
+
+    # --- rysowanie ---
+    def draw_map(self, screen):
+        for typ in ['water', 'underground', 'bus', 'taxi']:
+            kolor, grubosc = kolory_polaczen[typ]
+            for a, b, t in self.polaczenia:
+                if t == typ:
+                    x1, y1 = skaluj(self.punkty[a]['x'], self.punkty[a]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+                    x2, y2 = skaluj(self.punkty[b]['x'], self.punkty[b]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+                    pygame.draw.line(screen, kolor, (x1, y1), (x2, y2), grubosc)
+        for nr, dane in self.punkty.items():
+            x, y = skaluj(dane['x'], dane['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+            pygame.draw.circle(screen, YELLOW if nr in self.highlighted_nodes else BLACK, (x, y), 8 if nr in self.highlighted_nodes else 5)
+        x, y = skaluj(self.punkty[self.mr_x.position]['x'], self.punkty[self.mr_x.position]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+        pygame.draw.circle(screen, self.mr_x.color, (x, y), 15)
+        if self.selected_pawn == self.mr_x:
+            pygame.draw.circle(screen, YELLOW, (x, y), 20, 3)
+        for p, player_obj in zip(self.police, self.police_players):
+            x, y = skaluj(self.punkty[p.position]['x'], self.punkty[p.position]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+            pygame.draw.circle(screen, p.color, (x, y), 12)
+            if isinstance(player_obj, HumanPlayer) and self.turn_phase == "police" and not p.moved_this_turn:
+                pygame.draw.circle(screen, YELLOW, (x, y), 18, 3)
+            if self.selected_pawn == p:
+                pygame.draw.circle(screen, YELLOW, (x, y), 20, 3)
+
+    def draw_mr_x_moves_panel(self, screen):
+        panel_x = WIDTH-200
+        panel_y = 50
+        panel_width = 180
+        panel_height = HEIGHT-100
+        pygame.draw.rect(screen, GRAY, (panel_x, panel_y, panel_width, panel_height))
+        pygame.draw.rect(screen, BLUE, (panel_x, panel_y, panel_width, panel_height), 3)
+        title = FONT.render("Mr. X transport", True, BLUE)
+        screen.blit(title, (panel_x+10, panel_y+10))
+        for i, move in enumerate(self.mr_x_moves[-22:]):
+            text = FONT.render(f"{i+1}. {move}", True, BLACK)
+            screen.blit(text, (panel_x+10, panel_y+40 + i*25))
+        if self.selected_for_tickets:
+            y_offset = panel_y + 500
+            title2 = FONT.render(f"Bilety {self.selected_for_tickets.name}:", True, RED)
+            screen.blit(title2, (panel_x+10, y_offset))
+            for j, (typ, ile) in enumerate(self.selected_for_tickets.tickets.items()):
+                text = FONT.render(f"{typ}: {ile if ile!=float('inf') else '∞'}", True, BLACK)
+                screen.blit(text, (panel_x+10, y_offset + 25*(j+1)))
+
+    def draw(self, screen):
+        screen.fill(WHITE)
+        self.draw_map(screen)
+        self.draw_mr_x_moves_panel(screen)
+        info = FONT.render(f"Tura: {self.turn_number}", True, BLUE)
+        screen.blit(info, (30, 30))
+        if (self.turn_phase == "mr_x" and isinstance(self.mr_x_player, MrXAI)) or \
+           (self.turn_phase == "police" and any(isinstance(p, PoliceAI) for p in self.police_players)):
+            text = FONT.render("ENTER aby AI wykonało ruch", True, RED)
+            screen.blit(text, (30, 80))
+        pygame.display.flip()
+
+    def run(self):
+        self.update_highlighted_nodes()
+        while self.running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.turn_phase == "mr_x" and isinstance(self.mr_x_player, HumanPlayer):
+                        self.handle_click(event.pos)
+                    elif self.turn_phase == "police" and any(isinstance(p, HumanPlayer) for p in self.police_players):
+                        self.handle_click(event.pos)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    if (self.turn_phase == "mr_x" and isinstance(self.mr_x_player, MrXAI)) or \
+                       (self.turn_phase == "police" and any(isinstance(p, PoliceAI) for p in self.police_players)):
+                        self.execute_ai_turn()
+            self.draw(screen)
+
+# ======= menu =======
+class Button:
+    def __init__(self, text, x, y, width, height, callback):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.callback = callback
+    def draw(self, surface):
+        pygame.draw.rect(surface, GRAY, self.rect)
+        pygame.draw.rect(surface, BLUE, self.rect, 3)
+        text_surf = FONT.render(self.text, True, BLUE)
+        text_rect = text_surf.get_rect(center=self.rect.center)
+        surface.blit(text_surf, text_rect)
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(event.pos):
+            self.callback()
+
+def start_as_police():
+    game = Game(MrXAI('mr_x'), [HumanPlayer('police') for _ in range(5)])
+    game.run()
+
+def start_as_mr_x():
+    game = Game(HumanPlayer('mr_x'), [PoliceAI('police') for _ in range(5)])
+    game.run()
+
+def start_ai_vs_ai():
+    game = Game(MrXAI('mr_x'), [PoliceAI('police') for _ in range(5)])
+    game.run()
+
 buttons = [
     Button("Gracz jako policja", 250, 150, 300, 60, start_as_police),
     Button("Gracz jako Mr. X", 250, 250, 300, 60, start_as_mr_x),
     Button("AI vs AI", 250, 350, 300, 60, start_ai_vs_ai),
 ]
 
-# Pętla menu
 def main_menu():
     while True:
         screen.fill(WHITE)
         title = FONT.render("Wybierz tryb gry", True, BLUE)
         screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 50))
-
         for button in buttons:
             button.draw(screen)
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             for button in buttons:
                 button.handle_event(event)
-
         pygame.display.flip()
 
 main_menu()
