@@ -2,6 +2,10 @@
 #include "Application.h"
 #include <GL/glew.h>
 
+#include <random>
+#include <algorithm>
+#include "../../Graphs/graph_manage.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "../external/stb_image.h"
 
@@ -194,6 +198,52 @@ void GameState::OnEnter() {
         });
 
     glEnable(GL_DEPTH_TEST);
+
+    // ==============================
+    // Initialize players from graph data (random distinct nodes)
+    // ==============================
+    m_vec_Players.clear();
+
+    const std::string s_PosFile = "../../Graphs/nodes_with_station.csv";
+    const std::string s_ConFile = "../../Graphs/polaczenia.csv";
+    GraphManager gm(200);
+    gm.LoadData(s_PosFile, s_ConFile, false); // suppress CSV parsing prints
+
+    int i_NodeCount = gm.GetNodeCount();
+    if (i_NodeCount <= 0) {
+        // fallback to simple hardcoded values if graph failed to load
+        m_vec_Players.emplace_back(Core::PlayerType::MisterX, 10);
+        m_vec_Players.emplace_back(Core::PlayerType::Detective, 1);
+        m_vec_Players.emplace_back(Core::PlayerType::Detective, 2);
+        m_vec_Players.emplace_back(Core::PlayerType::Detective, 3);
+        m_vec_Players.emplace_back(Core::PlayerType::Detective, 4);
+    } else {
+        std::random_device rd;
+        std::mt19937 rng(rd());
+        std::uniform_int_distribution<int> dist(1, i_NodeCount);
+
+        auto pick_unique = [&](std::vector<int>& vec_Used) {
+            int i_V;
+            do { i_V = dist(rng); } while (std::find(vec_Used.begin(), vec_Used.end(), i_V) != vec_Used.end());
+            vec_Used.push_back(i_V);
+            return i_V;
+        };
+
+        std::vector<int> vec_Used;
+        int i_MrXNode = pick_unique(vec_Used);
+        m_vec_Players.emplace_back(Core::PlayerType::MisterX, i_MrXNode);
+
+        const int k_DetectiveCount = 4;
+        for (int i = 0; i < k_DetectiveCount; ++i) {
+            int i_DNode = pick_unique(vec_Used);
+            m_vec_Players.emplace_back(Core::PlayerType::Detective, i_DNode);
+        }
+    }
+
+    // Print player positions to console
+    for (const auto& player : m_vec_Players) {
+        printf("Player: %s\n", player.ToString().c_str());
+    }
 }
 
 void GameState::LoadTextures(Core::Application* p_App) {
@@ -307,7 +357,6 @@ void GameState::Update(float f_DeltaTime) {
 }
 
 void GameState::Render(Core::Application* p_App) {
-    // Load textures on first render
     LoadTextures(p_App);
 
     m_i_Width = p_App->GetWidth();
@@ -319,7 +368,6 @@ void GameState::Render(Core::Application* p_App) {
 
     glUseProgram(m_ShaderProgram_Plane);
 
-    // Model matrix (rotation)
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 
@@ -332,7 +380,6 @@ void GameState::Render(Core::Application* p_App) {
         projection = glm::perspective(glm::radians(45.0f), (float)m_i_Width / (float)m_i_Height, 0.1f, 100.0f);
     }
     else {
-        // 2D ortographic (top-down)
         m_vec3_CameraVelocity = glm::vec3(0.0f, 0.0f, 0.0f);
 
         view = glm::lookAt(

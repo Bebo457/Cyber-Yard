@@ -48,6 +48,7 @@ set(SOURCES
     src/MenuState.cpp
     src/GameState.cpp
     src/HUDOverlay.cpp
+    src/Player.cpp
 )
 
 set(HEADERS
@@ -60,6 +61,7 @@ set(HEADERS
     include/MenuState.h
     include/GameState.h
     include/HUDOverlay.h
+    include/Player.h
 )
 
 # EXE =================================================

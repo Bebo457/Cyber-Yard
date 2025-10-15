@@ -175,7 +175,7 @@ public:
     }
 
     // Loads positions of Nodes from a file
-    void LoadNodeData(const std::string& filename) {
+    void LoadNodeData(const std::string& filename, bool b_Verbose = false) {
         std::ifstream file(filename);
         if (!file.is_open()) {
             std::cerr << "Error: Cannot open node file '" << filename << "'.\n";
@@ -197,8 +197,8 @@ public:
             if (IsValidNode(id)) {
                 m_pNodes[id].x = std::stoi(xStr);
                 m_pNodes[id].y = std::stoi(yStr);
-                std::cout<<"Node: " << id << " gotowy \n";
-               // m_pNodes[id].stationType = trim(typeStr); // assuming Node has stationType field
+                if (b_Verbose) std::cout << "Node: " << id << " gotowy \n";
+                // m_pNodes[id].stationType = trim(typeStr); // assuming Node has stationType field
             }
         }
 
@@ -206,14 +206,14 @@ public:
     }
 
     // Loads connections info from a file
-    void LoadConnections(const std::string& filename) {
+    void LoadConnections(const std::string& filename, bool b_Verbose = false) {
         std::ifstream file(filename);
         if (!file.is_open()) {
             std::cerr << "Error: Cannot open connection file '" << filename << "'.\n";
             return;
         }
 
-        std::cout << "Plik otwarty" << std::endl;
+        if (b_Verbose) std::cout << "Plik otwarty" << std::endl;
 
         std::string line;
         std::getline(file, line);
@@ -231,7 +231,7 @@ public:
 
             if (IsValidNode(src) && IsValidNode(dst) && type > 0) {
                 m_pNodes[src].connectTo(&m_pNodes[dst], type);
-                std::cout << "Connected " << src << " to " << dst << " via type " << type << "\n";
+                if (b_Verbose) std::cout << "Connected " << src << " to " << dst << " via type " << type << "\n";
             }
         }
 
@@ -239,11 +239,11 @@ public:
     }
 
     // Loads graphs data from files
-    void LoadData(const std::string& posFile, const std::string& conFile){
-        std::cout << "W nowym loadzie" << std::endl;
-        LoadNodeData(posFile);
-        std::cout << "Za load data" << std::endl;
-        LoadConnections(conFile);
+    void LoadData(const std::string& posFile, const std::string& conFile, bool verbose = false){
+        if (verbose) std::cout << "W nowym loadzie" << std::endl;
+    LoadNodeData(posFile, verbose);
+        if (verbose) std::cout << "Za load data" << std::endl;
+        LoadConnections(conFile, verbose);
     }
 
     int getBoundsX(int nNodes){

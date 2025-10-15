@@ -7,6 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <vector>
 #include <SDL2/SDL.h>
+#include "Player.h"
 
 namespace ScotlandYard {
 namespace Core {
@@ -74,6 +75,9 @@ private:
 
     std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
     void LoadTextures(Core::Application* p_App);
+
+    // Players
+    std::vector<Core::Player> m_vec_Players;
 
     void AccelerateCameraForward(float f_DeltaTime);
     void AccelerateCameraBackward(float f_DeltaTime);
