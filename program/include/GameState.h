@@ -8,6 +8,10 @@
 #include <vector>
 #include <SDL2/SDL.h>
 #include "Player.h"
+#include "../../Graphs/graph_manage.h"
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 namespace ScotlandYard {
 namespace Core {
@@ -76,7 +80,12 @@ private:
     std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
     void LoadTextures(Core::Application* p_App);
 
-    // Players
+    // Graph manager used by the game state to query connections
+    GraphManager m_graph;
+    std::thread m_t_ConsoleThread;
+    std::atomic_bool m_b_ConsoleThreadRunning{false};
+    std::mutex m_mtx_Players;
+
     std::vector<Core::Player> m_vec_Players;
 
     void AccelerateCameraForward(float f_DeltaTime);

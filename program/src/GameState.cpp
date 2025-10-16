@@ -37,6 +37,7 @@ GameState::GameState()
     , m_f_CameraAngle(k_MaxCameraAngle)
     , m_f_CameraAngleVelocity(0.0f)
     , m_vec3_Saved3DCameraPosition(0.0f, 1.5f, 4.0f)
+    , m_graph(200)
 {
 }
 
@@ -244,6 +245,95 @@ void GameState::OnEnter() {
     for (const auto& player : m_vec_Players) {
         printf("Player: %s\n", player.ToString().c_str());
     }
+
+    // --- Console interaction in background thread: allow moving a player to a connected node ---
+    const std::string s_PosFileRel = "../../Graphs/nodes_with_station.csv";
+    const std::string s_ConFileRel = "../../Graphs/polaczenia.csv";
+    m_graph.LoadData(s_PosFileRel, s_ConFileRel, false);
+
+    // Launch console input loop as a dedicated joinable thread so we don't occupy a ThreadPool worker
+    m_b_ConsoleThreadRunning.store(true);
+    m_t_ConsoleThread = std::thread([this]() {
+        while (m_b_ConsoleThreadRunning.load()) {
+            // Print snapshot once and then block waiting for user input (no spamming)
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                std::cout << "\n[Console] Current player positions:\n";
+                for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+                    std::cout << i << ": " << m_vec_Players[i].ToString() << "\n";
+                }
+            }
+
+            std::cout << "[Console] Select player index to move (or 'q' to skip): ";
+            std::string sel;
+            if (!std::getline(std::cin, sel)) {
+                // EOF or stream closed - exit thread
+                m_b_ConsoleThreadRunning.store(false);
+                break;
+            }
+
+            if (sel.empty()) {
+                continue;
+            }
+
+            if (sel == "q" || sel == "Q") {
+                continue;
+            }
+
+            int idx = -1;
+            try { idx = std::stoi(sel); } catch(...) { std::cout << "[Console] Invalid selection\n"; continue; }
+
+            int curNode = -1;
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                if (idx < 0 || idx >= static_cast<int>(m_vec_Players.size())) { std::cout << "[Console] Index out of range\n"; continue; }
+                curNode = m_vec_Players[idx].GetOccupiedNode();
+            }
+
+            std::cout << "[Console] Player " << idx << " is at node " << curNode << "\n";
+            auto conns = m_graph.GetConnections(curNode);
+            if (conns.empty()) { std::cout << "[Console] No connections from this node.\n"; continue; }
+
+            std::cout << "[Console] Available moves:\n";
+            for (size_t i = 0; i < conns.size(); ++i) {
+                std::string tname = (conns[i].i_TransportType == 1 ? "taxi" : (conns[i].i_TransportType==2?"bus":(conns[i].i_TransportType==3?"metro":"water")));
+                std::cout << i << ": to node " << conns[i].i_NodeId << " via " << tname << "\n";
+            }
+
+            std::cout << "[Console] Choose move index: ";
+            std::string msel;
+            if (!std::getline(std::cin, msel)) { m_b_ConsoleThreadRunning.store(false); break; }
+            if (msel.empty()) { std::cout << "[Console] Empty selection\n"; continue; }
+            int midx = -1; try { midx = std::stoi(msel); } catch(...) { std::cout << "[Console] Invalid move index\n"; continue; }
+            if (midx < 0 || midx >= static_cast<int>(conns.size())) { std::cout << "[Console] Move index out of range\n"; continue; }
+
+            int dest = conns[midx].i_NodeId;
+            int transport = conns[midx].i_TransportType;
+            bool moved = false;
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                auto& player = m_vec_Players[idx];
+                bool ok = true;
+                if (transport == 1) { // taxi
+                    ok = player.SpendTaxiTicket();
+                } else if (transport == 2) { // bus
+                    ok = player.SpendBusTicket();
+                } else if (transport == 3) { // metro
+                    ok = player.SpendMetroTicket();
+                } else if (transport == 4) { // water
+                    ok = player.SpendWaterTicket();
+                }
+
+                if (!ok) {
+                    std::cout << "[Console] Player " << idx << " does not have required ticket for this transport.\n";
+                } else {
+                    player.MoveTo(dest);
+                    moved = true;
+                }
+            }
+            if (moved) std::cout << "[Console] Moved player " << idx << " to node " << dest << "\n";
+        }
+    });
 }
 
 void GameState::LoadTextures(Core::Application* p_App) {
@@ -291,6 +381,18 @@ void GameState::OnExit() {
         m_TextureID = 0;
     }
     m_b_GameActive = false;
+
+    m_b_ConsoleThreadRunning.store(false);
+    if (m_t_ConsoleThread.joinable()) {
+        auto start = std::chrono::steady_clock::now();
+        while (m_t_ConsoleThread.joinable()) {
+            if (std::chrono::steady_clock::now() - start > std::chrono::seconds(1)) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (m_t_ConsoleThread.joinable()) {
+            m_t_ConsoleThread.detach();
+        }
+    }
 }
 
 void GameState::OnPause() {

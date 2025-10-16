@@ -2,7 +2,6 @@
 #define SCOTLANDYARD_CORE_PLAYER_H
 
 #include <string>
-#include <glm/glm.hpp>
 
 namespace ScotlandYard {
 namespace Core {
@@ -20,8 +19,25 @@ public:
     PlayerType GetType() const { return m_e_Type; }
     int GetOccupiedNode() const { return m_i_OccupiedNode; }
     void SetOccupiedNode(int i_Node) { m_i_OccupiedNode = i_Node; }
+    // Move the player to another node (simple wrapper).
+    void MoveTo(int i_Node) { SetOccupiedNode(i_Node); }
 
-    // Visibility control for rendering
+    // Tickets
+    int GetTaxiTickets() const { return m_i_TaxiTickets; }
+    int GetBusTickets() const { return m_i_BusTickets; }
+    int GetMetroTickets() const { return m_i_MetroTickets; }
+    int GetWaterTickets() const { return m_i_WaterTickets; }
+    int GetBlackTickets() const { return m_i_BlackTickets; }
+    int GetDoubleMoveTickets() const { return m_i_DoubleMoveTickets; }
+
+    // Spend ticket helpers - return true if the ticket was consumed (or allowed)
+    bool SpendTaxiTicket();
+    bool SpendBusTicket();
+    bool SpendMetroTicket();
+    bool SpendWaterTicket();
+    bool SpendBlackTicket();
+    bool SpendDoubleMoveTicket();
+
     void SetVisible(bool b_Visible) { m_b_Visible = b_Visible; }
     bool IsVisible() const { return m_b_Visible; }
 
@@ -31,6 +47,12 @@ private:
     PlayerType m_e_Type;
     int m_i_OccupiedNode;
     bool m_b_Visible; // whether the player token should be rendered on the board
+    int m_i_TaxiTickets;
+    int m_i_BusTickets;
+    int m_i_MetroTickets;
+    int m_i_WaterTickets;
+    int m_i_BlackTickets; // MrX only
+    int m_i_DoubleMoveTickets; // MrX only
 };
 
 } // namespace Core

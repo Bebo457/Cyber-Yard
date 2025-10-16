@@ -1,3 +1,6 @@
+#ifndef GRAPHS_GRAPH_MANAGE_H
+#define GRAPHS_GRAPH_MANAGE_H
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -101,6 +104,17 @@ public:
         return slot.edge->otherNode(this);
     }
 
+    // Return number of connection slots (active or not)
+    int GetSlotCount() const { return static_cast<int>(slots.size()); }
+
+    // Return transport type for the given slot index or 0 if invalid
+    int GetSlotType(int slotIndex) const {
+        if (slotIndex < 0 || slotIndex >= static_cast<int>(slots.size())) return 0;
+        const Slot& slot = slots[slotIndex];
+        if (!slot.edge) return 0;
+        return slot.edge->type;
+    }
+
     // For debugging: count active connections
     int connectionCount() const
     {
@@ -110,7 +124,7 @@ public:
     }
 
     // Get neighbors connected by edges of a specific type
-    std::vector<Node*> getNeighborsWithType(int type) const
+    std::vector<Node*> GetNeighborsWithType(int type) const
     {
         std::vector<Node*> neighbors;
         for (const auto& slot : slots) {
@@ -291,6 +305,23 @@ public:
         return neighbors;
     }
 
+    struct Connection { int i_NodeId; int i_TransportType; };
+
+    // Return all connections from nodeId with transport types and destination ids
+    std::vector<Connection> GetConnections(int nodeId) {
+        std::vector<Connection> out;
+        Node* node = GetNode(nodeId);
+        if (!node) return out;
+        int sc = node->GetSlotCount();
+        for (int i = 0; i < sc; ++i) {
+            Node* other = node->otherNode(i);
+            if (other) {
+                out.push_back({ other->id, node->GetSlotType(i) });
+            }
+        }
+        return out;
+    }
+
     std::vector<Node*> GetNeighborsByType(int nodeId, int type) {
         Node* node = GetNode(nodeId);
         
@@ -299,7 +330,7 @@ public:
             return std::vector<Node*>();
         }
         
-        return node->getNeighborsWithType(type);
+    return node->GetNeighborsWithType(type);
     }
 
     int GetNodeCount() const {
@@ -310,3 +341,5 @@ public:
         return (id >= 1 && id <= m_nodeCount);
     }
 };
+
+#endif // GRAPHS_GRAPH_MANAGE_H
