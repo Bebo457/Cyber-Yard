@@ -100,24 +100,94 @@ class HumanPlayer:
         return None
 
 class MrXAI:
-    def __init__(self, role):
+    def __init__(self, role, algorithm="random"):
         self.role = role
+        self.algorithm = algorithm  # "random", "decoy", "dfs", "monte_carlo"
+    
     def get_move(self, game_state):
+        if self.algorithm == "random":
+            return self._random_move(game_state)
+        elif self.algorithm == "decoy":
+            return self._decoy_movement(game_state)
+        elif self.algorithm == "dfs":
+            return self._dfs_move(game_state)
+        elif self.algorithm == "monte_carlo":
+            return self._monte_carlo_move(game_state)
+        else:
+            return self._random_move(game_state)
+    
+    def _random_move(self, game_state):
+        """Losowe ruchy - domyślny algorytm"""
         options = game_state.get_available_moves(game_state.mr_x)
-        return random.choice(options) if options else None  
+        return random.choice(options) if options else None
+    
+    def _decoy_movement(self, game_state):
+        """Algorytm Decoy Movement dla Mr. X
+        TODO: Implementacja algorytmu zwodzenia policji
+        """
+        # Placeholder dla implementacji decoy Mr. X
+        options = game_state.get_available_moves(game_state.mr_x)
+        return random.choice(options) if options else None
+    
+    def _dfs_move(self, game_state):
+        """Algorytm DFS (Depth-First Search) dla Mr. X
+        TODO: Implementacja algorytmu DFS do unikania policji
+        """
+        # Placeholder dla implementacji DFS Mr. X
+        options = game_state.get_available_moves(game_state.mr_x)
+        return random.choice(options) if options else None
+    
+    def _monte_carlo_move(self, game_state):
+        """Algorytm Monte Carlo dla Mr. X
+        TODO: Implementacja algorytmu Monte Carlo
+        """
+        # Placeholder dla implementacji Monte Carlo Mr. X
+        options = game_state.get_available_moves(game_state.mr_x)
+        return random.choice(options) if options else None
 
 class PoliceAI:
-    def __init__(self, role):
+    def __init__(self, role, algorithm="random"):
         self.role = role
+        self.algorithm = algorithm  # "random", "astar_greedy", "monte_carlo"
+    
     def get_move(self, game_state, pawn):
+        if self.algorithm == "random":
+            return self._random_move(game_state, pawn)
+        elif self.algorithm == "astar_greedy":
+            return self._astar_greedy_move(game_state, pawn)
+        elif self.algorithm == "monte_carlo":
+            return self._monte_carlo_move(game_state, pawn)
+        else:
+            return self._random_move(game_state, pawn)
+    
+    def _random_move(self, game_state, pawn):
+        """Losowe ruchy - domyślny algorytm"""
+        options = game_state.get_available_moves(pawn)
+        return random.choice(options) if options else None
+    
+    def _astar_greedy_move(self, game_state, pawn):
+        """Algorytm A* Greedy dla Policji
+        TODO: Implementacja algorytmu A* do poszukiwania Mr. X
+        """
+        # Placeholder dla implementacji A* Greedy Policji
+        options = game_state.get_available_moves(pawn)
+        return random.choice(options) if options else None
+    
+    def _monte_carlo_move(self, game_state, pawn):
+        """Algorytm Monte Carlo dla Policji
+        TODO: Implementacja algorytmu Monte Carlo do kooperacji
+        """
+        # Placeholder dla implementacji Monte Carlo Policji
         options = game_state.get_available_moves(pawn)
         return random.choice(options) if options else None  
 
 # ======= Game =======
 class Game:
-    def __init__(self, mr_x_player, police_players):
+    def __init__(self, mr_x_player, police_players, mr_x_algorithm="random", police_algorithm="random"):
         self.mr_x_player = mr_x_player
         self.police_players = police_players
+        self.mr_x_algorithm = mr_x_algorithm
+        self.police_algorithm = police_algorithm
         self.running = True
 
         self.punkty = wczytaj_punkty('punkty.txt')
@@ -315,16 +385,48 @@ class Game:
                 text = FONT.render(f"{typ}: {ile if ile!=float('inf') else '∞'}", True, BLACK)
                 screen.blit(text, (panel_x+10, y_offset + 25*(j+1)))
 
+    def get_algorithm_display_name(self, algorithm):
+        """Konwertuje nazwę algorytmu na przyjazną dla użytkownika"""
+        names = {
+            'human': 'Gracz',
+            'random': 'Random',
+            'decoy': 'Decoy Movement',
+            'dfs': 'DFS',
+            'monte_carlo': 'Monte Carlo',
+            'astar_greedy': 'A* Greedy',
+        }
+        return names.get(algorithm, algorithm)
+
+    def draw_algorithm_info(self, screen):
+        """Wyświetla informacje o algorytmach używanych przez graczy"""
+        small_font = pygame.font.SysFont("arial", 18)
+        info_y = 5
+        
+        mr_x_name = self.get_algorithm_display_name(self.mr_x_algorithm)
+        police_name = self.get_algorithm_display_name(self.police_algorithm)
+        
+        mr_x_text = small_font.render(f"Mr. X: {mr_x_name}", True, BLACK)
+        police_text = small_font.render(f"Policja: {police_name}", True, BLACK)
+        
+        screen.blit(mr_x_text, (WIDTH-190, info_y))
+        screen.blit(police_text, (WIDTH-190, info_y + 25))
+
     def draw(self, screen):
         screen.fill(WHITE)
         self.draw_map(screen)
         self.draw_mr_x_moves_panel(screen)
+        self.draw_algorithm_info(screen)
         info = FONT.render(f"Tura: {self.turn_number}", True, BLUE)
-        screen.blit(info, (30, 30))
+        screen.blit(info, (20, 5))
         if (self.turn_phase == "mr_x" and isinstance(self.mr_x_player, MrXAI)) or \
            (self.turn_phase == "police" and any(isinstance(p, PoliceAI) for p in self.police_players)):
             text = FONT.render("ENTER aby AI wykonało ruch", True, RED)
-            screen.blit(text, (30, 80))
+            screen.blit(text, (20, 30))
+        
+        small_font = pygame.font.SysFont("arial", 16)
+        esc_text = small_font.render("ESC aby powrócić do menu", True, GRAY)
+        screen.blit(esc_text, (20, HEIGHT - 30))
+        
         pygame.display.flip()
 
     def run(self):
@@ -333,6 +435,9 @@ class Game:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.running = False
+                    return "menu"
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if self.turn_phase == "mr_x" and isinstance(self.mr_x_player, HumanPlayer):
                         self.handle_click(event.pos)
@@ -360,37 +465,125 @@ class Button:
         if event.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(event.pos):
             self.callback()
 
-def start_as_police():
-    game = Game(MrXAI('mr_x'), [HumanPlayer('police') for _ in range(5)])
-    game.run()
+class RadioButton:
+    def __init__(self, text, x, y, group_name, value):
+        self.text = text
+        self.rect = pygame.Rect(x, y, 20, 20)
+        self.group_name = group_name
+        self.value = value
+        self.selected = False
+    
+    def draw(self, surface):
+        pygame.draw.circle(surface, BLUE, self.rect.center, 10, 2)
+        if self.selected:
+            pygame.draw.circle(surface, BLUE, self.rect.center, 6)
+        
+        text_surf = FONT.render(self.text, True, BLACK)
+        surface.blit(text_surf, (self.rect.x + 30, self.rect.y - 5))
+    
+    def handle_event(self, event, radio_groups):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.rect.collidepoint(event.pos):
+                for button in radio_groups.get(self.group_name, []):
+                    button.selected = False
+                self.selected = True
 
-def start_as_mr_x():
-    game = Game(HumanPlayer('mr_x'), [PoliceAI('police') for _ in range(5)])
-    game.run()
+def start_as_police(algorithm):
+    while True:
+        game = Game(MrXAI('mr_x', algorithm), [HumanPlayer('police') for _ in range(5)], mr_x_algorithm=algorithm, police_algorithm="human")
+        result = game.run()
+        if result == "menu":
+            return
+        break
 
-def start_ai_vs_ai():
-    game = Game(MrXAI('mr_x'), [PoliceAI('police') for _ in range(5)])
-    game.run()
+def start_as_mr_x(algorithm):
+    while True:
+        game = Game(HumanPlayer('mr_x'), [PoliceAI('police', algorithm) for _ in range(5)], mr_x_algorithm="human", police_algorithm=algorithm)
+        result = game.run()
+        if result == "menu":
+            return
+        break
+
+def start_ai_vs_ai(mr_x_algo, police_algo):
+    while True:
+        game = Game(MrXAI('mr_x', mr_x_algo), [PoliceAI('police', police_algo) for _ in range(5)], mr_x_algorithm=mr_x_algo, police_algorithm=police_algo)
+        result = game.run()
+        if result == "menu":
+            return
+        break
 
 buttons = [
-    Button("Gracz jako policja", 250, 150, 300, 60, start_as_police),
-    Button("Gracz jako Mr. X", 250, 250, 300, 60, start_as_mr_x),
-    Button("AI vs AI", 250, 350, 300, 60, start_ai_vs_ai),
+    Button("Gracz jako policja", 250, 150, 300, 60, lambda: None),  # Callback zostanie ustawiony w menu
+    Button("Gracz jako Mr. X", 250, 280, 300, 60, lambda: None),
+    Button("AI vs AI", 250, 410, 300, 60, lambda: None),
 ]
 
+mr_x_algorithms = [
+    RadioButton("Decoy Movement", 600, 155, "mr_x_algo", "decoy"),
+    RadioButton("DFS", 600, 190, "mr_x_algo", "dfs"),
+    RadioButton("Monte Carlo", 600, 225, "mr_x_algo", "monte_carlo"),
+]
+
+police_algorithms = [
+    RadioButton("A* Greedy", 600, 300, "police_algo", "astar_greedy"),
+    RadioButton("Monte Carlo", 600, 335, "police_algo", "monte_carlo"),
+]
+
+radio_groups = {
+    "mr_x_algo": mr_x_algorithms,
+    "police_algo": police_algorithms,
+}
+
+def get_selected_algorithm(group_name):
+    for button in radio_groups.get(group_name, []):
+        if button.selected:
+            return button.value
+    return "random"
+
 def main_menu():
+    buttons[0].callback = lambda: start_as_police(get_selected_algorithm("mr_x_algo"))
+    buttons[1].callback = lambda: start_as_mr_x(get_selected_algorithm("police_algo"))
+    buttons[2].callback = lambda: start_ai_vs_ai(get_selected_algorithm("mr_x_algo"), get_selected_algorithm("police_algo"))
+    
+    small_font = pygame.font.SysFont("arial", 18)
+    
     while True:
         screen.fill(WHITE)
         title = FONT.render("Wybierz tryb gry", True, BLUE)
-        screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 50))
+        screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 30))
         for button in buttons:
             button.draw(screen)
+        
+        mr_x_title = small_font.render("Algorytm Mr. X:", True, BLUE)
+        screen.blit(mr_x_title, (600, 125))
+        
+        police_title = small_font.render("Algorytm Policji:", True, BLUE)
+        screen.blit(police_title, (600, 280))
+        
+        for radio in mr_x_algorithms:
+            radio.draw(screen)
+        
+        for radio in police_algorithms:
+            radio.draw(screen)
+        
+        esc_info_font = pygame.font.SysFont("arial", 16)
+        esc_info = esc_info_font.render("ESC aby wyjść", True, GRAY)
+        screen.blit(esc_info, (WIDTH // 2 - esc_info.get_width() // 2, HEIGHT - 50))
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                pygame.quit()
+                sys.exit()
             for button in buttons:
                 button.handle_event(event)
+            for radio in mr_x_algorithms:
+                radio.handle_event(event, radio_groups)
+            for radio in police_algorithms:
+                radio.handle_event(event, radio_groups)
+        
         pygame.display.flip()
 
 main_menu()
