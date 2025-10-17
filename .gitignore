@@ -1,6 +1,7 @@
 # Python virtual environment
 venv/
 cache/
+__pycache__/
 
 #any random build
 */build/

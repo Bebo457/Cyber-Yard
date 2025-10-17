@@ -2,6 +2,7 @@ import pygame
 import sys
 import numpy as np
 import random
+from heapq import heappush, heappop
 
 pygame.init()
 WIDTH, HEIGHT = 1200, 800
@@ -27,6 +28,9 @@ kolory_polaczen = {
     'taxi': ((255, 165, 0), 4),
     'water': ((0, 0, 255), 4)
 }
+
+# Tury, w których Mr. X jest widoczny (Scotland Yard rules)
+REVEAL_TURNS = [3, 8, 13, 18, 24]
 
 # ======= funkcje pomocnicze =======
 def znajdz_zakres(punkty):
@@ -149,6 +153,7 @@ class PoliceAI:
     def __init__(self, role, algorithm="random"):
         self.role = role
         self.algorithm = algorithm  # "random", "astar_greedy", "monte_carlo"
+        self.alpha = 0.5  # Parametr ważenia odległości w mapie probabilistycznej
     
     def get_move(self, game_state, pawn):
         if self.algorithm == "random":
@@ -165,11 +170,240 @@ class PoliceAI:
         options = game_state.get_available_moves(pawn)
         return random.choice(options) if options else None
     
+    def _heuristic_distance(self, pos1, pos2, game_state):
+        """Oblicza odległość euklidesową między dwoma węzłami na podstawie współrzędnych"""
+        if pos1 not in game_state.punkty or pos2 not in game_state.punkty:
+            return float('inf')
+        x1, y1 = game_state.punkty[pos1]['x'], game_state.punkty[pos1]['y']
+        x2, y2 = game_state.punkty[pos2]['x'], game_state.punkty[pos2]['y']
+        return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+    
+    def _generate_reachable_nodes(self, start_pos, turns_since_reveal, game_state, mr_x_tickets):
+        """Generuje wszystkie węzły osiągalne przez Mr. X z ostatniej znanej pozycji
+        w przeciągu turnsSinceReveal tur"""
+        reachable = {start_pos}
+        
+        for _ in range(turns_since_reveal):
+            next_reachable = set()
+            for node in reachable:
+                for neighbor, _ in game_state.get_available_moves(
+                    type('Pawn', (), {'position': node, 'tickets': mr_x_tickets})()
+                ):
+                    next_reachable.add(neighbor)
+            reachable = next_reachable if next_reachable else reachable
+        
+        return reachable
+    
+    def _filter_reachable_by_moves(self, start_pos, game_state, moves_sequence):
+        """Filtruje osiągalne węzły na podstawie sekwencji środków transportu.
+        np. jeśli moves_sequence = ['underground', 'underground', 'underground'],
+        to węzeł musi być osiągalny poprzez dokładnie 3 przejazdy metrem z rzędu
+        lub zawrócić (2 w jedną stronę, 1 w drugą)"""
+        
+        if not moves_sequence:
+            return {start_pos}
+        
+        # Ustawienie biletów Mr. X (nieskończone)
+        mr_x_tickets = {'taxi': float('inf'), 'bus': float('inf'), 'underground': float('inf'), 'water': 5}
+        
+        # Używamy BFS aby znaleźć wszystkie węzły osiągalne dokładnie tymi ruchami
+        from collections import deque
+        queue = deque([(start_pos, 0)])  # (node, move_index)
+        visited = {(start_pos, 0)}
+        reachable = set()
+        
+        while queue:
+            node, move_idx = queue.popleft()
+            
+            if move_idx == len(moves_sequence):
+                reachable.add(node)
+                continue
+            
+            required_transport = moves_sequence[move_idx]
+            
+            # Pobierz dostępne ruchy z tego węzła
+            available_moves = game_state.get_available_moves(
+                type('Pawn', (), {'position': node, 'tickets': mr_x_tickets})()
+            )
+            
+            # Filtruj tylko ruchy tym środkiem transportu
+            for neighbor, transport in available_moves:
+                if transport == required_transport:
+                    state = (neighbor, move_idx + 1)
+                    if state not in visited:
+                        visited.add(state)
+                        queue.append(state)
+        
+        return reachable if reachable else {start_pos}
+    
+    def get_suspected_positions(self, game_state):
+        """Zwraca zbiór podejrzanych pozycji Mr. X na podstawie ostatnich ujawnień i ruchów"""
+        
+        if game_state.is_mr_x_revealed():
+            # Jeśli Mr. X jest widoczny, wiemy dokładnie gdzie jest
+            return {game_state.mr_x.position}, [game_state.mr_x.position]
+        
+        if game_state.last_known_pos is None:
+            # Brak ujawniania - możliwe wszędzie
+            return set(game_state.punkty.keys()), []
+        
+        # Pobierz ruchy od ostatniego ujawnienia
+        moves_since_reveal = game_state.mr_x_moves[game_state.last_reveal_turn - 1:]
+        
+        # Filtruj węzły na podstawie sekwencji ruchów
+        reachable = self._filter_reachable_by_moves(
+            game_state.last_known_pos,
+            game_state,
+            moves_since_reveal
+        )
+        
+        return reachable, moves_since_reveal
+    
+    def _compute_probability_map(self, game_state, pawn):
+        """Oblicza mapę probabilistyczną możliwych pozycji Mr. X
+        na podstawie historii ujawnień i dostępnych biletów"""
+        
+        # Jeśli Mr. X jest ujawniony teraz, wiemy dokładnie gdzie jest
+        if game_state.is_mr_x_revealed():
+            probability_map = {game_state.mr_x.position: 1.0}
+            return probability_map
+        
+        # Jeśli nie ma ujawnienia i brak danych o ruchach, wszyscy mogą być wszędzie
+        if game_state.last_known_pos is None:
+            probability_map = {}
+            for node in game_state.punkty.keys():
+                probability_map[node] = 1.0 / len(game_state.punkty)
+            return probability_map
+        
+        # Mamy ostatnią znaną pozycję - generujemy osiągalne węzły od tego momentu
+        last_known_pos = game_state.last_known_pos
+        turns_since_reveal = game_state.turn_number - game_state.last_reveal_turn
+        
+        reachable = self._generate_reachable_nodes(
+            last_known_pos, 
+            turns_since_reveal, 
+            game_state, 
+            game_state.mr_x.tickets
+        )
+        
+        # Inicjalizujemy mapę probabilistyczną
+        probability_map = {}
+        
+        # Przydzielamy równomierną bazową probabilistykę osiągalnym węzłom
+        for node in reachable:
+            probability_map[node] = 1.0 / len(reachable) if reachable else 0
+        
+        # Dopasowujemy probabilistykę na podstawie odległości od policji
+        for node in probability_map:
+            min_distance = float('inf')
+            for police_pawn in game_state.police:
+                dist = self._heuristic_distance(police_pawn.position, node, game_state)
+                min_distance = min(min_distance, dist)
+            
+            # Węzły dalej od policji mają wyższą probabilistykę
+            probability_map[node] *= (1.0 + self.alpha * min_distance)
+        
+        # Normalizujemy probabilistyki
+        total_prob = sum(probability_map.values())
+        if total_prob > 0:
+            for node in probability_map:
+                probability_map[node] /= total_prob
+        
+        return probability_map
+    
+    def _astar_search(self, game_state, start, goal, pawn_tickets, max_iterations=100):
+        """Implementacja algorytmu A* do znalezienia najkrótszej ścieżki
+        uwzględniającej dostępne bilety"""
+        # f_score = g_score + h_score (koszt + heurystyka)
+        open_set = []
+        heappush(open_set, (0, start))
+        
+        came_from = {}
+        g_score = {start: 0}
+        f_score = {start: self._heuristic_distance(start, goal, game_state)}
+        
+        closed_set = set()
+        iterations = 0
+        
+        while open_set and iterations < max_iterations:
+            iterations += 1
+            _, current = heappop(open_set)
+            
+            if current == goal:
+                # Rekonstruujemy ścieżkę
+                path = [current]
+                while current in came_from:
+                    current = came_from[current]
+                    path.append(current)
+                return list(reversed(path))
+            
+            closed_set.add(current)
+            
+            # Eksplorujemy sąsiadów
+            moves = game_state.get_available_moves(
+                type('Pawn', (), {'position': current, 'tickets': pawn_tickets})()
+            )
+            
+            for neighbor, transport_type in moves:
+                if neighbor in closed_set:
+                    continue
+                
+                # Koszt przejścia do sąsiada (1 ruch = 1 bilet)
+                tentative_g_score = g_score[current] + 1
+                
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f = tentative_g_score + self._heuristic_distance(neighbor, goal, game_state)
+                    f_score[neighbor] = f
+                    heappush(open_set, (f, neighbor))
+        
+        return None  # Brak ścieżki
+    
     def _astar_greedy_move(self, game_state, pawn):
         """Algorytm A* Greedy dla Policji
-        TODO: Implementacja algorytmu A* do poszukiwania Mr. X
+        
+        Kroki:
+        1. Oblicza mapę probabilistyczną możliwych pozycji Mr. X
+        2. Wybiera cel o maksymalnej probabilistyce (tie-breaker: najbliższy węzeł)
+        3. Używa A* do znalezienia najkrótszej ścieżki do celu
+        4. Wykonuje pierwszy krok ścieżki
         """
-        # Placeholder dla implementacji A* Greedy Policji
+        # Generujemy mapę probabilistyczną
+        probability_map = self._compute_probability_map(game_state, pawn)
+        
+        if not probability_map:
+            # Fallback do losowego ruchu
+            options = game_state.get_available_moves(pawn)
+            return random.choice(options) if options else None
+        
+        # Znajdujemy maksymalną probabilistykę
+        max_prob = max(probability_map.values()) if probability_map else 0
+        
+        # Zbieramy wszystkie węzły o maksymalnej probabilistyce
+        candidates = [node for node, prob in probability_map.items() if abs(prob - max_prob) < 1e-9]
+        
+        if not candidates:
+            options = game_state.get_available_moves(pawn)
+            return random.choice(options) if options else None
+        
+        # Tie-breaker: wybieramy węzeł najbliższy policjantowi
+        target = min(candidates, key=lambda node: self._heuristic_distance(pawn.position, node, game_state))
+        
+        # Używamy A* do znalezienia ścieżki do celu
+        path = self._astar_search(game_state, pawn.position, target, pawn.tickets)
+        
+        if path and len(path) > 1:
+            # Bierzemy pierwszy krok ścieżki
+            next_node = path[1]
+            
+            # Znajdujemy transport type do następnego węzła
+            available_moves = game_state.get_available_moves(pawn)
+            for neighbor, transport_type in available_moves:
+                if neighbor == next_node:
+                    return (neighbor, transport_type)
+        
+        # Fallback: jeśli A* nie znalazł ścieżki, wybieramy losowy ruch
         options = game_state.get_available_moves(pawn)
         return random.choice(options) if options else None
     
@@ -204,6 +438,12 @@ class Game:
         self.turn_number = 1
         self.max_turns = 22
         self.mr_x_moves = []
+        
+        # Śledzenie pozycji Mr. X dla przewidywania
+        self.last_known_pos = None  # Ostatnia znana pozycja (None jeśli nie ujawniony)
+        self.last_reveal_turn = 0  # Tura ostatniego ujawnienia (0 = brak)
+        self.mr_x_position_history = {}  # Historia pozycji: tura -> pozycja (tylko ujawnienia)
+        self.suspected_positions = set()  # Potencjalne pozycje - puste dopóki brak danych
 
         self.ai_mode = all(isinstance(p, (MrXAI, PoliceAI)) for p in [mr_x_player, *police_players])
         self.mixed_mode = not self.ai_mode and any(isinstance(p, (MrXAI, PoliceAI)) for p in [mr_x_player, *police_players])
@@ -211,6 +451,11 @@ class Game:
         self.reset_pawn_moves()
         self.update_highlighted_nodes()
         self.selected_for_tickets = None
+
+    # --- metody sprawdzające stan gry ---
+    def is_mr_x_revealed(self):
+        """Sprawdza czy Mr. X jest ujawniony w bieżącej turze"""
+        return self.turn_number in REVEAL_TURNS
 
     # --- logika biletów ---
     def get_available_moves(self, pawn):
@@ -251,6 +496,48 @@ class Game:
         dest, typ = move
         self.mr_x_moves.append(typ)
         self.mr_x.move_to(dest, typ)
+        
+        # Jeśli Mr. X jest ujawniony, zaktualizuj ostatnią znaną pozycję
+        if self.is_mr_x_revealed():
+            self.last_known_pos = dest
+            self.last_reveal_turn = self.turn_number
+            self.mr_x_position_history[self.turn_number] = dest
+            self.suspected_positions = {dest}
+        else:
+            # Jeśli Mr. X nie jest ujawniony, aktualizuj podejrzane pozycje na podstawie ruchów
+            if self.last_known_pos is not None:
+                # Mamy ostatnią znaną pozycję - filtruj na podstawie sekwencji ruchów
+                moves_since_reveal = self.mr_x_moves[self.last_reveal_turn - 1:]
+                
+                # Oblicz możliwe węzły przy danej sekwencji transportów
+                from collections import deque
+                mr_x_tickets = {'taxi': float('inf'), 'bus': float('inf'), 'underground': float('inf'), 'water': 5}
+                
+                queue = deque([(self.last_known_pos, 0)])
+                visited = {(self.last_known_pos, 0)}
+                reachable = set()
+                
+                while queue:
+                    node, move_idx = queue.popleft()
+                    
+                    if move_idx == len(moves_since_reveal):
+                        reachable.add(node)
+                        continue
+                    
+                    required_transport = moves_since_reveal[move_idx]
+                    
+                    available_moves = self.get_available_moves(
+                        type('Pawn', (), {'position': node, 'tickets': mr_x_tickets})()
+                    )
+                    
+                    for neighbor, transport in available_moves:
+                        if transport == required_transport:
+                            state = (neighbor, move_idx + 1)
+                            if state not in visited:
+                                visited.add(state)
+                                queue.append(state)
+                
+                self.suspected_positions = reachable if reachable else {self.last_known_pos}
 
     def handle_click(self, pos):
         for nr, dane in self.punkty.items():
@@ -353,10 +640,28 @@ class Game:
         for nr, dane in self.punkty.items():
             x, y = skaluj(dane['x'], dane['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
             pygame.draw.circle(screen, YELLOW if nr in self.highlighted_nodes else BLACK, (x, y), 8 if nr in self.highlighted_nodes else 5)
-        x, y = skaluj(self.punkty[self.mr_x.position]['x'], self.punkty[self.mr_x.position]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
-        pygame.draw.circle(screen, self.mr_x.color, (x, y), 15)
-        if self.selected_pawn == self.mr_x:
-            pygame.draw.circle(screen, YELLOW, (x, y), 20, 3)
+        
+        # Rysuj potencjalne pozycje Mr. X (na podstawie sekwencji ruchów) - fioletowe kółka
+        if not self.is_mr_x_revealed() and self.last_known_pos is not None and any(isinstance(p, PoliceAI) for p in self.police_players):
+            for suspected_node in self.suspected_positions:
+                if suspected_node != self.last_known_pos:  # Nie rysuj ostatniej znanej pozycji (to będzie główne kółko)
+                    x, y = skaluj(self.punkty[suspected_node]['x'], self.punkty[suspected_node]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+                    pygame.draw.circle(screen, (200, 100, 200), (x, y), 7)  # Fioletowe kółka
+        
+        # Rysuj ostatnią znaną pozycję - większe fioletowe kółko
+        if not self.is_mr_x_revealed() and self.last_known_pos is not None and self.last_known_pos in self.punkty and any(isinstance(p, PoliceAI) for p in self.police_players):
+            x, y = skaluj(self.punkty[self.last_known_pos]['x'], self.punkty[self.last_known_pos]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+            pygame.draw.circle(screen, (200, 100, 200), (x, y), 10)  # Większe fioletowe kółko
+            pygame.draw.circle(screen, (200, 100, 200), (x, y), 10, 2)  # Obramowanie
+        
+        # Rysuj Mr. X zawsze dla grającego, lub jeśli jest ujawniony dla policji
+        should_show_mr_x = isinstance(self.mr_x_player, HumanPlayer) or self.is_mr_x_revealed()
+        if should_show_mr_x:
+            x, y = skaluj(self.punkty[self.mr_x.position]['x'], self.punkty[self.mr_x.position]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
+            pygame.draw.circle(screen, self.mr_x.color, (x, y), 15)
+            if self.selected_pawn == self.mr_x:
+                pygame.draw.circle(screen, YELLOW, (x, y), 20, 3)
+        
         for p, player_obj in zip(self.police, self.police_players):
             x, y = skaluj(self.punkty[p.position]['x'], self.punkty[p.position]['y'], self.min_x, self.max_x, self.min_y, self.max_y, WIDTH-200, HEIGHT)
             pygame.draw.circle(screen, p.color, (x, y), 12)
@@ -374,11 +679,27 @@ class Game:
         pygame.draw.rect(screen, BLUE, (panel_x, panel_y, panel_width, panel_height), 3)
         title = FONT.render("Mr. X transport", True, BLUE)
         screen.blit(title, (panel_x+10, panel_y+10))
-        for i, move in enumerate(self.mr_x_moves[-22:]):
+        for i, move in enumerate(self.mr_x_moves[-10:]):
             text = FONT.render(f"{i+1}. {move}", True, BLACK)
             screen.blit(text, (panel_x+10, panel_y+40 + i*25))
+        
+        # Informacja o ujawnieniach - tylko dla gracza (Mr. X)
+        if isinstance(self.mr_x_player, HumanPlayer):
+            reveal_info_y = panel_y + 280
+            small_font = pygame.font.SysFont("arial", 14)
+            reveal_title = small_font.render("Ujawnienia:", True, RED)
+            screen.blit(reveal_title, (panel_x+10, reveal_info_y))
+            
+            for i, turn in enumerate(REVEAL_TURNS):
+                if turn in self.mr_x_position_history:
+                    pos = self.mr_x_position_history[turn]
+                    reveal_text = small_font.render(f"Tura {turn}: pozycja {pos}", True, BLACK)
+                else:
+                    reveal_text = small_font.render(f"Tura {turn}: ???", True, GRAY)
+                screen.blit(reveal_text, (panel_x+10, reveal_info_y + 20 + i*20))
+        
         if self.selected_for_tickets:
-            y_offset = panel_y + 500
+            y_offset = panel_y + 480
             title2 = FONT.render(f"Bilety {self.selected_for_tickets.name}:", True, RED)
             screen.blit(title2, (panel_x+10, y_offset))
             for j, (typ, ile) in enumerate(self.selected_for_tickets.tickets.items()):
@@ -410,18 +731,48 @@ class Game:
         
         screen.blit(mr_x_text, (WIDTH-190, info_y))
         screen.blit(police_text, (WIDTH-190, info_y + 25))
+    
+    def draw_legend(self, screen):
+        """Rysuje legendę do wizualizacji - tylko gdy jest coś do wizualizacji"""
+        # Pokażemy legendę tylko gdy policja ma ujawnioną pozycję (last_known_pos != None)
+        if self.last_known_pos is None:
+            return
+        
+        small_font = pygame.font.SysFont("arial", 14)
+        legend_y = HEIGHT - 120
+        legend_x = 20
+        
+        pygame.draw.line(screen, GRAY, (legend_x, legend_y), (legend_x + 150, legend_y), 1)
+        
+        # Ostatnia znana pozycja
+        pygame.draw.circle(screen, (200, 100, 200), (legend_x + 10, legend_y + 20), 8)
+        pygame.draw.circle(screen, (200, 100, 200), (legend_x + 10, legend_y + 20), 8, 2)
+        text = small_font.render("Ostatnia znana pozycja", True, BLACK)
+        screen.blit(text, (legend_x + 30, legend_y + 12))
+        
+        # Możliwe pozycje
+        pygame.draw.circle(screen, (200, 100, 200), (legend_x + 10, legend_y + 45), 6)
+        text = small_font.render("Możliwe pozycje", True, BLACK)
+        screen.blit(text, (legend_x + 30, legend_y + 38))
 
     def draw(self, screen):
         screen.fill(WHITE)
         self.draw_map(screen)
         self.draw_mr_x_moves_panel(screen)
         self.draw_algorithm_info(screen)
+        self.draw_legend(screen)
         info = FONT.render(f"Tura: {self.turn_number}", True, BLUE)
         screen.blit(info, (20, 5))
+        
+        # Informacja o ujawnieniu Mr. X
+        reveal_status = "UJAWNIONY!" if self.is_mr_x_revealed() else "UKRYTY"
+        reveal_text = FONT.render(f"Mr. X: {reveal_status}", True, RED if self.is_mr_x_revealed() else BLUE)
+        screen.blit(reveal_text, (20, 35))
+        
         if (self.turn_phase == "mr_x" and isinstance(self.mr_x_player, MrXAI)) or \
            (self.turn_phase == "police" and any(isinstance(p, PoliceAI) for p in self.police_players)):
             text = FONT.render("ENTER aby AI wykonało ruch", True, RED)
-            screen.blit(text, (20, 30))
+            screen.blit(text, (20, 60))
         
         small_font = pygame.font.SysFont("arial", 16)
         esc_text = small_font.render("ESC aby powrócić do menu", True, GRAY)
