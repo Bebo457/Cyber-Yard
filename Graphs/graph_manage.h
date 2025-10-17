@@ -104,6 +104,13 @@ public:
         return slot.edge->otherNode(this);
     }
 
+    // Get edge at specific slot index - DODANE DLA KOMPATYBILNOŚCI Z graph.cpp
+    Edge* getEdge(int slotIndex) const
+    {
+        if (slotIndex < 0 || slotIndex >= static_cast<int>(slots.size())) return nullptr;
+        return slots[slotIndex].edge;
+    }
+
     // Return number of connection slots (active or not)
     int GetSlotCount() const { return static_cast<int>(slots.size()); }
 

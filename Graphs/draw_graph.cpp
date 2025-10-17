@@ -1,307 +1,311 @@
+#include <windows.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_main.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <algorithm>
 #include <cctype>
-//NOTE FOR NEXT DEVELOPER:
-//code is created based on read_connections.cpp and Graph.cpp AND london_map.csv, other .csv wasnt created during my work on that code, 
-//so it should be adjusted to work with them (talking about nodes_with_station.csv and polaczenia.csv, which i got from git pull second before commiting my code)
+#include "graph_manage.h"  // zakładamy, że zawiera klasę Node i GraphManager
 
-struct Node; // forward declaration for Edge
+const int WINDOW_WIDTH = 900;
+const int WINDOW_HEIGHT = 700;
+const int NODE_RADIUS = 5;
+const int PADDING = 40; // Margines od krawędzi
 
-class Edge
-{
-public:
-    int type; // transport type
-    Node* endpoints[2]; // endpoints[0] and endpoints[1]
-
-    // Construct without auto-registering; ownership is managed by Node::connectTo
-    Edge(int type_ = 0, Node* a = nullptr, Node* b = nullptr)
-        : type(type_)
-    {
-        endpoints[0] = a;
-        endpoints[1] = b;
+// Kolory dla typów transportu
+SDL_Color getColorForType(int type) {
+    switch (type) {
+        case 1: return {255, 255, 0, 255};   // taxi - żółty
+        case 2: return {0, 128, 0, 255};     // bus - zielony
+        case 3: return {0, 0, 255, 255};     // metro - niebieski
+        case 4: return {0, 255, 255, 255};   // water - cyjan
+        default: return {128, 128, 128, 255}; // inne - szary
     }
+}
 
-    // Disable copy to avoid accidental double-deletion
-    Edge(const Edge&) = delete;
-    Edge& operator=(const Edge&) = delete;
-
-    // Returns the pointer to the node that is not 'me'. If 'me' is not part of this edge, returns nullptr.
-    Node* otherNode(const Node* me) const
-    {
-        if (me == endpoints[0]) return endpoints[1];
-        if (me == endpoints[1]) return endpoints[0];
-        return nullptr;
-    }
-};
-
-struct Node
-{
-    int id;
-    int x, y; // coordinates for visualization
-
-private:
-    struct Slot { Edge* edge; bool owner; };
-    std::vector<Slot> slots; // dynamic connections
-
-public:
-    Node(int id_ = 0, int x_ = 0, int y_ = 0, bool special = false) : id(id_), x(x_), y(y_)
-    {
-        // slots start empty
-    }
-
-    ~Node()
-    {
-        // Delete only owned edges and inform the other endpoint to forget the pointer
-        for (auto& slot : slots) {
-            if (slot.edge && slot.owner) {
-                Edge* e = slot.edge;
-                Node* other = e->otherNode(this);
-                if (other) other->removeEdge(e);
-                delete e;
-                slot.edge = nullptr;
-                slot.owner = false;
+void drawCircle(SDL_Renderer* renderer, int x, int y, int radius) {
+    for (int w = 0; w < radius * 2; w++) {
+        for (int h = 0; h < radius * 2; h++) {
+            int dx = radius - w;
+            int dy = radius - h;
+            if ((dx * dx + dy * dy) <= (radius * radius)) {
+                SDL_RenderDrawPoint(renderer, x + dx, y + dy);
             }
         }
     }
+}
 
-    // Connect this node with another. This node will own the created Edge.
-    bool connectTo(Node* other, int type)
-    {
-        if (!other) return false;
-
-        Edge* e = new Edge(type, this, other);
-        slots.push_back({e, true});
-        other->slots.push_back({e, false});
-        return true;
-    }
-
-    // Remove an edge pointer if present (non-owning side uses this when the owner deletes)
-    void removeEdge(Edge* e)
-    {
-        for (auto it = slots.begin(); it != slots.end(); ) {
-            if (it->edge == e) {
-                it->edge = nullptr;
-                it->owner = false;
-                it = slots.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
-
-    // Return the other node for the connection at slot index, or nullptr on error
-    Node* otherNode(int slotIndex) const
-    {
-        if (slotIndex < 0 || slotIndex >= static_cast<int>(slots.size())) return nullptr;
-        const Slot& slot = slots[slotIndex];
-        if (!slot.edge) return nullptr;
-        return slot.edge->otherNode(this);
-    }
-
-    // For debugging: count active connections
-    int connectionCount() const
-    {
-        int c = 0;
-        for (const auto& slot : slots) if (slot.edge) ++c;
-        return c;
-    }
-
-    // Get neighbors connected by edges of a specific type
-    std::vector<Node*> getNeighborsWithType(int type) const
-    {
-        std::vector<Node*> neighbors;
-        for (const auto& slot : slots) {
-            if (slot.edge && slot.edge->type == type) {
-                Node* other = slot.edge->otherNode(this);
-                if (other) neighbors.push_back(other);
-            }
-        }
-        return neighbors;
-    }
-};
-
-
-class GraphManager{
-
-private:
-    Node* m_pNodes;  
-    int m_nodeCount; //how many nodes we have
+// Simple digit drawing (3x5 pixels per digit)
+void drawDigit(SDL_Renderer* renderer, int x, int y, int digit) {
+    // Define patterns for digits 0-9 (3x5 pixels, 1=draw, 0=skip)
+    static const int patterns[10][5][3] = {
+        {{1,1,1},{1,0,1},{1,0,1},{1,0,1},{1,1,1}}, // 0
+        {{0,1,0},{1,1,0},{0,1,0},{0,1,0},{1,1,1}}, // 1
+        {{1,1,1},{0,0,1},{1,1,1},{1,0,0},{1,1,1}}, // 2
+        {{1,1,1},{0,0,1},{1,1,1},{0,0,1},{1,1,1}}, // 3
+        {{1,0,1},{1,0,1},{1,1,1},{0,0,1},{0,0,1}}, // 4
+        {{1,1,1},{1,0,0},{1,1,1},{0,0,1},{1,1,1}}, // 5
+        {{1,1,1},{1,0,0},{1,1,1},{1,0,1},{1,1,1}}, // 6
+        {{1,1,1},{0,0,1},{0,0,1},{0,0,1},{0,0,1}}, // 7
+        {{1,1,1},{1,0,1},{1,1,1},{1,0,1},{1,1,1}}, // 8
+        {{1,1,1},{1,0,1},{1,1,1},{0,0,1},{1,1,1}}  // 9
+    };
     
-
-    // Trim whitespace from string
-    std::string trim(const std::string& str) {
-        size_t first = str.find_first_not_of(" \t\n\r\f\v");
-        if (first == std::string::npos) return "";
-        size_t last = str.find_last_not_of(" \t\n\r\f\v");
-        return str.substr(first, (last - first + 1));
-    }
-
-    std::vector<int> parseGroup(const std::string& group) {
-        std::vector<int> values;
-        std::stringstream ss(group);
-        std::string item;
-        while (std::getline(ss, item, ';')) {
-            item = trim(item);
-            if (!item.empty()) {
-                try {
-                    values.push_back(std::stoi(item));
-                } catch (const std::exception&) {
-                    // Skip invalid items
-                }
+    for (int row = 0; row < 5; row++) {
+        for (int col = 0; col < 3; col++) {
+            if (patterns[digit][row][col]) {
+                SDL_RenderDrawPoint(renderer, x + col, y + row);
             }
         }
-        return values;
     }
+}
 
-public:
-    // Constructor
-    GraphManager(int maxNodes) 
-        : m_pNodes(nullptr),      
-          m_nodeCount(maxNodes)  
-    {
-        // allocate array on heap (maxNodes + 1 because IDs start at 1, not 0 - for better data management)
-        m_pNodes = new Node[maxNodes + 1];
-        
-        // initialize each node with its id and default coordinates
-        for (int i = 1; i <= maxNodes; ++i) {
-            m_pNodes[i].id = i;    //node id
-            m_pNodes[i].x = 0;     //def x 
-            m_pNodes[i].y = 0;     //def y
-        }
+// Draw number (supports up to 3 digits)
+void drawNumber(SDL_Renderer* renderer, int x, int y, int number) {
+    if (number < 0) return;
+    
+    if (number < 10) {
+        drawDigit(renderer, x, y, number);
+    } else if (number < 100) {
+        drawDigit(renderer, x, y, number / 10);
+        drawDigit(renderer, x + 4, y, number % 10);
+    } else if (number < 1000) {
+        drawDigit(renderer, x, y, number / 100);
+        drawDigit(renderer, x + 4, y, (number / 10) % 10);
+        drawDigit(renderer, x + 8, y, number % 10);
+    }
+}
+
+// Draw simple letter (5x7 pixels)
+void drawLetter(SDL_Renderer* renderer, int x, int y, char letter) {
+    // Simplified alphabet patterns (5x7)
+    static const std::vector<std::vector<int>> patterns = {
+        // T
+        {1,1,1,1,1, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0},
+        // A
+        {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 1,1,1,1,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1},
+        // X
+        {1,0,0,0,1, 1,0,0,0,1, 0,1,0,1,0, 0,0,1,0,0, 0,1,0,1,0, 1,0,0,0,1, 1,0,0,0,1},
+        // I
+        {1,1,1,1,1, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 1,1,1,1,1},
+        // B
+        {1,1,1,1,0, 1,0,0,0,1, 1,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,1,1,1,0},
+        // U
+        {1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
+        // S
+        {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,0, 0,1,1,1,0, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
+        // M
+        {1,0,0,0,1, 1,1,0,1,1, 1,0,1,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1},
+        // E
+        {1,1,1,1,1, 1,0,0,0,0, 1,1,1,1,0, 1,0,0,0,0, 1,0,0,0,0, 1,0,0,0,0, 1,1,1,1,1},
+        // R
+        {1,1,1,1,0, 1,0,0,0,1, 1,1,1,1,0, 1,1,0,0,0, 1,0,1,0,0, 1,0,0,1,0, 1,0,0,0,1},
+        // W
+        {1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,1,0,1, 1,0,1,0,1, 1,1,0,1,1, 1,0,0,0,1},
+    };
+    
+    int idx = -1;
+    switch(letter) {
+        case 'T': idx = 0; break;
+        case 'A': idx = 1; break;
+        case 'X': idx = 2; break;
+        case 'I': idx = 3; break;
+        case 'B': idx = 4; break;
+        case 'U': idx = 5; break;
+        case 'S': idx = 6; break;
+        case 'M': idx = 7; break;
+        case 'E': idx = 8; break;
+        case 'R': idx = 9; break;
+        case 'W': idx = 10; break;
     }
     
-    // Destructor
-    ~GraphManager() {
-        delete[] m_pNodes; 
-        m_pNodes = nullptr;
+    if (idx < 0) return;
+    
+    const auto& pattern = patterns[idx];
+    for (int row = 0; row < 7; row++) {
+        for (int col = 0; col < 5; col++) {
+            if (pattern[row * 5 + col]) {
+                SDL_RenderDrawPoint(renderer, x + col, y + row);
+            }
+        }
+    }
+}
+
+// Draw text (simple)
+void drawText(SDL_Renderer* renderer, int x, int y, const char* text) {
+    int offset = 0;
+    while (*text) {
+        drawLetter(renderer, x + offset, y, *text);
+        offset += 6; // spacing between letters
+        text++;
+    }
+}
+
+// Główna funkcja aplikacji
+int main(int argc, char* argv[]) {
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        MessageBoxA(NULL, SDL_GetError(), "SDL Init Error", MB_ICONERROR | MB_OK);
+        return 1;
     }
 
-    // load graph data from CSV file
-    //previously known as read_map function
-    void LoadFromFile(const std::string& filename) {
-        std::ifstream file(filename);
-        if (!file.is_open()) {
-            std::cerr << "Error: Cannot open file '" << filename << "'.\n";
-            return;
-        }
-        std::string line;
+    SDL_Window* window = SDL_CreateWindow("Scotland Yard - Graph Viewer",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_SHOWN); // Usunięto SDL_WINDOW_RESIZABLE
 
-        while (std::getline(file, line)) {
-            std::stringstream ss(line);
-            std::string a1_str, group_str;
-            std::vector<std::string> groups;
+    if (!window) {
+        MessageBoxA(NULL, SDL_GetError(), "Window Creation Error", MB_ICONERROR | MB_OK);
+        SDL_Quit();
+        return 1;
+    }
 
-            std::getline(ss, a1_str, ',');
-            int a1 = std::stoi(a1_str);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1,
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
-            // Read remaining groups (transport types)
-            while (std::getline(ss, group_str, ',')) {
-                groups.push_back(group_str);
-            }
+    if (!renderer) {
+        MessageBoxA(NULL, SDL_GetError(), "Renderer Creation Error", MB_ICONERROR | MB_OK);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
 
-            // Creating connections
-            for (size_t i = 0; i < groups.size(); ++i) {
-                std::vector<int> values = parseGroup(groups[i]);
-                int type = static_cast<int>(i + 1); // taxi=1, bus=2, underground=3, ferry=4
-                for (int val : values) {
-                    //create connection only if a1 < val (prevents duplicates)
-                    if (a1 < val) {
-                        m_pNodes[a1].connectTo(&m_pNodes[val], type);
-                        std::cout << "Nodes connected " << a1 << " to " << val << " by " << type << "\n";
-                    }
+    std::string pos_file = "nodes_with_station.csv";
+    std::string con_file = "polaczenia.csv";
+
+    GraphManager graph(199); // Zamiast 200 - tylko 199 węzłów
+    graph.LoadData(pos_file, con_file);
+
+    int maxX = graph.getBoundsX(graph.GetNodeCount());
+    int maxY = graph.getBoundsY(graph.GetNodeCount());
+    
+    std::cout << "Grid size: " << maxX << " x " << maxY << std::endl;
+    std::cout << "Controls:" << std::endl;
+    std::cout << "  L - Toggle legend" << std::endl;
+    std::cout << "  ESC - Exit" << std::endl;
+
+    bool running = true;
+    bool showLegend = true; // Domyślnie legenda widoczna
+    SDL_Event event;
+
+    // Stałe skalowanie (bez zmiennych do resizingu)
+    float scaleX = (WINDOW_WIDTH - 2 * PADDING) / static_cast<float>(maxX);
+    float scaleY = (WINDOW_HEIGHT - 2 * PADDING) / static_cast<float>(maxY);
+
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) running = false;
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
+                if (event.key.keysym.sym == SDLK_l) {
+                    showLegend = !showLegend; // Przełącz widoczność legendy
+                    std::cout << "Legend: " << (showLegend ? "ON" : "OFF") << std::endl;
                 }
             }
         }
 
-        file.close();
-    }
+        SDL_SetRenderDrawColor(renderer, 20, 20, 30, 255);
+        SDL_RenderClear(renderer);
 
-    Node* GetNode(int id) {
-        if (id < 1 || id > m_nodeCount) {
-            return nullptr;  
-        }
-        
-        return &m_pNodes[id];
-    }
+        // Draw connections z kolorami według typu
+        for (int i = 1; i <= graph.GetNodeCount(); ++i) {
+            Node* node = graph.GetNode(i);
+            if (!node) continue;
 
-    //get all node's neighborth (regardless of transport type)
-    std::vector<Node*> GetNeighbors(int nodeId) {
-        Node* node = GetNode(nodeId);
+            int x1 = static_cast<int>(node->x * scaleX) + PADDING;
+            int y1 = static_cast<int>(node->y * scaleY) + PADDING;
 
-        if (node == nullptr) {
-            return std::vector<Node*>();
-        }
-        
-        std::vector<Node*> neighbors;
-        
-        int connectionCount = node->connectionCount();
-        for (int i = 0; i < connectionCount; ++i) {
-            Node* neighbor = node->otherNode(i);
-            if (neighbor != nullptr) {
-                neighbors.push_back(neighbor);
+            int connCount = node->connectionCount();
+            for (int j = 0; j < connCount; ++j) {
+                Node* neighbor = node->otherNode(j);
+                Edge* edge = node->getEdge(j);
+
+                if (neighbor && edge && node->id < neighbor->id) {
+                    int x2 = static_cast<int>(neighbor->x * scaleX) + PADDING;
+                    int y2 = static_cast<int>(neighbor->y * scaleY) + PADDING;
+
+                    SDL_Color color = getColorForType(edge->type);
+                    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+                    SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+                }
             }
         }
-        
-        return neighbors;
-    }
 
-    std::vector<Node*> GetNeighborsByType(int nodeId, int type) {
-        Node* node = GetNode(nodeId);
-        
-        //empty vector if node doesnt excist
-        if (node == nullptr) {
-            return std::vector<Node*>();
+        // Draw nodes
+        for (int i = 1; i <= graph.GetNodeCount(); ++i) {
+            if (i == 200) continue; // Pomiń węzeł 200
+            
+            Node* node = graph.GetNode(i);
+            if (!node) continue;
+
+            int cx = static_cast<int>(node->x * scaleX) + PADDING;
+            int cy = static_cast<int>(node->y * scaleY) + PADDING;
+
+            // Białe węzły
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            drawCircle(renderer, cx, cy, NODE_RADIUS);
+            
+            // Narysuj numer POD węzłem (żółty tekst)
+            SDL_SetRenderDrawColor(renderer, 255, 255, 100, 255);
+            
+            // Oblicz pozycję tekstu (wycentrowany POD węzłem)
+            int textX = cx;
+            int textY = cy + NODE_RADIUS + 2;
+            
+            // Przesuń w lewo w zależności od liczby cyfr
+            if (i >= 100) textX -= 6;
+            else if (i >= 10) textX -= 2;
+            else textX -= 1;
+            
+            drawNumber(renderer, textX, textY, i);
         }
-        
-        return node->getNeighborsWithType(type);
+
+        // Legenda - rysuj tylko jeśli showLegend == true
+        if (showLegend) {
+            int legendX = 10;
+            int legendY = WINDOW_HEIGHT - 85;
+            
+            SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+            
+            // Taxi - żółty
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            SDL_RenderDrawLine(renderer, legendX, legendY, legendX + 30, legendY);
+            SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+            drawText(renderer, legendX + 35, legendY - 3, "TAXI");
+            
+            // Bus - zielony
+            legendY += 20;
+            SDL_SetRenderDrawColor(renderer, 0, 128, 0, 255);
+            SDL_RenderDrawLine(renderer, legendX, legendY, legendX + 30, legendY);
+            SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+            drawText(renderer, legendX + 35, legendY - 3, "BUS");
+            
+            // Metro - niebieski
+            legendY += 20;
+            SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
+            SDL_RenderDrawLine(renderer, legendX, legendY, legendX + 30, legendY);
+            SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+            drawText(renderer, legendX + 35, legendY - 3, "METRO");
+            
+            // Water - cyjan
+            legendY += 20;
+            SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255);
+            SDL_RenderDrawLine(renderer, legendX, legendY, legendX + 30, legendY);
+            SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+            drawText(renderer, legendX + 35, legendY - 3, "WATER");
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
     }
 
-    int GetNodeCount() const {
-        return m_nodeCount;
-    }
-
-    bool IsValidNode(int id) const {
-        return (id >= 1 && id <= m_nodeCount);
-    }
-};
-
-int main()
-{
-    std::string filename = "london_map.csv";
-    
-    GraphManager manager(200);
-    
-    manager.LoadFromFile(filename);
-    
-    std::cout << "\n======= Testing =========\n";
-    
-    std::cout << "Total nodes: " << manager.GetNodeCount() << "\n";
-    
-    std::cout << "is node 1 valid? " << (manager.IsValidNode(1) ? "Yes" : "No") << "\n";
-    std::cout << "is node 2137 valid? " << (manager.IsValidNode(999) ? "Yes" : "No") << "\n";
-    
-    Node* node1 = manager.GetNode(1);
-    if (node1 != nullptr) {
-        std::cout << "\nNode 1 info:\n";
-        std::cout << "  id: " << node1->id << "\n";
-        std::cout << "  pos: (" << node1->x << ", " << node1->y << ")\n";
-        std::cout << "  n connections: " << node1->connectionCount() << "\n";
-    }
-
-    std::vector<Node*> neighbors = manager.GetNeighbors(1);
-    std::cout << "\nNode 1 has " << neighbors.size() << " neighbors:\n";
-    for (Node* neighbor : neighbors) {
-        std::cout << "  - Node " << neighbor->id << "\n";
-    }
-    
-    std::vector<Node*> taxiNeighbors = manager.GetNeighborsByType(1, 1);
-    std::cout << "\nNode 1 has " << taxiNeighbors.size() << " taxi connections:\n";
-    for (Node* neighbor : taxiNeighbors) {
-        std::cout << "  - Node " << neighbor->id << "\n";
-    }
-
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
     return 0;
+}
+
+// WinMain — punkt wejścia dla aplikacji GUI
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+    return SDL_main(__argc, __argv);  // SDL redefiniuje main() jako SDL_main
 }
