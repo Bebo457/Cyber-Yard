@@ -649,6 +649,22 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
+    
+    std::vector<std::string> labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
+
+    // counters for Black and 2x tickets for Mr X
+    int black = -1, dbl = -1;
+    for (const auto& pl : m_vec_Players) {
+        if (pl.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
+            black = pl.GetBlackTickets(); // 5 for Mr X
+            dbl = pl.GetDoubleMoveTickets(); // 2 for Mr X
+            break;
+        }
+    }
+    std::vector<int> counts = { -1, black, dbl, -1, -1, -1 };
+
+    // to HUD
+    ScotlandYard::UI::SetTopBar(labels, {}, counts);
     ScotlandYard::UI::SetRound(1);
     ScotlandYard::UI::RenderHUD(p_App);
 
@@ -676,6 +692,7 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
         float f_ScrollInput = event.wheel.y * k_CameraScrollAcceleration;
         m_f_CameraAngleVelocity -= f_ScrollInput;
     }
+
 }
 
 std::vector<GameState::StationCircle> GameState::LoadCirclePositionsFromCSV(const std::string& filePath)

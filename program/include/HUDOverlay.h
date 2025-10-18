@@ -41,7 +41,7 @@ namespace UI {
         int slotRadiusPx = 5;
 
         // Layout top-bara
-        float pillsGapPx = 8.0f;
+        float pillsGapPx = 12.0f;
         float pillsPadXPx = 14.0f;
         float pillsPadYPx = 6.0f;
     };
@@ -61,7 +61,8 @@ namespace UI {
     void SetHUDStyle(const HUDStyle& style);
     void SetTicketStates(const std::vector<TicketSlot>& slots);
     void SetTopBar(const std::vector<std::string>& labels,
-        const std::vector<Color>& pillColors);
+        const std::vector<Color>& pillColors,
+        const std::vector<int>& counts);
     void SetRound(int round_1_to_24);
 
     void RenderHUD(Core::Application* p_App);

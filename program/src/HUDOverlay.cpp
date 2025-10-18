@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <array>
 
 namespace ScotlandYard {
 namespace UI {
@@ -31,6 +32,9 @@ namespace UI {
         int g_i_Round = 1;
 
         std::vector<TicketSlot> g_vec_TicketSlots(k_TicketSlotCount);
+        std::vector<int> g_vec_PillCounts;
+        std::vector<std::array<float, 4>> g_vec_PillRectNDC;
+
 
         std::vector<std::string> g_vec_PillLabels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
         std::vector<Color> g_vec_PillColors = {
@@ -178,6 +182,7 @@ namespace UI {
             f_BY0 = g_HUDStyle.botY0 + f_IY; f_BY1 = g_HUDStyle.botY1 + f_IY;
         }
 
+
         void drawTopBar(float f_X0, float f_Y0, float f_X1, float f_Y1, Core::Application* p_App) {
             drawRoundedRect(f_X0, f_Y0, f_X1, f_Y1, g_HUDStyle.barColor, pxToNDC(g_HUDStyle.barRadiusPx), p_App);
 
@@ -226,6 +231,7 @@ namespace UI {
 
             // Tickets layout
             float f_CurRight = f_CapAreaRight;
+            g_vec_PillRectNDC.clear();
             for (int i = int(g_vec_PillLabels.size()) - 1; i >= 1; --i) {
                 const std::string& s_Label = g_vec_PillLabels[i];
                 Color pillColor = g_vec_PillColors[i - 1 < (int)g_vec_PillColors.size() ? i - 1 : 0];
@@ -245,9 +251,43 @@ namespace UI {
 
                 f_CurRight = f_CapX0 - f_Gap;
                 if (f_CurRight <= f_InnerX0) break;
+              
+                // drawing number of tickets
+                int count = -1;
+                int pillIdx = i;
+                if (!g_vec_PillCounts.empty() && pillIdx < (int)g_vec_PillCounts.size())
+                    count = g_vec_PillCounts[pillIdx];
+
+                bool isBlack = (s_Label == "Black") || (pillIdx == 1);
+                bool isDouble = (s_Label == "2x") || (pillIdx == 2);
+
+                if ((isBlack || isDouble) && count >= 0) {
+                    float h = (f_InnerY1 - f_InnerY0);
+                    float s = h * 0.80f;
+                    float gap = -h * 2.65f; // padding
+
+                    float bx0 = f_CapX1 + gap;
+                    float bx1 = bx0 + s;
+                    float by0 = f_InnerY0 + (h - s) * 0.5f;
+                    float by1 = by0 + s;
+
+                    
+                    drawTextCentered(
+                        std::to_string(std::max(0, std::min(99, count))),
+                        bx0, by0, bx1, by1,
+                        { 1, 1, 1, 1 },
+                        p_App
+                    );
+                }
+
+
+
             }
         }
 
+       
+        
+        
         constexpr float k_BottomBarGapPx = 10.0f;
         constexpr float k_BottomBarMarginPx = 6.0f;
 
@@ -340,9 +380,18 @@ namespace UI {
         if (g_vec_TicketSlots.size() > k_TicketSlotCount) g_vec_TicketSlots.resize(k_TicketSlotCount);
     }
 
+    void SetTopBar(const std::vector<std::string>& vec_Labels,
+        const std::vector<Color>& vec_PillColors,
+        const std::vector<int>& vec_Counts) {
+        if (!vec_Labels.empty()) g_vec_PillLabels = vec_Labels;
+        if (!vec_PillColors.empty()) g_vec_PillColors = vec_PillColors;
+        g_vec_PillCounts = vec_Counts;
+    }
+
     void SetTopBar(const std::vector<std::string>& vec_Labels, const std::vector<Color>& vec_PillColors) {
         if (!vec_Labels.empty()) g_vec_PillLabels = vec_Labels;
         if (!vec_PillColors.empty()) g_vec_PillColors = vec_PillColors;
+        g_vec_PillCounts.clear();
     }
 
     void SetRound(int i_Round) {
