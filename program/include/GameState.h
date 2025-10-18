@@ -42,11 +42,18 @@ private:
     GLuint m_VBO_Plane;
     GLuint m_ShaderProgram_Plane;
 
-    std::vector<glm::vec2> m_vec_CirclePositions;
     GLuint m_ShaderProgram_Circle;
     GLuint m_VAO_Circle;
     GLuint m_VBO_Circle;
     int m_i_CircleVertexCount;
+    std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
+    struct StationCircle {
+        glm::vec2 position;
+        std::vector<std::string> transportTypes; // np. {"taxi", "bus"}
+        int stationID;
+    };
+    std::vector<StationCircle> m_vec_CircleStations;
+    std::vector<StationCircle> LoadCirclePositionsFromCSV(const std::string& filePath);
 
     SDL_Window* m_p_Window;
 
@@ -77,7 +84,8 @@ private:
     static constexpr float k_MinCameraAngle = -1.55f;  // -90 degrees
     static constexpr float k_MaxCameraAngle = -0.2915f;  // ~-16.7 degrees
 
-    std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
+   
+
     void LoadTextures(Core::Application* p_App);
 
     // Graph manager used by the game state to query connections
@@ -87,6 +95,21 @@ private:
     std::mutex m_mtx_Players;
 
     std::vector<Core::Player> m_vec_Players;
+    struct PlayerToken {
+        glm::vec3 color;
+        float radius;
+    };
+    std::vector<PlayerToken> m_vec_PlayerTokens;
+    std::vector<float> generateCylinderVertices(float radius, float height, int segments);    
+    std::vector<float> generateHemisphereVertices(float radius, int segments);
+
+    // Player token 
+    GLuint m_VAO_Cylinder = 0;
+    GLuint m_VBO_Cylinder = 0;
+    int m_i_CylinderVertexCount = 0;
+    GLuint m_VAO_Hemisphere = 0;
+    GLuint m_VBO_Hemisphere = 0;
+    int m_i_HemisphereVertexCount = 0;
 
     void AccelerateCameraForward(float f_DeltaTime);
     void AccelerateCameraBackward(float f_DeltaTime);

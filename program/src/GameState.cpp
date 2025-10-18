@@ -47,7 +47,7 @@ void GameState::OnEnter() {
     m_b_GameActive = true;
 
     // ==============================
-    // Dane wierzchołków (pozycja, kolor, UV)
+    // Dane wierzchołków planszy (pozycja, kolor, UV)
     // ==============================
     float size = 1.0f;
     float planeVertices[] = {
@@ -61,15 +61,21 @@ void GameState::OnEnter() {
     };
 
     // ==============================
-    // Pozycje kółek
+    // Pozycje kółek z pliku CSV
     // ==============================
-    m_vec_CirclePositions = {
-        {-0.9f, -0.9f},
-        {-0.5f, -0.9f},
-        { 0.0f, -0.9f},
-        { 0.5f, -0.9f},
-        { 0.9f, -0.9f}
-    };
+    m_vec_CircleStations = LoadCirclePositionsFromCSV("../../Graphs/nodes_with_station.csv");
+
+    if (m_vec_CircleStations.empty()) {
+        std::cerr << "[GameState] Warning: No positions loaded from CSV, using defaults.\n";
+
+        m_vec_CircleStations = {
+            { glm::vec2(-0.9f, -0.9f), {"taxi"} },
+            { glm::vec2(-0.5f, -0.9f), {"bus"} },
+            { glm::vec2( 0.0f, -0.9f), {"metro"} },
+            { glm::vec2( 0.5f, -0.9f), {"bus", "metro"} },
+            { glm::vec2( 0.9f, -0.9f), {"taxi", "bus", "metro"} }
+        };
+    }
 
     // ==============================
     // VAO/VBO planszy
@@ -111,6 +117,31 @@ void GameState::OnEnter() {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
+    glBindVertexArray(0);
+
+   // ==============================
+    // VAO/VBO cylindra i półkuli pionka
+    // ==============================
+    std::vector<float> cylVerts = generateCylinderVertices(0.05f, 0.1f, 20); // radius, height, segments
+    m_i_CylinderVertexCount = static_cast<int>(cylVerts.size() / 3);
+    glGenVertexArrays(1, &m_VAO_Cylinder);
+    glGenBuffers(1, &m_VBO_Cylinder);
+    glBindVertexArray(m_VAO_Cylinder);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Cylinder);
+    glBufferData(GL_ARRAY_BUFFER, cylVerts.size() * sizeof(float), cylVerts.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+
+    std::vector<float> hemiVerts = generateHemisphereVertices(0.05f, 30); // radius, segments
+    m_i_HemisphereVertexCount = static_cast<int>(hemiVerts.size() / 3);
+    glGenVertexArrays(1, &m_VAO_Hemisphere);
+    glGenBuffers(1, &m_VBO_Hemisphere);
+    glBindVertexArray(m_VAO_Hemisphere);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Hemisphere);
+    glBufferData(GL_ARRAY_BUFFER, hemiVerts.size() * sizeof(float), hemiVerts.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
     glBindVertexArray(0);
 
     // ==============================
@@ -172,9 +203,10 @@ void GameState::OnEnter() {
 
     const char* circleFragmentShaderSrc = R"(
         #version 330 core
+        uniform vec3 circleColor;
         out vec4 FragColor;
         void main() {
-            FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            FragColor = vec4(circleColor, 1.0);
         }
     )";
 
@@ -503,8 +535,8 @@ void GameState::Render(Core::Application* p_App) {
 
     glm::mat4 MVP = projection * view * model;
 
-    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Plane, "MVP");
-    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+    GLuint mvpLocPlane = glGetUniformLocation(m_ShaderProgram_Plane, "MVP");
+    glUniformMatrix4fv(mvpLocPlane, 1, GL_FALSE, glm::value_ptr(MVP));
 
     // Ustawienie tekstury
     glActiveTexture(GL_TEXTURE0);
@@ -517,19 +549,103 @@ void GameState::Render(Core::Application* p_App) {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 
-    // Rysowanie kółek
+    // Rysowanie wielokolorowych kółek
     glUseProgram(m_ShaderProgram_Circle);
+    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
+    GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
 
-    for (auto& pos : m_vec_CirclePositions) {
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
+    float baseScale = 0.5f;      // White circle base scale
+    float ringStep = 0.1f;       // Step increase for each transport type
+    float yStep = 0.005f;         // Vertical offset step to prevent z-fighting
+
+    for (const auto& station : m_vec_CircleStations)
+    {
+        glm::mat4 modelBase = glm::mat4(1.0f);
+        modelBase = glm::translate(modelBase, glm::vec3(station.position.x, 0.0f, station.position.y));
+
+        // Twarda kolejność typów transportu od dołu do góry
+        std::vector<std::string> order = { "metro", "bus", "taxi", "water" };
+
+        // Filtrujemy tylko typy, które są w stacji
+        std::vector<std::string> typesPresent;
+        for (const auto& t : order)
+            if (std::find(station.transportTypes.begin(), station.transportTypes.end(), t) != station.transportTypes.end())
+                typesPresent.push_back(t);
+
+        int count = static_cast<int>(typesPresent.size());
+        for (int i = 0; i < count; ++i)
+        {
+            const std::string& type = typesPresent[i];
+            glm::vec3 color;
+
+            if (type == "metro") color = glm::vec3(1.0f, 0.0f, 0.0f);      // czerwony
+            else if (type == "bus") color = glm::vec3(0.0f, 1.0f, 0.0f);   // zielony
+            else if (type == "taxi") color = glm::vec3(1.0f, 1.0f, 0.0f);  // żółty
+            else color = glm::vec3(0.0f, 0.4f, 1.0f);                      // woda/łódź
+
+            // Odwrócone skalowanie: największe na dole
+            float scale = baseScale + (count - i) * ringStep;
+            float yOffset = 0.01f + i * yStep;
+
+            glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yOffset, 0.0f));
+            model = glm::scale(model, glm::vec3(scale));
+            glm::mat4 MVP = projection * view * model;
+
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+            glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+
+            glBindVertexArray(m_VAO_Circle);
+            glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+            glBindVertexArray(0);
+        }
+
+        glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, 0.01f + count * yStep, 0.0f));
+        model = glm::scale(model, glm::vec3(baseScale));
         glm::mat4 MVP = projection * view * model;
 
-        GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 1.0f)));
 
         glBindVertexArray(m_VAO_Circle);
         glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+        glBindVertexArray(0);
+    }
+
+    for (const auto& player : m_vec_Players)
+    {
+        if (player.GetType() != Core::PlayerType::Detective) continue;
+
+        int nodeId = player.GetOccupiedNode();
+        auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                            [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
+        if (it == m_vec_CircleStations.end()) continue;
+
+        glm::vec2 pos = it->position;
+
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
+        model = glm::scale(model, glm::vec3(0.4f));
+        
+        // Kolor detektywa (np. niebieski)
+        glm::vec3 color = glm::vec3(0.0f, 0.0f, 1.0f);
+        glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+        
+        // Body
+        glm::mat4 cylModel = glm::scale(model,glm::vec3(1.0f));
+        glm::mat4 MVP = projection * view * cylModel;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+        glBindVertexArray(m_VAO_Cylinder);
+        glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
+        glBindVertexArray(0);
+
+        // Top
+        glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f)); // przesunięcie na górę cylindra
+        MVP = projection * view * hemiModel;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+        glBindVertexArray(m_VAO_Hemisphere);
+        glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
         glBindVertexArray(0);
     }
 
@@ -562,6 +678,68 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     }
 }
 
+std::vector<GameState::StationCircle> GameState::LoadCirclePositionsFromCSV(const std::string& filePath)
+{
+    std::vector<StationCircle> stations;
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        std::cerr << "[GameState] Could not open CSV file: " << filePath << std::endl;
+        return stations;
+    }
+
+    std::string line;
+    bool b_FirstLine = true;
+    const float k_MapSize = 13.0f;
+    const float k_HalfMap = k_MapSize / 2.0f;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+
+        if (b_FirstLine) {
+            b_FirstLine = false;
+            continue;
+        }
+
+        std::stringstream ss(line);
+        std::string idStr, xStr, yStr, typeStr;
+
+        if (!std::getline(ss, idStr, ',')) continue;
+        if (!std::getline(ss, xStr, ',')) continue;
+        if (!std::getline(ss, yStr, ',')) continue;
+        if (!std::getline(ss, typeStr, ',')) continue;
+
+        try {
+            StationCircle circle;
+
+            float x = std::stof(xStr);
+            float y = std::stof(yStr);
+            circle.position = glm::vec2(x, y);
+
+            // float normX = (x - k_HalfMap) / k_HalfMap;
+            // float normY = (y - k_HalfMap) / k_HalfMap;
+            // circle.position = glm::vec2(normX, -normY);
+
+            circle.stationID = std::stoi(idStr);
+
+            // rozbij typy transportu po podkreśleniach
+            std::stringstream ssType(typeStr);
+            std::string transport;
+            while (std::getline(ssType, transport, '_')) {
+                circle.transportTypes.push_back(transport);
+            }
+
+            stations.push_back(circle);
+        }
+        catch (...) {
+            std::cerr << "[GameState] Invalid CSV line: " << line << std::endl;
+        }
+    }
+
+    file.close();
+    std::cout << "[GameState] Loaded " << stations.size() << " station circles from CSV.\n";
+    return stations;
+}
+
 std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segments) {
     std::vector<float> vec_Vertices;
 
@@ -580,6 +758,91 @@ std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segme
     }
 
     return vec_Vertices;
+}
+
+std::vector<float> GameState::generateCylinderVertices(float radius, float height, int segments)
+{
+    std::vector<float> verts;
+    constexpr float PI = 3.14159265358979323846f;
+
+    for (int i = 0; i < segments; ++i)
+    {
+        float theta1 = (float)i / segments * 2.0f * PI;
+        float theta2 = (float)(i+1) / segments * 2.0f * PI;
+
+        float x1 = radius * cos(theta1);
+        float z1 = radius * sin(theta1);
+        float x2 = radius * cos(theta2);
+        float z2 = radius * sin(theta2);
+
+        // boczna ściana
+        verts.push_back(x1); verts.push_back(0.0f); verts.push_back(z1);
+        verts.push_back(x2); verts.push_back(0.0f); verts.push_back(z2);
+        verts.push_back(x2); verts.push_back(height); verts.push_back(z2);
+
+        verts.push_back(x1); verts.push_back(0.0f); verts.push_back(z1);
+        verts.push_back(x2); verts.push_back(height); verts.push_back(z2);
+        verts.push_back(x1); verts.push_back(height); verts.push_back(z1);
+
+        // dolna podstawa
+        verts.push_back(0.0f); verts.push_back(0.0f); verts.push_back(0.0f);
+        verts.push_back(x2); verts.push_back(0.0f); verts.push_back(z2);
+        verts.push_back(x1); verts.push_back(0.0f); verts.push_back(z1);
+
+        // górna podstawa
+        verts.push_back(0.0f); verts.push_back(height); verts.push_back(0.0f);
+        verts.push_back(x1); verts.push_back(height); verts.push_back(z1);
+        verts.push_back(x2); verts.push_back(height); verts.push_back(z2);
+    }
+
+    return verts;
+}
+
+std::vector<float> GameState::generateHemisphereVertices(float radius, int segments)
+{
+    std::vector<float> verts;
+    constexpr float PI = 3.14159265359f;
+
+    for(int i = 0; i < segments / 2; ++i)
+    {
+        float theta1 = PI * i / segments;       // dolny pierścień
+        float theta2 = PI * (i + 1) / segments; // górny pierścień
+
+        for(int j = 0; j < segments; ++j)
+        {
+            float phi1 = 2.0f * PI * j / segments;
+            float phi2 = 2.0f * PI * (j + 1) / segments;
+
+            // cztery wierzchołki kwadratu -> dwa trójkąty
+            float x1 = radius * sin(theta1) * cos(phi1);
+            float y1 = radius * cos(theta1);
+            float z1 = radius * sin(theta1) * sin(phi1);
+
+            float x2 = radius * sin(theta2) * cos(phi1);
+            float y2 = radius * cos(theta2);
+            float z2 = radius * sin(theta2) * sin(phi1);
+
+            float x3 = radius * sin(theta2) * cos(phi2);
+            float y3 = radius * cos(theta2);
+            float z3 = radius * sin(theta2) * sin(phi2);
+
+            float x4 = radius * sin(theta1) * cos(phi2);
+            float y4 = radius * cos(theta1);
+            float z4 = radius * sin(theta1) * sin(phi2);
+
+            // trójkąt 1
+            verts.push_back(x1); verts.push_back(y1); verts.push_back(z1);
+            verts.push_back(x2); verts.push_back(y2); verts.push_back(z2);
+            verts.push_back(x3); verts.push_back(y3); verts.push_back(z3);
+
+            // trójkąt 2
+            verts.push_back(x1); verts.push_back(y1); verts.push_back(z1);
+            verts.push_back(x3); verts.push_back(y3); verts.push_back(z3);
+            verts.push_back(x4); verts.push_back(y4); verts.push_back(z4);
+        }
+    }
+
+    return verts;
 }
 
 void GameState::AccelerateCameraForward(float f_DeltaTime) {
