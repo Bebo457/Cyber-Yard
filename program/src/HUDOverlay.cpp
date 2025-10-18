@@ -44,6 +44,7 @@ namespace UI {
             {0xED / 255.0f, 0xD1 / 255.0f, 0x00 / 255.0f, 1.0f},
             {0xF5 / 255.0f, 0x51 / 255.0f, 0xAE / 255.0f, 1.0f},
             {0x41 / 255.0f, 0x84 / 255.0f, 0x3D / 255.0f, 1.0f},
+            {0x00 / 255.0f, 0x60 / 255.0f, 0xFF / 255.0f, 1.0f}, // water
         };
 
         float pxToNDC(float f_Px) { return (2.0f * f_Px) / float(g_i_ViewportHeight); }
@@ -339,17 +340,48 @@ namespace UI {
 
                 drawRoundedRect(f_X, f_SY0, f_X + f_SlotW, f_SY1, c, pxToNDC(g_HUDStyle.slotRadiusPx), p_App);
 
-                char buf[4];
-                std::snprintf(buf, sizeof(buf), "%d", i + 1);
+                const TicketSlot& ts = g_vec_TicketSlots[i];
+                bool replaced = false;
+                if (ts.used && ts.mark != TicketMark::None) {
+                    float padX = px_to_ndcX(4.0f);
+                    float padY = px_to_ndcY(4.0f);
 
-                // only for number in slots
-                drawTextCenteredWithDY(buf,
-                    f_X, f_SY0, f_X + f_SlotW, f_SY1,
-                    g_HUDStyle.textColor,
-                    g_HUDStyle.slotNumberDYPx,  // pixels
-                    p_App
-                );
+                    float ix0 = f_X + padX;
+                    float ix1 = f_X + f_SlotW - padX;
+                    float iy0 = f_SY0 + padY;
+                    float iy1 = f_SY1 - padY;
 
+                    Color bg = { 1.f, 1.f, 1.f, 0.10f };
+                    drawRoundedRect(ix0, iy0, ix1, iy1, bg, pxToNDC(g_HUDStyle.slotRadiusPx), p_App);
+
+                    const char* label = "";
+                    switch (ts.mark) {
+                    case TicketMark::Taxi:       label = "T";  break;
+                    case TicketMark::Bus:        label = "B";  break;
+                    case TicketMark::Metro:      label = "M";  break;
+                    case TicketMark::Water:      label = "W";  break;
+                    case TicketMark::Black:      label = "BL"; break;
+                    case TicketMark::DoubleMove: label = "2x"; break;
+                    default: break;
+                    }
+
+                    drawTextCenteredWithDY(
+                        label,
+                        f_X, f_SY0, f_X + f_SlotW, f_SY1,
+                        g_HUDStyle.textColor, g_HUDStyle.slotNumberDYPx, p_App
+                    );
+                    replaced = true;
+                }
+
+                if (!replaced) {
+                    char buf[4];
+                    std::snprintf(buf, sizeof(buf), "%d", i + 1);
+                    drawTextCenteredWithDY(
+                        buf,
+                        f_X, f_SY0, f_X + f_SlotW, f_SY1,
+                        g_HUDStyle.textColor, g_HUDStyle.slotNumberDYPx, p_App
+                    );
+                }
 
                 f_X += f_SlotW + f_Margin;
             }
@@ -407,6 +439,26 @@ namespace UI {
 
     void SetHUDStyle(const HUDStyle& style) {
         g_HUDStyle = style;
+    }
+
+    void SetSlotMark(int round_1_to_24, TicketMark mark, bool markUsed) {
+        int idx = std::clamp(round_1_to_24, 1, (int)g_vec_TicketSlots.size()) - 1;
+        if (idx < 0 || idx >= (int)g_vec_TicketSlots.size()) return;
+        g_vec_TicketSlots[idx].mark = mark;
+        if (markUsed) g_vec_TicketSlots[idx].used = true;
+        // colors from tickets
+        Color c = { -1.f, -1.f, -1.f, -1.f };
+        switch (mark) {
+        case TicketMark::Taxi:       c = g_vec_PillColors[2]; break;
+        case TicketMark::Bus:        c = g_vec_PillColors[4]; break;
+        case TicketMark::Metro:      c = g_vec_PillColors[3]; break;
+        case TicketMark::Water:      c = g_vec_PillColors[5]; break;
+        case TicketMark::Black:      c = g_vec_PillColors[0]; break;
+        case TicketMark::DoubleMove: c = g_vec_PillColors[1]; break;
+        default: break;
+        }
+
+        g_vec_TicketSlots[idx].color = c;
     }
 
     void SetTicketStates(const std::vector<TicketSlot>& slots) {

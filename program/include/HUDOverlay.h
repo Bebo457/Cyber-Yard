@@ -18,6 +18,20 @@ namespace UI {
     constexpr float k_DefaultInsetYMax = 0.20f;
     constexpr float k_DefaultInsetXMax = 0.45f;
 
+    enum class TicketMark {
+        None = 0, Taxi, Bus, Metro, Water, Black, DoubleMove
+    };
+
+    struct TicketSlot {
+        Color color{ -1.f,-1.f,-1.f,-1.f };
+        bool  used = false;
+        TicketMark mark = TicketMark::None;   // NOWE: co pokazać zamiast numeru
+    };
+
+    // used tickets
+    void SetSlotMark(int round_1_to_24, TicketMark mark, bool markUsed = true);
+
+
 
     struct HUDStyle {
         // vertical positions of HUD (NDC: +1 up)
@@ -46,11 +60,6 @@ namespace UI {
         float pillsPadYPx = 6.0f;
 
         float slotNumberDYPx = -3.0f;
-    };
-
-    struct TicketSlot {
-        Color color = { -1.f, -1.f, -1.f, -1.f };
-        bool  used = false;
     };
 
 

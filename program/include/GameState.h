@@ -38,6 +38,10 @@ private:
     bool m_b_Camera3D;
     bool m_b_TexturesLoaded;
 
+    int m_i_Round = 1;
+    std::vector<bool> m_vec_MovedThisRound;
+    int m_leftToMove = 0;
+
     GLuint m_VAO_Plane;
     GLuint m_VBO_Plane;
     GLuint m_ShaderProgram_Plane;

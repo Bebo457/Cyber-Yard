@@ -237,6 +237,7 @@ void GameState::OnEnter() {
     // ==============================
     m_vec_Players.clear();
 
+
     const std::string s_PosFile = "../../Graphs/nodes_with_station.csv";
     const std::string s_ConFile = "../../Graphs/polaczenia.csv";
     GraphManager gm(200);
@@ -250,7 +251,9 @@ void GameState::OnEnter() {
         m_vec_Players.emplace_back(Core::PlayerType::Detective, 2);
         m_vec_Players.emplace_back(Core::PlayerType::Detective, 3);
         m_vec_Players.emplace_back(Core::PlayerType::Detective, 4);
-    } else {
+    } 
+    else 
+    {
         std::random_device rd;
         std::mt19937 rng(rd());
         std::uniform_int_distribution<int> dist(1, i_NodeCount);
@@ -271,7 +274,12 @@ void GameState::OnEnter() {
             int i_DNode = pick_unique(vec_Used);
             m_vec_Players.emplace_back(Core::PlayerType::Detective, i_DNode);
         }
+
     }
+
+    m_vec_MovedThisRound.assign(m_vec_Players.size(), false);
+    m_leftToMove = static_cast<int>(m_vec_Players.size());
+    m_i_Round = 1;
 
     // Print player positions to console
     for (const auto& player : m_vec_Players) {
@@ -313,7 +321,8 @@ void GameState::OnEnter() {
             }
 
             int idx = -1;
-            try { idx = std::stoi(sel); } catch(...) { std::cout << "[Console] Invalid selection\n"; continue; }
+            try { idx = std::stoi(sel); }
+            catch (...) { std::cout << "[Console] Invalid selection\n"; continue; }
 
             int curNode = -1;
             {
@@ -328,7 +337,7 @@ void GameState::OnEnter() {
 
             std::cout << "[Console] Available moves:\n";
             for (size_t i = 0; i < conns.size(); ++i) {
-                std::string tname = (conns[i].i_TransportType == 1 ? "taxi" : (conns[i].i_TransportType==2?"bus":(conns[i].i_TransportType==3?"metro":"water")));
+                std::string tname = (conns[i].i_TransportType == 1 ? "taxi" : (conns[i].i_TransportType == 2 ? "bus" : (conns[i].i_TransportType == 3 ? "metro" : "water")));
                 std::cout << i << ": to node " << conns[i].i_NodeId << " via " << tname << "\n";
             }
 
@@ -336,35 +345,83 @@ void GameState::OnEnter() {
             std::string msel;
             if (!std::getline(std::cin, msel)) { m_b_ConsoleThreadRunning.store(false); break; }
             if (msel.empty()) { std::cout << "[Console] Empty selection\n"; continue; }
-            int midx = -1; try { midx = std::stoi(msel); } catch(...) { std::cout << "[Console] Invalid move index\n"; continue; }
+            int midx = -1; try { midx = std::stoi(msel); }
+            catch (...) { std::cout << "[Console] Invalid move index\n"; continue; }
             if (midx < 0 || midx >= static_cast<int>(conns.size())) { std::cout << "[Console] Move index out of range\n"; continue; }
 
             int dest = conns[midx].i_NodeId;
             int transport = conns[midx].i_TransportType;
             bool moved = false;
+            // 1 move per round guard
+            if (idx < 0 || idx >= (int)m_vec_MovedThisRound.size()) {
+                std::cout << "[Console] Invalid player index.\n";
+                continue;
+            }
+            if (m_vec_MovedThisRound[idx]) {
+                std::cout << "[Console] Player " << idx
+                    << " has already moved in Round " << m_i_Round
+                    << ". Wait for next round.\n";
+                continue;
+            }
+
             {
                 std::lock_guard<std::mutex> lock(m_mtx_Players);
                 auto& player = m_vec_Players[idx];
                 bool ok = true;
                 if (transport == 1) { // taxi
                     ok = player.SpendTaxiTicket();
-                } else if (transport == 2) { // bus
+                }
+                else if (transport == 2) { // bus
                     ok = player.SpendBusTicket();
-                } else if (transport == 3) { // metro
+                }
+                else if (transport == 3) { // metro
                     ok = player.SpendMetroTicket();
-                } else if (transport == 4) { // water
+                }
+                else if (transport == 4) { // water
                     ok = player.SpendWaterTicket();
                 }
 
                 if (!ok) {
                     std::cout << "[Console] Player " << idx << " does not have required ticket for this transport.\n";
-                } else {
+                }
+                else {
                     player.MoveTo(dest);
                     moved = true;
                 }
             }
-            if (moved) std::cout << "[Console] Moved player " << idx << " to node " << dest << "\n";
+            if (moved) {
+                std::cout << "[Console] Moved player " << idx << " to node " << dest << "\n";
+
+                // what tickets were used by Mr X
+                using UI::TicketMark;
+                {
+                    std::lock_guard<std::mutex> lock(m_mtx_Players);
+                    const auto& player = m_vec_Players[idx];
+                    if (player.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
+                        TicketMark mark = TicketMark::None;
+                        if (transport == 1) mark = TicketMark::Taxi;
+                        else if (transport == 2) mark = TicketMark::Bus;
+                        else if (transport == 3) mark = TicketMark::Metro;
+                        else if (transport == 4) mark = TicketMark::Water;
+                        UI::SetSlotMark(m_i_Round, mark, true);
+                    }
+                }
+
+                // who made a movement in current round
+                if (idx >= 0 && idx < (int)m_vec_MovedThisRound.size() && !m_vec_MovedThisRound[idx]) {
+                    m_vec_MovedThisRound[idx] = true;
+                    if (m_leftToMove > 0) m_leftToMove -= 1;
+                }
+
+                // if everyone made a move -> next round
+                if (m_leftToMove == 0) {
+                    m_i_Round = std::min(m_i_Round + 1, ScotlandYard::UI::k_TicketSlotCount);
+                    std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
+                    m_leftToMove = static_cast<int>(m_vec_Players.size());
+                }
+            }
         }
+
     });
 }
 
@@ -682,7 +739,7 @@ void GameState::Render(Core::Application* p_App) {
 
     // to HUD
     ScotlandYard::UI::SetTopBar(labels, {}, counts);
-    ScotlandYard::UI::SetRound(1);
+    ScotlandYard::UI::SetRound(m_i_Round);
     ScotlandYard::UI::RenderHUD(p_App);
 
 
