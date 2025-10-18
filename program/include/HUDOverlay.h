@@ -22,7 +22,7 @@ namespace UI {
     struct HUDStyle {
         // vertical positions of HUD (NDC: +1 up)
         float topY0 = 0.90f, topY1 = 1.0f;   // upper
-        float botY0 = -0.98f, botY1 = -0.89f; // footer
+        float botY0 = -0.98f, botY1 = -0.85f; // footer
 
         // horizontal margins
         float topInsetX = 0.22f;   // bigger value = shorter
@@ -44,6 +44,8 @@ namespace UI {
         float pillsGapPx = 12.0f;
         float pillsPadXPx = 14.0f;
         float pillsPadYPx = 6.0f;
+
+        float slotNumberDYPx = -3.0f;
     };
 
     struct TicketSlot {

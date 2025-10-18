@@ -36,6 +36,7 @@ namespace UI {
         std::vector<std::array<float, 4>> g_vec_PillRectNDC;
 
 
+
         std::vector<std::string> g_vec_PillLabels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
         std::vector<Color> g_vec_PillColors = {
             {0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 1.0f},
@@ -99,6 +100,7 @@ namespace UI {
             }
             return f_W;
         }
+
 
         void drawTextPx(const std::string& s_Text, float f_XPx, float f_BaselineYPx, float f_Scale,
             float f_R, float f_G, float f_B, Core::Application* p_App)
@@ -168,6 +170,28 @@ namespace UI {
             drawTextPx(s_Text, f_TX, f_Baseline, f_Scale, col.r, col.g, col.b, p_App);
         }
 
+        // for bottom bar
+        static void drawTextCenteredWithDY(const std::string& s_Text,
+            float f_X0, float f_Y0, float f_X1, float f_Y1,
+            Color col, float dyPx, Core::Application* p_App)
+        {
+            float f_LeftPx = ndcX_to_px(f_X0);
+            float f_RightPx = ndcX_to_px(f_X1);
+            float f_BottomPx = ndcY_to_px(f_Y0);
+            float f_TopPx = ndcY_to_px(f_Y1);
+
+            float f_RectHPx = std::max(1.0f, f_TopPx - f_BottomPx);
+            float f_TargetHPx = std::max(14.0f, f_RectHPx * 0.60f);
+            float f_Scale = f_TargetHPx / 48.0f;
+            float f_Baseline = f_BottomPx + (f_RectHPx * 0.20f) + f_TargetHPx * 0.8f - 10.0f + dyPx;
+
+            float f_TW = textWidthPx(s_Text, f_Scale, p_App);
+            float f_TX = (f_LeftPx + f_RightPx) * 0.5f - f_TW * 0.5f;
+
+            drawTextPx(s_Text, f_TX, f_Baseline, f_Scale, col.r, col.g, col.b, p_App);
+        }
+
+        
         void computeBars(float& f_TX0, float& f_TX1, float& f_TY0, float& f_TY1,
             float& f_BX0, float& f_BX1, float& f_BY0, float& f_BY1)
         {
@@ -214,17 +238,23 @@ namespace UI {
             float f_CapAreaRight = f_InnerX1;
 
             if (g_GLuint_TexCamera) {
-                float f_BtnH = f_InnerY1 - f_InnerY0;
+                const float kCamScale = 0.75f;
+
+                float f_BtnH = (f_InnerY1 - f_InnerY0) * kCamScale;
                 float f_BtnW = f_BtnH;
                 float f_BtnX1 = f_InnerX1;
                 float f_BtnX0 = f_BtnX1 - f_BtnW;
+
+                float f_CenterY = 0.5f * (f_InnerY0 + f_InnerY1);
+                float f_BtnY0 = f_CenterY - 0.5f * f_BtnH;
+                float f_BtnY1 = f_CenterY + 0.5f * f_BtnH;
 
                 g_f_CamBtnNdcX0 = f_BtnX0;
                 g_f_CamBtnNdcX1 = f_BtnX1;
                 g_f_CamBtnNdcY0 = f_InnerY0;
                 g_f_CamBtnNdcY1 = f_InnerY1;
 
-                drawIcon(g_GLuint_TexCamera, f_BtnX0, f_InnerY0, f_BtnX1, f_InnerY1, p_App);
+                drawIcon(g_GLuint_TexCamera, f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, p_App);
 
                 f_CapAreaRight = f_BtnX0 - f_Gap;
             }
@@ -285,9 +315,6 @@ namespace UI {
             }
         }
 
-       
-        
-        
         constexpr float k_BottomBarGapPx = 10.0f;
         constexpr float k_BottomBarMarginPx = 6.0f;
 
@@ -314,7 +341,15 @@ namespace UI {
 
                 char buf[4];
                 std::snprintf(buf, sizeof(buf), "%d", i + 1);
-                drawTextCentered(buf, f_X, f_SY0, f_X + f_SlotW, f_SY1, g_HUDStyle.textColor, p_App);
+
+                // only for number in slots
+                drawTextCenteredWithDY(buf,
+                    f_X, f_SY0, f_X + f_SlotW, f_SY1,
+                    g_HUDStyle.textColor,
+                    g_HUDStyle.slotNumberDYPx,  // pixels
+                    p_App
+                );
+
 
                 f_X += f_SlotW + f_Margin;
             }
