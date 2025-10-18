@@ -400,6 +400,23 @@ void GameState::OnExit() {
         glDeleteBuffers(1, &m_VBO_Circle);
         m_VBO_Circle = 0;
     }
+    if (m_VAO_Cylinder) {
+        glDeleteVertexArrays(1, &m_VAO_Cylinder);
+        m_VAO_Cylinder = 0;
+    }
+    if (m_VBO_Cylinder) {
+        glDeleteBuffers(1, &m_VBO_Cylinder);
+        m_VBO_Cylinder = 0;
+    }
+
+    if (m_VAO_Hemisphere) {
+        glDeleteVertexArrays(1, &m_VAO_Hemisphere);
+        m_VAO_Hemisphere = 0;
+    }
+    if (m_VBO_Hemisphere) {
+        glDeleteBuffers(1, &m_VBO_Hemisphere);
+        m_VBO_Hemisphere = 0;
+    }
     if (m_ShaderProgram_Plane) {
         glDeleteProgram(m_ShaderProgram_Plane);
         m_ShaderProgram_Plane = 0;
