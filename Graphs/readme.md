@@ -1,14 +1,10 @@
 `read_connections.cpp` allows to read the info about map from `.csv` file
 
-Structure of map file:
-Node id, Taxi cons, Bus cons, Underground cons, Ferry cons
+`draw_graph.cpp` allows to visualise connections.
 
-Separators:
-- Comma (,) separates columns.
-- Semicolon (;) separates node IDs within a column.
+To toggle all connections press T
 
-Example:
+To compile: 
 ```
-1,9; 8,46;58,46,
-2,20; 10,,,
+g++ draw_graph.cpp -I "Path to include directory" -L "Path to lib directory" -lSDL2main -lSDL2 -mwindows -o main.exe
 ```
