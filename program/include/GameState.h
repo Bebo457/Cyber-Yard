@@ -102,6 +102,7 @@ private:
     std::mutex m_mtx_Players;
 
     std::vector<Core::Player> m_vec_Players;
+    std::atomic_bool m_b_RequestMenuChange{false};
     struct PlayerToken {
         glm::vec3 color;
         float radius;
@@ -123,6 +124,21 @@ private:
     void AccelerateCameraLeft(float f_DeltaTime);
     void AccelerateCameraRight(float f_DeltaTime);
     void UpdateCameraPhysics(float f_DeltaTime);
+    // Winner type for end-of-game decisions
+    enum class Winner {
+        None = 0,
+        Detectives,
+        MisterX
+    };
+
+    // Check end of game conditions (e.g. max rounds reached). If winner != None, the specified
+    // winner is used when printing and stopping the game.
+    void CheckEndOfGame(Winner winner = Winner::None);
+
+    // Check whether any detective occupies the same node as MisterX. Requires m_mtx_Players held by caller
+    bool CheckCapture() const;
+    // Reset internal game data back to initial state (players cleared, round reset, HUD cleared)
+    void ResetToInitial();
 };
 
 } // namespace States

@@ -1,5 +1,6 @@
 #include "GameState.h"
 #include "Application.h"
+#include "StateManager.h"
 #include <GL/glew.h>
 
 #include <random>
@@ -285,6 +286,25 @@ void GameState::OnEnter() {
     m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
     m_i_Round.store(1);
 
+    // Ensure MisterX is the active player at the start of the game/rounds
+    {
+        std::lock_guard<std::mutex> lock(m_mtx_Players);
+        for (auto& p : m_vec_Players) {
+            if (p.GetType() == Core::PlayerType::MisterX) {
+                p.SetActive(true);
+            } else {
+                p.SetActive(false);
+            }
+        }
+    }
+
+    // Reset HUD / ticket marks so previous game's marks don't persist
+    {
+        std::vector<ScotlandYard::UI::TicketSlot> emptySlots(ScotlandYard::UI::k_TicketSlotCount);
+        ScotlandYard::UI::SetTicketStates(emptySlots);
+        ScotlandYard::UI::SetRound(m_i_Round.load());
+    }
+
     // Print player positions to console
     for (const auto& player : m_vec_Players) {
         printf("Player: %s\n", player.ToString().c_str());
@@ -333,6 +353,31 @@ void GameState::OnEnter() {
                 curNode = m_vec_Players[idx].GetOccupiedNode();
             }
 
+            // Enforce Mr X active-first move policy:
+            // If MrX is active this round, only he may move; if he's not active, he may not move.
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                int i_MrXIndex = -1;
+                bool b_MrXActive = false;
+                for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+                    if (m_vec_Players[i].GetType() == Core::PlayerType::MisterX) {
+                        i_MrXIndex = static_cast<int>(i);
+                        b_MrXActive = m_vec_Players[i].IsActive();
+                        break;
+                    }
+                }
+                if (i_MrXIndex != -1) {
+                    if (b_MrXActive && idx != i_MrXIndex) {
+                        std::cout << "[Console] Mr X is active this round — only he may move now.\n";
+                        continue;
+                    }
+                    if (!b_MrXActive && idx == i_MrXIndex) {
+                        std::cout << "[Console] Mr X already moved this round — wait for other players.\n";
+                        continue;
+                    }
+                }
+            }
+
             std::cout << "[Console] Player " << idx << " is at node " << curNode << "\n";
             auto conns = m_graph.GetConnections(curNode);
             if (conns.empty()) { std::cout << "[Console] No connections from this node.\n"; continue; }
@@ -356,6 +401,7 @@ void GameState::OnEnter() {
             try { i_MoveIndex = std::stoi(s_MoveSelection); }
             catch (...) { std::cout << "[Console] Invalid move index\n"; continue; }
             if (i_MoveIndex < 0 || i_MoveIndex >= static_cast<int>(conns.size())) { std::cout << "[Console] Move index out of range\n"; continue; }
+
 
             int i_DestinationNode = conns[i_MoveIndex].i_NodeId;
             int i_TransportType = conns[i_MoveIndex].i_TransportType;
@@ -406,18 +452,36 @@ void GameState::OnEnter() {
             if (b_Moved) {
                 std::cout << "[Console] Moved player " << idx << " to node " << i_DestinationNode << "\n";
 
-                // Track Mr X ticket usage for HUD
+                // After moving, check for capture (detective landed on MisterX)
+                bool b_Captured = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_mtx_Players);
+                    b_Captured = CheckCapture();
+                }
+                if (b_Captured) {
+                    // End game with detectives as winners
+                    CheckEndOfGame(Winner::Detectives);
+                    // break out of console loop if game inactive
+                    if (!m_b_GameActive) {
+                        m_b_ConsoleThreadRunning.store(false);
+                        break;
+                    }
+                }
+
+                // Track Mr X ticket usage for HUD and clear his active flag after he moves
                 using UI::TicketMark;
                 {
                     std::lock_guard<std::mutex> lock(m_mtx_Players);
-                    const auto& player = m_vec_Players[idx];
-                    if (player.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
+                    auto& ref_Player = m_vec_Players[idx];
+                    if (ref_Player.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
                         TicketMark mark = TicketMark::None;
                         if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
                         else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
                         else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
                         else if (i_TransportType == Core::k_TransportTypeWater) mark = TicketMark::Water;
                         UI::SetSlotMark(m_i_Round.load(), mark, true);
+                        // Mr X moved — clear his active flag so other players can move
+                        ref_Player.SetActive(false);
                     }
                 }
 
@@ -432,16 +496,32 @@ void GameState::OnEnter() {
                         }
                     }
 
-                    // If everyone made a move -> advance to next round
+                    // If everyone made a move -> either advance to next round or end the game if max reached
                     if (m_i_PlayersRemainingThisRound.load() == 0) {
                         int i_CurrentRound = m_i_Round.load();
-                        m_i_Round.store(std::min(i_CurrentRound + 1, Core::k_MaxRounds));
-                        std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
-                        m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
-                        std::cout << "[Console] === Round " << m_i_Round.load() << " begins ===\n";
+                        if (i_CurrentRound >= Core::k_MaxRounds) {
+                            // We have completed the final allowed round -> check end conditions
+                            std::cout << "[Console] === Completed final Round " << i_CurrentRound << " ===\n";
+                            CheckEndOfGame();
+                        } else {
+                            // advance to next round
+                            m_i_Round.store(i_CurrentRound + 1);
+                            std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
+                            m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
+                            std::cout << "[Console] === Round " << m_i_Round.load() << " begins ===\n";
+                            // At the start of each round, Mr X is the active player
+                            {
+                                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                                for (auto& p : m_vec_Players) {
+                                    if (p.GetType() == Core::PlayerType::MisterX) p.SetActive(true);
+                                    else p.SetActive(false);
+                                }
+                            }
+                        }
                     }
                 }
             }
+            // (previously cleared active selection here) - removed per request
         }
 
     });
@@ -504,10 +584,8 @@ void GameState::OnExit() {
         glDeleteProgram(m_ShaderProgram_Circle);
         m_ShaderProgram_Circle = 0;
     }
-    if (m_TextureID) {
-        glDeleteTextures(1, &m_TextureID);
-        m_TextureID = 0;
-    }
+    // Note: do not delete m_TextureID here -- textures are managed by Application's cache.
+    // ResetToInitial() will set m_TextureID to 0 so LoadTextures() can re-acquire or reload it.
     m_b_GameActive = false;
 
     m_b_ConsoleThreadRunning.store(false);
@@ -521,6 +599,28 @@ void GameState::OnExit() {
             m_t_ConsoleThread.detach();
         }
     }
+
+    // Ensure game data is reset when exiting so re-entering GameState starts fresh
+    ResetToInitial();
+}
+
+void GameState::ResetToInitial() {
+    std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+    std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+
+    m_vec_Players.clear();
+    m_vec_MovedThisRound.clear();
+    m_i_PlayersRemainingThisRound.store(0);
+    m_i_Round.store(1);
+    m_b_GameActive = false;
+    // ensure textures are reloaded next time we enter the state
+    m_b_TexturesLoaded = false;
+    m_TextureID = 0;
+
+    // Reset HUD
+    std::vector<ScotlandYard::UI::TicketSlot> emptySlots(ScotlandYard::UI::k_TicketSlotCount);
+    ScotlandYard::UI::SetTicketStates(emptySlots);
+    ScotlandYard::UI::SetRound(m_i_Round.load());
 }
 
 void GameState::OnPause() {
@@ -745,7 +845,51 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
-    
+    // Draw MisterX token(s) only when he is marked active AND it's a reveal round
+    auto fn_IsRevealRound = [](int i_RoundVal) {
+        return (i_RoundVal == 3 || i_RoundVal == 8 || i_RoundVal == 13 || i_RoundVal == 18 || i_RoundVal == 24);
+    };
+    int i_CurrentRoundForRender = m_i_Round.load();
+    if (fn_IsRevealRound(i_CurrentRoundForRender)) {
+        for (const auto& player : m_vec_Players) {
+            if (player.GetType() != Core::PlayerType::MisterX) continue;
+            if (!player.IsActive()) continue;
+
+            int nodeId = player.GetOccupiedNode();
+            auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                            [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
+            if (it == m_vec_CircleStations.end()) continue;
+
+            glm::vec2 pos = it->position;
+
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
+            model = glm::scale(model, glm::vec3(0.45f));
+
+            // MisterX colour (black)
+            glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
+            glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+
+            // Body
+            glm::mat4 cylModel = glm::scale(model,glm::vec3(1.0f));
+            glm::mat4 MVP = projection * view * cylModel;
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+            glBindVertexArray(m_VAO_Cylinder);
+            glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
+            glBindVertexArray(0);
+
+            // Top
+            glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
+            MVP = projection * view * hemiModel;
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+            glBindVertexArray(m_VAO_Hemisphere);
+            glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
+            glBindVertexArray(0);
+        }
+    }
+
     std::vector<std::string> labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
 
     // counters for Black and 2x tickets for Mr X
@@ -766,6 +910,71 @@ void GameState::Render(Core::Application* p_App) {
 
 
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+
+    // If the game requested to change to menu (user confirmed after end), do it here on the main thread
+    if (m_b_RequestMenuChange.load() && p_App) {
+        auto mgr = p_App->GetStateManager();
+        if (mgr) {
+            std::cout << "[GameState] Requesting state change to menu...\n";
+            mgr->ChangeState("menu");
+        }
+        // Clear the flag so we don't repeatedly request
+        m_b_RequestMenuChange.store(false);
+    }
+}
+
+// Called under any thread; will set game inactive and print message. For actual state change we set a flag
+// which is handled on the main thread in Render() to avoid threading into StateManager from console thread.
+void GameState::CheckEndOfGame(Winner winner) {
+    // Determine default winner if not provided: Mr X when rounds exhausted
+    if (winner == Winner::None) {
+        if (m_i_Round.load() >= Core::k_MaxRounds) {
+            winner = Winner::MisterX;
+        } else {
+            return; // no end condition
+        }
+    }
+
+    // Stop game active flag
+    m_b_GameActive = false;
+
+    if (winner == Winner::Detectives) {
+        std::cout << "[Game] Detectives win -- MisterX captured!\n";
+    } else if (winner == Winner::MisterX) {
+        std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
+    }
+
+    // Offer console prompt to return to menu. We must not call StateManager from here directly when
+    // invoked from the console thread; instead set a flag if user confirms. We'll block for input briefly
+    std::string response;
+    std::cout << "[Console] Return to Menu? (y/N): ";
+    if (std::getline(std::cin, response)) {
+        if (!response.empty() && (response[0] == 'y' || response[0] == 'Y')) {
+            m_b_RequestMenuChange.store(true);
+        }
+    } else {
+        // If stdin closed, default to not changing state but still stop the game
+        std::cout << "[Console] No console input available; remaining on End screen.\n";
+    }
+}
+
+bool GameState::CheckCapture() const {
+    // Assumes caller holds m_mtx_Players
+    int mrXNode = -1;
+    for (const auto& p : m_vec_Players) {
+        if (p.GetType() == Core::PlayerType::MisterX) {
+            mrXNode = p.GetOccupiedNode();
+            break;
+        }
+    }
+    if (mrXNode < 0) return false;
+
+    for (const auto& p : m_vec_Players) {
+        if (p.GetType() == Core::PlayerType::Detective && p.GetOccupiedNode() == mrXNode) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {

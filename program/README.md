@@ -7,7 +7,6 @@ This directory contains the game engine and framework code for Scotland Yard++.
 ## Quick Start
 
 ### Build
-
 ```bash
 # From this directory (program/)
 mkdir build && cd build
