@@ -54,12 +54,17 @@ namespace UI {
         int barRadiusPx = 5;
         int slotRadiusPx = 5;
 
-        // Layout top-bara
-        float pillsGapPx = 12.0f;
-        float pillsPadXPx = 14.0f;
-        float pillsPadYPx = 6.0f;
+        // Layout top-bar
+        static constexpr float k_PillsGapPx = 12.0f;
+        static constexpr float k_PillsPaddingXPx = 14.0f;
+        static constexpr float k_PillsPaddingYPx = 6.0f;
+        static constexpr float k_SlotNumberDeltaYPx = -3.0f;
+        static constexpr float k_CameraButtonScale = 0.75f;
 
-        float slotNumberDYPx = -3.0f;
+        float pillsGapPx = k_PillsGapPx;
+        float pillsPadXPx = k_PillsPaddingXPx;
+        float pillsPadYPx = k_PillsPaddingYPx;
+        float slotNumberDYPx = k_SlotNumberDeltaYPx;
     };
 
 
@@ -71,9 +76,9 @@ namespace UI {
 
     void SetHUDStyle(const HUDStyle& style);
     void SetTicketStates(const std::vector<TicketSlot>& slots);
-    void SetTopBar(const std::vector<std::string>& labels,
-        const std::vector<Color>& pillColors,
-        const std::vector<int>& counts);
+    void SetTopBar(const std::vector<std::string>& vec_Labels = {},
+        const std::vector<Color>& vec_PillColors = {},
+        const std::vector<int>& vec_Counts = {});
     void SetRound(int round_1_to_24);
 
     void RenderHUD(Core::Application* p_App);

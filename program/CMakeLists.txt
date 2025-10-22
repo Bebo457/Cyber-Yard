@@ -49,6 +49,7 @@ set(SOURCES
     src/GameState.cpp
     src/HUDOverlay.cpp
     src/Player.cpp
+    src/MapDataLoader.cpp
 )
 
 set(HEADERS
@@ -62,6 +63,8 @@ set(HEADERS
     include/GameState.h
     include/HUDOverlay.h
     include/Player.h
+    include/GameConstants.h
+    include/MapDataLoader.h
 )
 
 # EXE =================================================
@@ -106,6 +109,8 @@ if(WIN32)
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
         )
     endif()
+
+    # Copy assets (fonts, textures, icons, maps) to binary directory
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/assets
@@ -117,6 +122,8 @@ elseif(UNIX AND NOT APPLE)
         pthread
         dl
     )
+
+    # Copy assets (fonts, textures, icons, maps) to binary directory
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/assets"

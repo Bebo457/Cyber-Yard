@@ -2,6 +2,8 @@
 #define SCOTLANDYARD_STATES_GAMESTATE_H
 
 #include "IGameState.h"
+#include "GameConstants.h"
+#include "MapDataLoader.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -38,9 +40,11 @@ private:
     bool m_b_Camera3D;
     bool m_b_TexturesLoaded;
 
-    int m_i_Round = 1;
+    // Game round state - protected by m_mtx_GameState for thread safety
+    std::atomic<int> m_i_Round{1};
     std::vector<bool> m_vec_MovedThisRound;
-    int m_leftToMove = 0;
+    std::atomic<int> m_i_PlayersRemainingThisRound{0};
+    std::mutex m_mtx_GameState;
 
     GLuint m_VAO_Plane;
     GLuint m_VBO_Plane;
@@ -57,7 +61,6 @@ private:
         int stationID;
     };
     std::vector<StationCircle> m_vec_CircleStations;
-    std::vector<StationCircle> LoadCirclePositionsFromCSV(const std::string& filePath);
 
     SDL_Window* m_p_Window;
 

@@ -1,4 +1,5 @@
 #include "Player.h"
+#include "GameConstants.h"
 #include <sstream>
 
 namespace ScotlandYard {
@@ -15,22 +16,21 @@ Player::Player(PlayerType e_Type, int i_OccupiedNode, bool b_Visible)
     , m_i_BlackTickets(0)
     , m_i_DoubleMoveTickets(0)
 {
-
     if (m_e_Type == PlayerType::Detective) {
-        m_i_TaxiTickets = 11;
-        m_i_BusTickets = 8;
-        m_i_MetroTickets = 4;
-        m_i_WaterTickets = 0;
+        m_i_TaxiTickets = k_DetectiveTaxiTickets;
+        m_i_BusTickets = k_DetectiveBusTickets;
+        m_i_MetroTickets = k_DetectiveMetroTickets;
+        m_i_WaterTickets = k_DetectiveWaterTickets;
         m_i_BlackTickets = 0;
         m_i_DoubleMoveTickets = 0;
     } else {
         // MisterX
-        m_i_TaxiTickets = 30; // he has implicit/unlimited access to normal tickets
-        m_i_BusTickets = 30;
-        m_i_MetroTickets = 30;
-        m_i_WaterTickets = 30;
-        m_i_BlackTickets = 5;
-        m_i_DoubleMoveTickets = 2;
+        m_i_TaxiTickets = k_MrXTaxiTickets;
+        m_i_BusTickets = k_MrXBusTickets;
+        m_i_MetroTickets = k_MrXMetroTickets;
+        m_i_WaterTickets = k_MrXWaterTickets;
+        m_i_BlackTickets = k_MrXBlackTickets;
+        m_i_DoubleMoveTickets = k_MrXDoubleMoveTickets;
     }
 }
 

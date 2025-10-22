@@ -153,7 +153,7 @@ namespace UI {
             glUseProgram(0);
         }
 
-        void drawTextCentered(const std::string& s_Text, float f_X0, float f_Y0, float f_X1, float f_Y1, Color col, Core::Application* p_App) {
+        void drawTextCentered(const std::string& s_Text, float f_X0, float f_Y0, float f_X1, float f_Y1, Color col, Core::Application* p_App, float f_DeltaYPx = 0.0f) {
             float f_LeftPx = ndcX_to_px(f_X0);
             float f_RightPx = ndcX_to_px(f_X1);
             float f_BottomPx = ndcY_to_px(f_Y0);
@@ -163,28 +163,7 @@ namespace UI {
             float f_TargetHPx = std::max(14.0f, f_RectHPx * 0.60f);
             float f_Scale = f_TargetHPx / 48.0f;
 
-            float f_Baseline = f_BottomPx + (f_RectHPx * 0.20f) + f_TargetHPx * 0.8f - 10.0f;
-
-            float f_TW = textWidthPx(s_Text, f_Scale, p_App);
-            float f_TX = (f_LeftPx + f_RightPx) * 0.5f - f_TW * 0.5f;
-
-            drawTextPx(s_Text, f_TX, f_Baseline, f_Scale, col.r, col.g, col.b, p_App);
-        }
-
-        // for bottom bar
-        static void drawTextCenteredWithDY(const std::string& s_Text,
-            float f_X0, float f_Y0, float f_X1, float f_Y1,
-            Color col, float dyPx, Core::Application* p_App)
-        {
-            float f_LeftPx = ndcX_to_px(f_X0);
-            float f_RightPx = ndcX_to_px(f_X1);
-            float f_BottomPx = ndcY_to_px(f_Y0);
-            float f_TopPx = ndcY_to_px(f_Y1);
-
-            float f_RectHPx = std::max(1.0f, f_TopPx - f_BottomPx);
-            float f_TargetHPx = std::max(14.0f, f_RectHPx * 0.60f);
-            float f_Scale = f_TargetHPx / 48.0f;
-            float f_Baseline = f_BottomPx + (f_RectHPx * 0.20f) + f_TargetHPx * 0.8f - 10.0f + dyPx;
+            float f_Baseline = f_BottomPx + (f_RectHPx * 0.20f) + f_TargetHPx * 0.8f - 10.0f + f_DeltaYPx;
 
             float f_TW = textWidthPx(s_Text, f_Scale, p_App);
             float f_TX = (f_LeftPx + f_RightPx) * 0.5f - f_TW * 0.5f;
@@ -239,9 +218,7 @@ namespace UI {
             float f_CapAreaRight = f_InnerX1;
 
             if (g_GLuint_TexCamera) {
-                const float kCamScale = 0.75f;
-
-                float f_BtnH = (f_InnerY1 - f_InnerY0) * kCamScale;
+                float f_BtnH = (f_InnerY1 - f_InnerY0) * HUDStyle::k_CameraButtonScale;
                 float f_BtnW = f_BtnH;
                 float f_BtnX1 = f_InnerX1;
                 float f_BtnX0 = f_BtnX1 - f_BtnW;
@@ -365,10 +342,10 @@ namespace UI {
                     default: break;
                     }
 
-                    drawTextCenteredWithDY(
+                    drawTextCentered(
                         label,
                         f_X, f_SY0, f_X + f_SlotW, f_SY1,
-                        g_HUDStyle.textColor, g_HUDStyle.slotNumberDYPx, p_App
+                        g_HUDStyle.textColor, p_App, g_HUDStyle.slotNumberDYPx
                     );
                     replaced = true;
                 }
@@ -376,10 +353,10 @@ namespace UI {
                 if (!replaced) {
                     char buf[4];
                     std::snprintf(buf, sizeof(buf), "%d", i + 1);
-                    drawTextCenteredWithDY(
+                    drawTextCentered(
                         buf,
                         f_X, f_SY0, f_X + f_SlotW, f_SY1,
-                        g_HUDStyle.textColor, g_HUDStyle.slotNumberDYPx, p_App
+                        g_HUDStyle.textColor, p_App, g_HUDStyle.slotNumberDYPx
                     );
                 }
 
@@ -472,13 +449,11 @@ namespace UI {
         const std::vector<int>& vec_Counts) {
         if (!vec_Labels.empty()) g_vec_PillLabels = vec_Labels;
         if (!vec_PillColors.empty()) g_vec_PillColors = vec_PillColors;
-        g_vec_PillCounts = vec_Counts;
-    }
-
-    void SetTopBar(const std::vector<std::string>& vec_Labels, const std::vector<Color>& vec_PillColors) {
-        if (!vec_Labels.empty()) g_vec_PillLabels = vec_Labels;
-        if (!vec_PillColors.empty()) g_vec_PillColors = vec_PillColors;
-        g_vec_PillCounts.clear();
+        if (!vec_Counts.empty()) {
+            g_vec_PillCounts = vec_Counts;
+        } else {
+            g_vec_PillCounts.clear();
+        }
     }
 
     void SetRound(int i_Round) {

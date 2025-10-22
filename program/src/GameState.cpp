@@ -63,18 +63,27 @@ void GameState::OnEnter() {
     // ==============================
     // Pozycje kółek z pliku CSV
     // ==============================
-    m_vec_CircleStations = LoadCirclePositionsFromCSV("../../Graphs/nodes_with_station.csv");
+    auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
 
-    if (m_vec_CircleStations.empty()) {
+    if (vec_StationData.empty()) {
         std::cerr << "[GameState] Warning: No positions loaded from CSV, using defaults.\n";
 
         m_vec_CircleStations = {
-            { glm::vec2(-0.9f, -0.9f), {"taxi"} },
-            { glm::vec2(-0.5f, -0.9f), {"bus"} },
-            { glm::vec2( 0.0f, -0.9f), {"metro"} },
-            { glm::vec2( 0.5f, -0.9f), {"bus", "metro"} },
-            { glm::vec2( 0.9f, -0.9f), {"taxi", "bus", "metro"} }
+            { glm::vec2(-0.9f, -0.9f), {"taxi"}, 1 },
+            { glm::vec2(-0.5f, -0.9f), {"bus"}, 2 },
+            { glm::vec2( 0.0f, -0.9f), {"metro"}, 3 },
+            { glm::vec2( 0.5f, -0.9f), {"bus", "metro"}, 4 },
+            { glm::vec2( 0.9f, -0.9f), {"taxi", "bus", "metro"}, 5 }
         };
+    } else {
+        // Convert StationData to StationCircle format
+        for (const auto& station : vec_StationData) {
+            StationCircle circle;
+            circle.position = station.vec2_Position;
+            circle.transportTypes = station.vec_TransportTypes;
+            circle.stationID = station.i_StationID;
+            m_vec_CircleStations.push_back(circle);
+        }
     }
 
     // ==============================
@@ -237,11 +246,8 @@ void GameState::OnEnter() {
     // ==============================
     m_vec_Players.clear();
 
-
-    const std::string s_PosFile = "../../Graphs/nodes_with_station.csv";
-    const std::string s_ConFile = "../../Graphs/polaczenia.csv";
-    GraphManager gm(200);
-    gm.LoadData(s_PosFile, s_ConFile, false); // suppress CSV parsing prints
+    GraphManager gm(Core::k_MaxNodes);
+    gm.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
 
     int i_NodeCount = gm.GetNodeCount();
     if (i_NodeCount <= 0) {
@@ -251,8 +257,8 @@ void GameState::OnEnter() {
         m_vec_Players.emplace_back(Core::PlayerType::Detective, 2);
         m_vec_Players.emplace_back(Core::PlayerType::Detective, 3);
         m_vec_Players.emplace_back(Core::PlayerType::Detective, 4);
-    } 
-    else 
+    }
+    else
     {
         std::random_device rd;
         std::mt19937 rng(rd());
@@ -269,17 +275,15 @@ void GameState::OnEnter() {
         int i_MrXNode = pick_unique(vec_Used);
         m_vec_Players.emplace_back(Core::PlayerType::MisterX, i_MrXNode);
 
-        const int k_DetectiveCount = 4;
-        for (int i = 0; i < k_DetectiveCount; ++i) {
+        for (int i = 0; i < Core::k_DetectiveCount; ++i) {
             int i_DNode = pick_unique(vec_Used);
             m_vec_Players.emplace_back(Core::PlayerType::Detective, i_DNode);
         }
-
     }
 
     m_vec_MovedThisRound.assign(m_vec_Players.size(), false);
-    m_leftToMove = static_cast<int>(m_vec_Players.size());
-    m_i_Round = 1;
+    m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
+    m_i_Round.store(1);
 
     // Print player positions to console
     for (const auto& player : m_vec_Players) {
@@ -287,9 +291,7 @@ void GameState::OnEnter() {
     }
 
     // --- Console interaction in background thread: allow moving a player to a connected node ---
-    const std::string s_PosFileRel = "../../Graphs/nodes_with_station.csv";
-    const std::string s_ConFileRel = "../../Graphs/polaczenia.csv";
-    m_graph.LoadData(s_PosFileRel, s_ConFileRel, false);
+    m_graph.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
 
     // Launch console input loop as a dedicated joinable thread so we don't occupy a ThreadPool worker
     m_b_ConsoleThreadRunning.store(true);
@@ -337,87 +339,107 @@ void GameState::OnEnter() {
 
             std::cout << "[Console] Available moves:\n";
             for (size_t i = 0; i < conns.size(); ++i) {
-                std::string tname = (conns[i].i_TransportType == 1 ? "taxi" : (conns[i].i_TransportType == 2 ? "bus" : (conns[i].i_TransportType == 3 ? "metro" : "water")));
-                std::cout << i << ": to node " << conns[i].i_NodeId << " via " << tname << "\n";
+                std::string s_TransportName;
+                if (conns[i].i_TransportType == Core::k_TransportTypeTaxi) s_TransportName = "taxi";
+                else if (conns[i].i_TransportType == Core::k_TransportTypeBus) s_TransportName = "bus";
+                else if (conns[i].i_TransportType == Core::k_TransportTypeMetro) s_TransportName = "metro";
+                else if (conns[i].i_TransportType == Core::k_TransportTypeWater) s_TransportName = "water";
+                else s_TransportName = "unknown";
+                std::cout << i << ": to node " << conns[i].i_NodeId << " via " << s_TransportName << "\n";
             }
 
             std::cout << "[Console] Choose move index: ";
-            std::string msel;
-            if (!std::getline(std::cin, msel)) { m_b_ConsoleThreadRunning.store(false); break; }
-            if (msel.empty()) { std::cout << "[Console] Empty selection\n"; continue; }
-            int midx = -1; try { midx = std::stoi(msel); }
+            std::string s_MoveSelection;
+            if (!std::getline(std::cin, s_MoveSelection)) { m_b_ConsoleThreadRunning.store(false); break; }
+            if (s_MoveSelection.empty()) { std::cout << "[Console] Empty selection\n"; continue; }
+            int i_MoveIndex = -1;
+            try { i_MoveIndex = std::stoi(s_MoveSelection); }
             catch (...) { std::cout << "[Console] Invalid move index\n"; continue; }
-            if (midx < 0 || midx >= static_cast<int>(conns.size())) { std::cout << "[Console] Move index out of range\n"; continue; }
+            if (i_MoveIndex < 0 || i_MoveIndex >= static_cast<int>(conns.size())) { std::cout << "[Console] Move index out of range\n"; continue; }
 
-            int dest = conns[midx].i_NodeId;
-            int transport = conns[midx].i_TransportType;
-            bool moved = false;
-            // 1 move per round guard
-            if (idx < 0 || idx >= (int)m_vec_MovedThisRound.size()) {
-                std::cout << "[Console] Invalid player index.\n";
-                continue;
-            }
-            if (m_vec_MovedThisRound[idx]) {
-                std::cout << "[Console] Player " << idx
-                    << " has already moved in Round " << m_i_Round
-                    << ". Wait for next round.\n";
-                continue;
+            int i_DestinationNode = conns[i_MoveIndex].i_NodeId;
+            int i_TransportType = conns[i_MoveIndex].i_TransportType;
+            bool b_Moved = false;
+
+            // 1 move per round guard - protected by m_mtx_GameState
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_GameState);
+                if (idx < 0 || idx >= (int)m_vec_MovedThisRound.size()) {
+                    std::cout << "[Console] Invalid player index.\n";
+                    continue;
+                }
+                if (m_vec_MovedThisRound[idx]) {
+                    std::cout << "[Console] Player " << idx
+                        << " has already moved in Round " << m_i_Round.load()
+                        << ". Wait for next round.\n";
+                    continue;
+                }
             }
 
             {
                 std::lock_guard<std::mutex> lock(m_mtx_Players);
                 auto& player = m_vec_Players[idx];
-                bool ok = true;
-                if (transport == 1) { // taxi
-                    ok = player.SpendTaxiTicket();
+                bool b_TicketAvailable = true;
+
+                if (i_TransportType == Core::k_TransportTypeTaxi) {
+                    b_TicketAvailable = player.SpendTaxiTicket();
                 }
-                else if (transport == 2) { // bus
-                    ok = player.SpendBusTicket();
+                else if (i_TransportType == Core::k_TransportTypeBus) {
+                    b_TicketAvailable = player.SpendBusTicket();
                 }
-                else if (transport == 3) { // metro
-                    ok = player.SpendMetroTicket();
+                else if (i_TransportType == Core::k_TransportTypeMetro) {
+                    b_TicketAvailable = player.SpendMetroTicket();
                 }
-                else if (transport == 4) { // water
-                    ok = player.SpendWaterTicket();
+                else if (i_TransportType == Core::k_TransportTypeWater) {
+                    b_TicketAvailable = player.SpendWaterTicket();
                 }
 
-                if (!ok) {
+                if (!b_TicketAvailable) {
                     std::cout << "[Console] Player " << idx << " does not have required ticket for this transport.\n";
                 }
                 else {
-                    player.MoveTo(dest);
-                    moved = true;
+                    player.MoveTo(i_DestinationNode);
+                    b_Moved = true;
                 }
             }
-            if (moved) {
-                std::cout << "[Console] Moved player " << idx << " to node " << dest << "\n";
 
-                // what tickets were used by Mr X
+            if (b_Moved) {
+                std::cout << "[Console] Moved player " << idx << " to node " << i_DestinationNode << "\n";
+
+                // Track Mr X ticket usage for HUD
                 using UI::TicketMark;
                 {
                     std::lock_guard<std::mutex> lock(m_mtx_Players);
                     const auto& player = m_vec_Players[idx];
                     if (player.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
                         TicketMark mark = TicketMark::None;
-                        if (transport == 1) mark = TicketMark::Taxi;
-                        else if (transport == 2) mark = TicketMark::Bus;
-                        else if (transport == 3) mark = TicketMark::Metro;
-                        else if (transport == 4) mark = TicketMark::Water;
-                        UI::SetSlotMark(m_i_Round, mark, true);
+                        if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
+                        else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
+                        else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
+                        else if (i_TransportType == Core::k_TransportTypeWater) mark = TicketMark::Water;
+                        UI::SetSlotMark(m_i_Round.load(), mark, true);
                     }
                 }
 
-                // who made a movement in current round
-                if (idx >= 0 && idx < (int)m_vec_MovedThisRound.size() && !m_vec_MovedThisRound[idx]) {
-                    m_vec_MovedThisRound[idx] = true;
-                    if (m_leftToMove > 0) m_leftToMove -= 1;
-                }
+                // Update round state - protected by m_mtx_GameState
+                {
+                    std::lock_guard<std::mutex> lock(m_mtx_GameState);
+                    if (idx >= 0 && idx < (int)m_vec_MovedThisRound.size() && !m_vec_MovedThisRound[idx]) {
+                        m_vec_MovedThisRound[idx] = true;
+                        int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                        if (i_Remaining > 0) {
+                            m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                        }
+                    }
 
-                // if everyone made a move -> next round
-                if (m_leftToMove == 0) {
-                    m_i_Round = std::min(m_i_Round + 1, ScotlandYard::UI::k_TicketSlotCount);
-                    std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
-                    m_leftToMove = static_cast<int>(m_vec_Players.size());
+                    // If everyone made a move -> advance to next round
+                    if (m_i_PlayersRemainingThisRound.load() == 0) {
+                        int i_CurrentRound = m_i_Round.load();
+                        m_i_Round.store(std::min(i_CurrentRound + 1, Core::k_MaxRounds));
+                        std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
+                        m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
+                        std::cout << "[Console] === Round " << m_i_Round.load() << " begins ===\n";
+                    }
                 }
             }
         }
@@ -739,7 +761,7 @@ void GameState::Render(Core::Application* p_App) {
 
     // to HUD
     ScotlandYard::UI::SetTopBar(labels, {}, counts);
-    ScotlandYard::UI::SetRound(m_i_Round);
+    ScotlandYard::UI::SetRound(m_i_Round.load());
     ScotlandYard::UI::RenderHUD(p_App);
 
 
@@ -769,67 +791,6 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
 
 }
 
-std::vector<GameState::StationCircle> GameState::LoadCirclePositionsFromCSV(const std::string& filePath)
-{
-    std::vector<StationCircle> stations;
-    std::ifstream file(filePath);
-    if (!file.is_open()) {
-        std::cerr << "[GameState] Could not open CSV file: " << filePath << std::endl;
-        return stations;
-    }
-
-    std::string line;
-    bool b_FirstLine = true;
-    const float k_MapSize = 13.0f;
-    const float k_HalfMap = k_MapSize / 2.0f;
-
-    while (std::getline(file, line)) {
-        if (line.empty()) continue;
-
-        if (b_FirstLine) {
-            b_FirstLine = false;
-            continue;
-        }
-
-        std::stringstream ss(line);
-        std::string idStr, xStr, yStr, typeStr;
-
-        if (!std::getline(ss, idStr, ',')) continue;
-        if (!std::getline(ss, xStr, ',')) continue;
-        if (!std::getline(ss, yStr, ',')) continue;
-        if (!std::getline(ss, typeStr, ',')) continue;
-
-        try {
-            StationCircle circle;
-
-            float x = std::stof(xStr);
-            float y = std::stof(yStr);
-            circle.position = glm::vec2(x, y);
-
-            // float normX = (x - k_HalfMap) / k_HalfMap;
-            // float normY = (y - k_HalfMap) / k_HalfMap;
-            // circle.position = glm::vec2(normX, -normY);
-
-            circle.stationID = std::stoi(idStr);
-
-            // rozbij typy transportu po podkreśleniach
-            std::stringstream ssType(typeStr);
-            std::string transport;
-            while (std::getline(ssType, transport, '_')) {
-                circle.transportTypes.push_back(transport);
-            }
-
-            stations.push_back(circle);
-        }
-        catch (...) {
-            std::cerr << "[GameState] Invalid CSV line: " << line << std::endl;
-        }
-    }
-
-    file.close();
-    std::cout << "[GameState] Loaded " << stations.size() << " station circles from CSV.\n";
-    return stations;
-}
 
 std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segments) {
     std::vector<float> vec_Vertices;
@@ -838,9 +799,8 @@ std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segme
     vec_Vertices.push_back(0.01f);
     vec_Vertices.push_back(0.0f);
 
-    constexpr float k_Pi = 3.14159265358979323846f;
     for (int i = 0; i <= i_Segments; i++) {
-        float f_Theta = 2.0f * k_Pi * i / i_Segments;
+        float f_Theta = 2.0f * glm::pi<float>() * i / i_Segments;
         float f_X = f_Radius * cos(f_Theta);
         float f_Z = f_Radius * sin(f_Theta);
         vec_Vertices.push_back(f_X);
@@ -854,12 +814,12 @@ std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segme
 std::vector<float> GameState::generateCylinderVertices(float radius, float height, int segments)
 {
     std::vector<float> verts;
-    constexpr float PI = 3.14159265358979323846f;
+    const float k_TwoPi = 2.0f * glm::pi<float>();
 
     for (int i = 0; i < segments; ++i)
     {
-        float theta1 = (float)i / segments * 2.0f * PI;
-        float theta2 = (float)(i+1) / segments * 2.0f * PI;
+        float theta1 = (float)i / segments * k_TwoPi;
+        float theta2 = (float)(i+1) / segments * k_TwoPi;
 
         float x1 = radius * cos(theta1);
         float z1 = radius * sin(theta1);
@@ -892,17 +852,18 @@ std::vector<float> GameState::generateCylinderVertices(float radius, float heigh
 std::vector<float> GameState::generateHemisphereVertices(float radius, int segments)
 {
     std::vector<float> verts;
-    constexpr float PI = 3.14159265359f;
+    const float k_Pi = glm::pi<float>();
+    const float k_TwoPi = 2.0f * k_Pi;
 
     for(int i = 0; i < segments / 2; ++i)
     {
-        float theta1 = PI * i / segments;       // dolny pierścień
-        float theta2 = PI * (i + 1) / segments; // górny pierścień
+        float theta1 = k_Pi * i / segments;       // dolny pierścień
+        float theta2 = k_Pi * (i + 1) / segments; // górny pierścień
 
         for(int j = 0; j < segments; ++j)
         {
-            float phi1 = 2.0f * PI * j / segments;
-            float phi2 = 2.0f * PI * (j + 1) / segments;
+            float phi1 = k_TwoPi * j / segments;
+            float phi2 = k_TwoPi * (j + 1) / segments;
 
             // cztery wierzchołki kwadratu -> dwa trójkąty
             float x1 = radius * sin(theta1) * cos(phi1);

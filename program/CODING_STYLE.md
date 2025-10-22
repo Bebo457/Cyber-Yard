@@ -123,21 +123,50 @@ x++;  // NO COMMENT NEEDED
 
 ## Threading
 
+### Threading Policy
+
+**Prefer ThreadPool over raw threads:**
+- Use `Threading::ThreadPool::Submit()` for short-lived async tasks
+- Only use `std::thread` for long-lived dedicated threads (e.g., console input loops)
+
+**Thread Safety Requirements:**
+- Shared data between threads MUST be protected
+- Use `std::atomic<>` for simple counters/flags
+- Use `std::mutex` + `std::lock_guard` for complex data structures
+- Document which mutex protects which data
+
+**Naming Convention:**
 ```cpp
-// Submit async task
+std::atomic<int> m_i_RoundNumber{1};     // Atomic for simple types
+std::mutex m_mtx_GameState;              // Mutex protecting game state
+std::mutex m_mtx_Players;                // Mutex protecting player data
+```
+
+**Examples:**
+```cpp
+// GOOD: Using ThreadPool for short task
 auto future = Threading::ThreadPool::Submit([]() {
     return ExpensiveCalculation();
 });
 
-// Thread-safe counter
+// GOOD: Atomic for simple counter
 std::atomic<int> m_i_Count{0};
+m_i_Count.store(m_i_Count.load() + 1);
 
-// Protect data with mutex
-std::lock_guard<std::mutex> lock(m_mtx_Data);
-m_vec_Data.push_back(value);
+// GOOD: Mutex for complex data
+{
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    m_vec_Players[idx].MoveTo(newNode);
+}
+
+// BAD: Accessing shared data without protection
+m_i_NonAtomicCounter++;  // Race condition if accessed from multiple threads!
 ```
 
----
+**Critical Rules:**
+1. **Never mix locking orders** - Always acquire mutexes in the same order to prevent deadlocks
+2. **Keep critical sections small** - Lock, modify, unlock quickly
+3. **Document thread ownership** - Comment which thread accesses which data
 
 ---
 
