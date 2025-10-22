@@ -11,23 +11,51 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <atomic>
 
 namespace ScotlandYard {
 namespace UI {
 
     namespace {
-        HUDStyle g_HUDStyle{};
-        int g_i_ViewportWidth = 1280;
-        int g_i_ViewportHeight = 720;
+    HUDStyle g_HUDStyle{};
+    int g_i_ViewportWidth = 1280;
+    int g_i_ViewportHeight = 720;
+    GLuint g_GLuint_TexCamera = 0;
+    GLuint g_GLuint_TexPause = 0;
+    std::function<void()> g_fn_OnCameraToggle;
+    std::function<void()> g_fn_OnPause;
+    std::atomic_bool g_b_ShowPausedModal{false};
+    std::atomic_bool g_b_PausedResumeBtnHover{false};
+    std::atomic_bool g_b_PausedDebugBtnHover{false};
+    std::atomic_bool g_b_PausedModalBtnHover{false};
 
-        GLuint g_GLuint_TexCamera = 0;
-        int g_i_TexCamW = 0;
-        int g_i_TexCamH = 0;
-        std::function<void()> g_fn_OnCameraToggle;
+    int g_i_PausedResumeBtnX0 = 0;
+    int g_i_PausedResumeBtnY0 = 0;
+    int g_i_PausedResumeBtnX1 = 0;
+    int g_i_PausedResumeBtnY1 = 0;
+
+    int g_i_PausedDebugBtnX0 = 0;
+    int g_i_PausedDebugBtnY0 = 0;
+    int g_i_PausedDebugBtnX1 = 0;
+    int g_i_PausedDebugBtnY1 = 0;
+
+    int g_i_PausedModalBtnX0 = 0;
+    int g_i_PausedModalBtnY0 = 0;
+    int g_i_PausedModalBtnX1 = 0;
+    int g_i_PausedModalBtnY1 = 0;
+
+    std::function<void()> g_fn_OnPausedResume;
+    std::function<void()> g_fn_OnPausedDebug;
+    std::function<void()> g_fn_OnPausedMenu;
+    std::atomic_bool g_b_DebugEnabled{false};
         float g_f_CamBtnNdcX0 = 0.0f;
         float g_f_CamBtnNdcY0 = 0.0f;
         float g_f_CamBtnNdcX1 = 0.0f;
         float g_f_CamBtnNdcY1 = 0.0f;
+    float g_f_PauseBtnNdcX0 = 0.0f;
+    float g_f_PauseBtnNdcY0 = 0.0f;
+    float g_f_PauseBtnNdcX1 = 0.0f;
+    float g_f_PauseBtnNdcY1 = 0.0f;
 
         int g_i_Round = 1;
 
@@ -237,6 +265,31 @@ namespace UI {
                 f_CapAreaRight = f_BtnX0 - f_Gap;
             }
 
+            {
+                float f_BtnH = (f_InnerY1 - f_InnerY0) * HUDStyle::k_CameraButtonScale;
+                float f_BtnW = f_BtnH;
+                float f_BtnX1 = f_CapAreaRight;
+                float f_BtnX0 = f_BtnX1 - f_BtnW;
+
+                float f_CenterY = 0.5f * (f_InnerY0 + f_InnerY1);
+                float f_BtnY0 = f_CenterY - 0.5f * f_BtnH;
+                float f_BtnY1 = f_CenterY + 0.5f * f_BtnH;
+
+                g_f_PauseBtnNdcX0 = f_BtnX0;
+                g_f_PauseBtnNdcX1 = f_BtnX1;
+                g_f_PauseBtnNdcY0 = f_BtnY0;
+                g_f_PauseBtnNdcY1 = f_BtnY1;
+
+                if (g_GLuint_TexPause) {
+                    drawIcon(g_GLuint_TexPause, f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, p_App);
+                } else {
+                    drawRoundedRect(f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {0.12f, 0.12f, 0.12f, 0.85f}, pxToNDC(g_HUDStyle.slotRadiusPx), p_App);
+                    drawTextCentered(std::string("||"), f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {1,1,1,1}, p_App);
+                }
+
+                f_CapAreaRight = f_BtnX0 - f_Gap;
+                }
+
             // Tickets layout
             float f_CurRight = f_CapAreaRight;
             g_vec_PillRectNDC.clear();
@@ -380,19 +433,111 @@ namespace UI {
         }
     }
 
+    void LoadPauseIconPNG(const char* p_Path, Core::Application* p_App) {
+        if (g_GLuint_TexPause) {
+            p_App->UnloadTexture(g_GLuint_TexPause);
+            g_GLuint_TexPause = 0;
+        }
+
+        g_GLuint_TexPause = p_App->LoadTexture(p_Path);
+        if (g_GLuint_TexPause == 0) {
+            std::fprintf(stderr, "[HUD] Pause icon load FAILED: %s\n", p_Path);
+        }
+    }
+
     void SetCameraToggleCallback(std::function<void()> fn_Callback) {
         g_fn_OnCameraToggle = std::move(fn_Callback);
+    }
+
+    void SetPauseCallback(std::function<void()> fn_Callback) {
+        g_fn_OnPause = std::move(fn_Callback);
+    }
+
+    void ShowPausedModal(bool show) {
+        g_b_ShowPausedModal.store(show);
+    }
+
+    void SetPausedResumeCallback(std::function<void()> cb) {
+        g_fn_OnPausedResume = std::move(cb);
+    }
+
+    void SetPausedDebugCallback(std::function<void()> cb) {
+        g_fn_OnPausedDebug = std::move(cb);
+    }
+
+    void SetPausedMenuCallback(std::function<void()> cb) {
+        g_fn_OnPausedMenu = std::move(cb);
+    }
+
+    void HandleMouseMotion(int i_XPx, int i_YPx) {
+        if (!g_b_ShowPausedModal.load()) return;
+        int i_H = g_i_ViewportHeight;
+        int i_FlippedY = i_H - i_YPx;
+        bool b_Resume = (i_XPx >= g_i_PausedResumeBtnX0 && i_XPx <= g_i_PausedResumeBtnX1 &&
+                         i_FlippedY >= g_i_PausedResumeBtnY0 && i_FlippedY <= g_i_PausedResumeBtnY1);
+        bool b_Debug = (i_XPx >= g_i_PausedDebugBtnX0 && i_XPx <= g_i_PausedDebugBtnX1 &&
+                        i_FlippedY >= g_i_PausedDebugBtnY0 && i_FlippedY <= g_i_PausedDebugBtnY1);
+        bool b_Menu = (i_XPx >= g_i_PausedModalBtnX0 && i_XPx <= g_i_PausedModalBtnX1 &&
+                       i_FlippedY >= g_i_PausedModalBtnY0 && i_FlippedY <= g_i_PausedModalBtnY1);
+        g_b_PausedResumeBtnHover.store(b_Resume);
+        g_b_PausedDebugBtnHover.store(b_Debug);
+        g_b_PausedModalBtnHover.store(b_Menu);
+    }
+
+    void SetPausedDebugState(bool enabled) {
+        g_b_DebugEnabled.store(enabled);
     }
 
     void HandleMouseClick(int i_XPx, int i_YPx) {
         float f_NX = (i_XPx / float(g_i_ViewportWidth)) * 2.0f - 1.0f;
         float f_NY = 1.0f - (i_YPx / float(g_i_ViewportHeight)) * 2.0f;
 
+        if (g_b_ShowPausedModal.load()) {
+            int i_H = g_i_ViewportHeight;
+            int i_FlippedY = i_H - i_YPx;
+
+            // RESUME
+            if (i_XPx >= g_i_PausedResumeBtnX0 && i_XPx <= g_i_PausedResumeBtnX1 &&
+                i_FlippedY >= g_i_PausedResumeBtnY0 && i_FlippedY <= g_i_PausedResumeBtnY1) {
+                if (g_fn_OnPausedResume) g_fn_OnPausedResume();
+                else g_b_ShowPausedModal.store(false);
+                g_b_PausedResumeBtnHover.store(false);
+                return;
+            }
+
+            // DEBUG
+            if (i_XPx >= g_i_PausedDebugBtnX0 && i_XPx <= g_i_PausedDebugBtnX1 &&
+                i_FlippedY >= g_i_PausedDebugBtnY0 && i_FlippedY <= g_i_PausedDebugBtnY1) {
+                if (g_fn_OnPausedDebug) g_fn_OnPausedDebug();
+                return;
+            }
+
+            // MENU
+            if (i_XPx >= g_i_PausedModalBtnX0 && i_XPx <= g_i_PausedModalBtnX1 &&
+                i_FlippedY >= g_i_PausedModalBtnY0 && i_FlippedY <= g_i_PausedModalBtnY1) {
+                if (g_fn_OnPausedMenu) g_fn_OnPausedMenu();
+                else g_b_ShowPausedModal.store(false);
+                g_b_PausedModalBtnHover.store(false);
+                return;
+            }
+            return;
+        }
+
+        // Camera button
         if (f_NX >= g_f_CamBtnNdcX0 && f_NX <= g_f_CamBtnNdcX1 &&
             f_NY >= g_f_CamBtnNdcY0 && f_NY <= g_f_CamBtnNdcY1)
         {
             if (g_fn_OnCameraToggle) g_fn_OnCameraToggle();
+            return;
         }
+
+        if (f_NX >= g_f_PauseBtnNdcX0 && f_NX <= g_f_PauseBtnNdcX1 &&
+            f_NY >= g_f_PauseBtnNdcY0 && f_NY <= g_f_PauseBtnNdcY1)
+        {
+            if (g_fn_OnPause) g_fn_OnPause();
+            return;
+        }
+
     }
 
     bool InitHUD() {
@@ -405,8 +550,16 @@ namespace UI {
         drawRoundedRect(pxToNdcX(f_X0), pxToNdcY(f_Y0), pxToNdcX(f_X1), pxToNdcY(f_Y1), c, pxToNDC(i_RadiusPx), p_App);
     }
 
+    void DrawTextCenteredPx(const std::string& s_Text, float f_X0_px, float f_Y0_px, float f_X1_px, float f_Y1_px, Color col, Core::Application* p_App, float f_DeltaYPx) {
+        // Convert pixel rect to NDC using bottom-left origin mapping (to match DrawRoundedRectScreen)
+        float nx0 = (f_X0_px / float(g_i_ViewportWidth)) * 2.0f - 1.0f;
+        float nx1 = (f_X1_px / float(g_i_ViewportWidth)) * 2.0f - 1.0f;
+        float ny0 = (f_Y0_px / float(g_i_ViewportHeight)) * 2.0f - 1.0f;
+        float ny1 = (f_Y1_px / float(g_i_ViewportHeight)) * 2.0f - 1.0f;
+        drawTextCentered(s_Text, nx0, ny0, nx1, ny1, col, p_App, f_DeltaYPx);
+    }
+
     void ShutdownHUD() {
-        // Resources now managed by Application - nothing to do here
     }
 
     void SetViewport(int i_W, int i_H) {
@@ -476,6 +629,110 @@ namespace UI {
 
         drawTopBar(f_TX0, f_TY0, f_TX1, f_TY1, p_App);
         drawBottomBar(f_BX0, f_BY0, f_BX1, f_BY1, p_App);
+
+        // Draw paused modal on top of HUD if requested
+        if (g_b_ShowPausedModal.load()) {
+            GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
+            GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+            if (b_DepthWas) glDisable(GL_DEPTH_TEST);
+            if (!b_BlendWas) glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            int i_W = p_App->GetWidth();
+            int i_H = p_App->GetHeight();
+            float f_ModalWpx = std::min(640.0f, float(i_W) * 0.5f);
+            float f_ModalHpx = std::min(240.0f, float(i_H) * 0.35f);
+            float f_Left = (i_W - f_ModalWpx) * 0.5f;
+            float f_Bottom = (i_H - f_ModalHpx) * 0.5f;
+            float f_Right = f_Left + f_ModalWpx;
+            float f_Top = f_Bottom + f_ModalHpx;
+
+            DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, {0.08f, 0.08f, 0.12f, 0.95f}, 12, p_App);
+
+            ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
+            float f_TitleH = f_ModalHpx * 0.22f;
+            float f_MsgH = f_ModalHpx * 0.36f;
+
+            float f_TitleBottom = f_Bottom + f_ModalHpx * 0.74f;
+            float f_TitleTop = f_TitleBottom + f_TitleH;
+
+            float f_MsgBottom = f_Bottom + f_ModalHpx * 0.25f;
+            float f_MsgTop = f_MsgBottom + f_MsgH;
+
+            DrawTextCenteredPx("PAUSED", f_Left + 20.0f, f_TitleBottom, f_Right - 20.0f, f_TitleTop, white, p_App, -17.0f);
+            DrawTextCenteredPx("", f_Left + 20.0f, f_MsgBottom, f_Right - 20.0f, f_MsgTop, white, p_App, -6.0f);
+
+            std::string s_DebugLabel = g_b_DebugEnabled.load() ? "TURN OFF DEBUGGING MODE" : "TURN ON DEBUGGING MODE";
+            std::string s_ResumeLabel = "RESUME";
+            std::string s_MenuLabel = "MENU";
+
+            float f_TargetScale = 1.0f; 
+            float f_ResumeW = textWidthPx(s_ResumeLabel, 1.0f, p_App);
+            float f_DebugW = textWidthPx(s_DebugLabel, 1.0f, p_App);
+            float f_MenuW = textWidthPx(s_MenuLabel, 1.0f, p_App);
+            float f_MaxTextW = std::max({ f_ResumeW, f_DebugW, f_MenuW });
+            float f_PadXPx = std::max(12.0f, g_HUDStyle.pillsPadXPx * 0.8f);
+            float f_BtnW = std::min({ (float)i_W * 0.4f, f_ModalWpx * 0.6f, f_MaxTextW + 2.0f * f_PadXPx });
+            float f_BtnH = 36.0f;
+            float f_Spacing = 12.0f;
+            float f_StartX = f_Left + (f_ModalWpx - f_BtnW) * 0.5f;
+            float f_StartY = f_Bottom + 28.0f; 
+
+            // RESUME button
+            float f_ResumeX0 = f_StartX;
+            float f_ResumeY0 = f_StartY;
+            float f_ResumeX1 = f_ResumeX0 + f_BtnW;
+            float f_ResumeY1 = f_ResumeY0 + f_BtnH;
+            if (g_b_PausedResumeBtnHover.load()) {
+                float pad = 6.0f;
+                DrawRoundedRectScreen(f_ResumeX0 - pad, f_ResumeY0 - pad, f_ResumeX1 + pad, f_ResumeY1 + pad, {1.0f,1.0f,1.0f,0.08f}, 14, p_App);
+            }
+            DrawRoundedRectScreen(f_ResumeX0, f_ResumeY0, f_ResumeX1, f_ResumeY1, {0.0f,0.6f,0.2f,1.0f}, 10, p_App);
+            DrawTextCenteredPx(s_ResumeLabel, f_ResumeX0, f_ResumeY0, f_ResumeX1, f_ResumeY1, white, p_App, -4.0f);
+
+            // DEBUGGING MODE button
+            float f_DebugX0 = f_StartX;
+            float f_DebugY0 = f_ResumeY1 + f_Spacing;
+            float f_DebugX1 = f_DebugX0 + f_BtnW;
+            float f_DebugY1 = f_DebugY0 + f_BtnH;
+            if (g_b_PausedDebugBtnHover.load()) {
+                float pad = 6.0f;
+                DrawRoundedRectScreen(f_DebugX0 - pad, f_DebugY0 - pad, f_DebugX1 + pad, f_DebugY1 + pad, {1.0f,1.0f,1.0f,0.08f}, 14, p_App);
+            }
+            DrawRoundedRectScreen(f_DebugX0, f_DebugY0, f_DebugX1, f_DebugY1, {0.0f,0.6f,0.2f,1.0f}, 10, p_App);
+            DrawTextCenteredPx(s_DebugLabel, f_DebugX0, f_DebugY0, f_DebugX1, f_DebugY1, white, p_App, -4.0f);
+
+            // MENU button
+            float f_MenuX0 = f_StartX;
+            float f_MenuY0 = f_DebugY1 + f_Spacing;
+            float f_MenuX1 = f_MenuX0 + f_BtnW;
+            float f_MenuY1 = f_MenuY0 + f_BtnH;
+            if (g_b_PausedModalBtnHover.load()) {
+                float pad = 6.0f;
+                DrawRoundedRectScreen(f_MenuX0 - pad, f_MenuY0 - pad, f_MenuX1 + pad, f_MenuY1 + pad, {1.0f,1.0f,1.0f,0.08f}, 14, p_App);
+            }
+            DrawRoundedRectScreen(f_MenuX0, f_MenuY0, f_MenuX1, f_MenuY1, {0.0f,0.6f,0.2f,1.0f}, 10, p_App);
+            DrawTextCenteredPx(s_MenuLabel, f_MenuX0, f_MenuY0, f_MenuX1, f_MenuY1, white, p_App, -4.0f);
+
+            // store pixel rects for mouse handling
+            g_i_PausedResumeBtnX0 = static_cast<int>(f_ResumeX0);
+            g_i_PausedResumeBtnY0 = static_cast<int>(f_ResumeY0);
+            g_i_PausedResumeBtnX1 = static_cast<int>(f_ResumeX1);
+            g_i_PausedResumeBtnY1 = static_cast<int>(f_ResumeY1);
+
+            g_i_PausedDebugBtnX0 = static_cast<int>(f_DebugX0);
+            g_i_PausedDebugBtnY0 = static_cast<int>(f_DebugY0);
+            g_i_PausedDebugBtnX1 = static_cast<int>(f_DebugX1);
+            g_i_PausedDebugBtnY1 = static_cast<int>(f_DebugY1);
+
+            g_i_PausedModalBtnX0 = static_cast<int>(f_MenuX0);
+            g_i_PausedModalBtnY0 = static_cast<int>(f_MenuY0);
+            g_i_PausedModalBtnX1 = static_cast<int>(f_MenuX1);
+            g_i_PausedModalBtnY1 = static_cast<int>(f_MenuY1);
+
+            if (b_BlendWas == GL_FALSE) glDisable(GL_BLEND);
+            if (b_DepthWas) glEnable(GL_DEPTH_TEST);
+        }
 
         if (b_SRGBWas) glEnable(GL_FRAMEBUFFER_SRGB);
         if (!b_BlendWas) glDisable(GL_BLEND);

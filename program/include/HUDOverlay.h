@@ -85,9 +85,21 @@ namespace UI {
 
     void DrawRoundedRectScreen(float x0, float y0, float x1, float y1, Color c, int radiusPx, Core::Application* p_App);
 
+    void DrawTextCenteredPx(const std::string& s_Text, float f_X0_px, float f_Y0_px, float f_X1_px, float f_Y1_px, Color col, Core::Application* p_App, float f_DeltaYPx = 0.0f);
+
     void LoadCameraIconPNG(const char* path, Core::Application* p_App);
+    void LoadPauseIconPNG(const char* path, Core::Application* p_App);
     void SetCameraToggleCallback(std::function<void()> cb);
+    void SetPauseCallback(std::function<void()> cb);
     void HandleMouseClick(int x_px, int y_px);
+    void ShowPausedModal(bool show);
+
+    void SetPausedResumeCallback(std::function<void()> cb);
+    void SetPausedDebugCallback(std::function<void()> cb);
+    void SetPausedMenuCallback(std::function<void()> cb);
+
+    void HandleMouseMotion(int x_px, int y_px);
+    void SetPausedDebugState(bool enabled);
 
 
 } // namespace UI

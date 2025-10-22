@@ -8,7 +8,7 @@ namespace Core {
 
 // Game Rules
 // Game Rules
-static constexpr int k_MaxRounds = 3;
+static constexpr int k_MaxRounds = 24;
 static constexpr int k_DetectiveCount = 4;
 
 // Initial Ticket Counts - Detectives

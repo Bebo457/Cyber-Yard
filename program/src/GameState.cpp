@@ -240,6 +240,29 @@ void GameState::OnEnter() {
         m_b_Camera3D = !m_b_Camera3D;
         });
 
+    UI::SetPauseCallback([this]() {
+        UI::ShowPausedModal(true);
+    });
+
+    UI::SetPausedResumeCallback([this]() {
+        UI::ShowPausedModal(false);
+        this->m_b_GameActive = true;
+    });
+
+    UI::SetPausedDebugCallback([this]() {
+        this->m_b_DebuggingMode.store(!this->m_b_DebuggingMode.load());
+        // inform HUD so the debug button label updates
+        UI::SetPausedDebugState(this->m_b_DebuggingMode.load());
+    });
+
+    UI::SetPausedMenuCallback([this]() {
+        UI::ShowPausedModal(false);
+        this->m_b_RequestMenuChange.store(true);
+    });
+
+    // Initialize HUD with current debug state
+    UI::SetPausedDebugState(this->m_b_DebuggingMode.load());
+
     glEnable(GL_DEPTH_TEST);
 
     // ==============================
@@ -304,6 +327,10 @@ void GameState::OnEnter() {
         ScotlandYard::UI::SetTicketStates(emptySlots);
         ScotlandYard::UI::SetRound(m_i_Round.load());
     }
+
+    // Note: previously used debug modal here was removed so the end-game modal
+    // only appears when CheckEndOfGame() sets m_b_ShowEndGameModal.
+
 
     // Print player positions to console
     for (const auto& player : m_vec_Players) {
@@ -845,15 +872,17 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
-    // Draw MisterX token(s) only when he is marked active AND it's a reveal round
+    // Draw MisterX token(s): normally only on reveal rounds when active, but
+    // if debugging mode is enabled, always draw MisterX so it's visible at all times.
     auto fn_IsRevealRound = [](int i_RoundVal) {
         return (i_RoundVal == 3 || i_RoundVal == 8 || i_RoundVal == 13 || i_RoundVal == 18 || i_RoundVal == 24);
     };
     int i_CurrentRoundForRender = m_i_Round.load();
-    if (fn_IsRevealRound(i_CurrentRoundForRender)) {
+
+    if (m_b_DebuggingMode.load()) {
+        // Always draw MisterX tokens (ignore reveal/active rules)
         for (const auto& player : m_vec_Players) {
             if (player.GetType() != Core::PlayerType::MisterX) continue;
-            if (!player.IsActive()) continue;
 
             int nodeId = player.GetOccupiedNode();
             auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
@@ -888,6 +917,47 @@ void GameState::Render(Core::Application* p_App) {
             glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
             glBindVertexArray(0);
         }
+    } else {
+        // Default behavior: draw only on reveal rounds and when MisterX is active
+        if (fn_IsRevealRound(i_CurrentRoundForRender)) {
+            for (const auto& player : m_vec_Players) {
+                if (player.GetType() != Core::PlayerType::MisterX) continue;
+                if (!player.IsActive()) continue;
+
+                int nodeId = player.GetOccupiedNode();
+                auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                                [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
+                if (it == m_vec_CircleStations.end()) continue;
+
+                glm::vec2 pos = it->position;
+
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
+                model = glm::scale(model, glm::vec3(0.45f));
+
+                // MisterX colour (black)
+                glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
+                glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+
+                // Body
+                glm::mat4 cylModel = glm::scale(model,glm::vec3(1.0f));
+                glm::mat4 MVP = projection * view * cylModel;
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+                glBindVertexArray(m_VAO_Cylinder);
+                glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
+                glBindVertexArray(0);
+
+                // Top
+                glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
+                MVP = projection * view * hemiModel;
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+                glBindVertexArray(m_VAO_Hemisphere);
+                glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
+                glBindVertexArray(0);
+            }
+        }
     }
 
     std::vector<std::string> labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
@@ -908,58 +978,102 @@ void GameState::Render(Core::Application* p_App) {
     ScotlandYard::UI::SetRound(m_i_Round.load());
     ScotlandYard::UI::RenderHUD(p_App);
 
+    // Draw end-of-game modal on top of HUD if requested (before buffer swap)
+    if (m_b_ShowEndGameModal.load()) {
+        // ensure UI-friendly state
+        GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
+        GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+        if (b_DepthWas) glDisable(GL_DEPTH_TEST);
+        if (!b_BlendWas) glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        int i_W = p_App->GetWidth();
+        int i_H = p_App->GetHeight();
+        float f_ModalWpx = std::min(640.0f, float(i_W) * 0.5f);
+        float f_ModalHpx = std::min(240.0f, float(i_H) * 0.35f);
+        float f_Left = (i_W - f_ModalWpx) * 0.5f;
+        float f_Bottom = (i_H - f_ModalHpx) * 0.5f;
+        float f_Right = f_Left + f_ModalWpx;
+        float f_Top = f_Bottom + f_ModalHpx;
+
+        ScotlandYard::UI::DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, {0.08f, 0.08f, 0.12f, 0.95f}, 12, p_App);
+
+
+    std::string s_Title = "";  
+    std::string s_Message = "GAME OVER";
+    if (m_EndGameWinner == Winner::Detectives) s_Title = "Congratulations! Detectives win";
+    else if (m_EndGameWinner == Winner::MisterX) s_Title = "Congratulations! Mister X wins";
+    else s_Title = "Game ended";
+
+        ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
+    float f_TitleH = f_ModalHpx * 0.14f;    
+    float f_MsgH = f_ModalHpx * 0.40f;      
+
+    float f_TitleBottom = f_Bottom + f_ModalHpx * 0.74f;
+    float f_TitleTop = f_TitleBottom + f_TitleH;
+
+    float f_MsgBottom = f_Bottom + f_ModalHpx * 0.25f;
+    float f_MsgTop = f_MsgBottom + f_MsgH;
+
+    ScotlandYard::UI::DrawTextCenteredPx(s_Title, f_Left + 20.0f, f_TitleBottom, f_Right - 20.0f, f_TitleTop, white, p_App, 0.0f);
+    ScotlandYard::UI::DrawTextCenteredPx(s_Message, f_Left + 20.0f, f_MsgBottom, f_Right - 20.0f, f_MsgTop, white, p_App, -6.0f);
+
+        float f_BtnW = 260.0f;
+        float f_BtnH = 54.0f;
+        float f_BtnX0 = f_Left + (f_ModalWpx - f_BtnW) * 0.5f;
+        float f_BtnY0 = f_Bottom + 18.0f;
+        float f_BtnX1 = f_BtnX0 + f_BtnW;
+        float f_BtnY1 = f_BtnY0 + f_BtnH;
+
+    if (m_b_EndModalBtnHover.load()) {
+        float pad = 6.0f;
+        ScotlandYard::UI::DrawRoundedRectScreen(f_BtnX0 - pad, f_BtnY0 - pad, f_BtnX1 + pad, f_BtnY1 + pad, {1.0f,1.0f,1.0f,0.08f}, 14, p_App);
+    }
+    ScotlandYard::UI::DrawRoundedRectScreen(f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {0.0f,0.5f,0.9f,1.0f}, 10, p_App);
+    ScotlandYard::UI::DrawTextCenteredPx("MENU", f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, white, p_App, -12.0f);
+
+        m_i_EndModalBtnX0 = static_cast<int>(f_BtnX0);
+        m_i_EndModalBtnY0 = static_cast<int>(f_BtnY0);
+        m_i_EndModalBtnX1 = static_cast<int>(f_BtnX1);
+        m_i_EndModalBtnY1 = static_cast<int>(f_BtnY1);
+
+        if (b_BlendWas == GL_FALSE) glDisable(GL_BLEND);
+        if (b_DepthWas) glEnable(GL_DEPTH_TEST);
+    }
+
 
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
-
-    // If the game requested to change to menu (user confirmed after end), do it here on the main thread
     if (m_b_RequestMenuChange.load() && p_App) {
         auto mgr = p_App->GetStateManager();
         if (mgr) {
             std::cout << "[GameState] Requesting state change to menu...\n";
             mgr->ChangeState("menu");
         }
-        // Clear the flag so we don't repeatedly request
         m_b_RequestMenuChange.store(false);
     }
 }
 
-// Called under any thread; will set game inactive and print message. For actual state change we set a flag
-// which is handled on the main thread in Render() to avoid threading into StateManager from console thread.
 void GameState::CheckEndOfGame(Winner winner) {
-    // Determine default winner if not provided: Mr X when rounds exhausted
     if (winner == Winner::None) {
         if (m_i_Round.load() >= Core::k_MaxRounds) {
             winner = Winner::MisterX;
         } else {
-            return; // no end condition
+            return; 
         }
     }
 
-    // Stop game active flag
     m_b_GameActive = false;
+    m_EndGameWinner = winner;
+    m_b_ShowEndGameModal.store(true);
 
     if (winner == Winner::Detectives) {
         std::cout << "[Game] Detectives win -- MisterX captured!\n";
     } else if (winner == Winner::MisterX) {
         std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
     }
-
-    // Offer console prompt to return to menu. We must not call StateManager from here directly when
-    // invoked from the console thread; instead set a flag if user confirms. We'll block for input briefly
-    std::string response;
-    std::cout << "[Console] Return to Menu? (y/N): ";
-    if (std::getline(std::cin, response)) {
-        if (!response.empty() && (response[0] == 'y' || response[0] == 'Y')) {
-            m_b_RequestMenuChange.store(true);
-        }
-    } else {
-        // If stdin closed, default to not changing state but still stop the game
-        std::cout << "[Console] No console input available; remaining on End screen.\n";
-    }
 }
 
 bool GameState::CheckCapture() const {
-    // Assumes caller holds m_mtx_Players
     int mrXNode = -1;
     for (const auto& p : m_vec_Players) {
         if (p.GetType() == Core::PlayerType::MisterX) {
@@ -989,6 +1103,22 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_MOUSEBUTTONDOWN) {
         int i_X = event.button.x;
         int i_Y = event.button.y;
+        if (m_b_ShowEndGameModal.load()) {
+            int i_H = p_App ? p_App->GetHeight() : 0;
+            int i_PxY = i_Y; // top-origin
+            int i_FlippedY = i_H - i_PxY; 
+
+            if (i_X >= m_i_EndModalBtnX0 && i_X <= m_i_EndModalBtnX1 &&
+                i_FlippedY >= m_i_EndModalBtnY0 && i_FlippedY <= m_i_EndModalBtnY1) {
+                m_b_RequestMenuChange.store(true);
+                m_b_ShowEndGameModal.store(false);
+                m_b_EndModalBtnHover.store(false);
+                return;
+            }
+            return;
+        }
+
+        // paused modal input handled by HUDOverlay now
 
         UI::HandleMouseClick(i_X, i_Y);
     }
@@ -996,6 +1126,20 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_MOUSEWHEEL && m_b_Camera3D) {
         float f_ScrollInput = event.wheel.y * k_CameraScrollAcceleration;
         m_f_CameraAngleVelocity -= f_ScrollInput;
+    }
+
+    if (event.type == SDL_MOUSEMOTION) {
+        if (m_b_ShowEndGameModal.load()) {
+            int i_X = event.motion.x;
+            int i_Y = event.motion.y;
+            int i_H = p_App ? p_App->GetHeight() : 0;
+            int i_FlippedY = i_H - i_Y;
+            bool b_Hover = (i_X >= m_i_EndModalBtnX0 && i_X <= m_i_EndModalBtnX1 &&
+                            i_FlippedY >= m_i_EndModalBtnY0 && i_FlippedY <= m_i_EndModalBtnY1);
+            m_b_EndModalBtnHover.store(b_Hover);
+            return;
+        }
+        UI::HandleMouseMotion(event.motion.x, event.motion.y);
     }
 
 }
