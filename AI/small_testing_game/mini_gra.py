@@ -134,12 +134,163 @@ class MrXAI:
         return random.choice(options) if options else None
 
     def _decoy_movement(self, game_state):
-        """Algorytm Decoy Movement dla Mr. X
-        TODO: Implementacja algorytmu zwodzenia policji
-        """
-        # Placeholder dla implementacji decoy Mr. X
+        import random
+        from collections import deque, defaultdict
+
+        posX = game_state.mr_x.position
+        tickets = game_state.mr_x.tickets  # bilety Mr. X
+        police_list = game_state.police
+        graph_edges = game_state.polaczenia
         options = game_state.get_available_moves(game_state.mr_x)
-        return random.choice(options) if options else None
+        if not options:
+            return None
+
+        turn = getattr(game_state, 'turn', 0)
+        next_reveal_turn = getattr(game_state, 'next_reveal_turn', float('inf'))
+        prev_pos = getattr(game_state.mr_x, 'prev_pos', None)
+        last_revealed = getattr(game_state.mr_x, 'last_revealed_position', None)
+
+        graph = defaultdict(list)
+        for a, b, typ in graph_edges:
+            graph[a].append((b, typ))
+            graph[b].append((a, typ))
+
+        def bfs_distances(start):
+            dist = {start: 0}
+            q = deque([start])
+            while q:
+                u = q.popleft()
+                for v, _ in graph[u]:
+                    if v not in dist:
+                        dist[v] = dist[u] + 1
+                        q.append(v)
+            return dist
+
+        police_dists = {p.position: bfs_distances(p.position) for p in police_list}
+
+        # Fallback w przypadku zagrożenia lub ujawnienia
+        if any(police_dists[p.position].get(posX, float('inf')) <= 2 for p in police_list) \
+                or next_reveal_turn - turn <= 2:
+            # tylko ruchy z dostępnymi biletami
+            valid_options = [(dest, typ) for dest, typ in options if tickets.get(typ, 0) > 0]
+            if not valid_options:
+                return None
+            return max(valid_options,
+                       key=lambda it: min(police_dists[p.position].get(it[0], float('inf')) for p in police_list))
+
+        prediction_depth = 1
+
+        def predict_police_positions(turns_ahead=prediction_depth):
+            predicted = {0: set(p.position for p in police_list)}
+            for t in range(1, turns_ahead + 1):
+                nextset = set()
+                for police in police_list:
+                    frontier = {police.position}
+                    for _ in range(t):
+                        new_front = set()
+                        for pos in frontier:
+                            new_front.update([v for v, _ in graph[pos]])
+                        if new_front:
+                            frontier = new_front
+                    nextset.update(frontier)
+                predicted[t] = nextset
+            return predicted
+
+        predicted = predict_police_positions()
+
+        def safety_risk_for(node):
+            min_dist = min(police_dists[p.position].get(node, float('inf')) for p in police_list)
+            return 1.0 / (min_dist + 1e-6) + 0.8 / max(1, len(graph[node]))
+
+        def deception_simple(dest):
+            score = 0.0
+            if prev_pos and prev_pos != posX and prev_pos != dest:
+                d_prev = bfs_distances(prev_pos)
+                if d_prev.get(dest, float('inf')) > d_prev.get(posX, float('inf')):
+                    score += 0.6
+            if last_revealed:
+                d_last = bfs_distances(last_revealed).get(dest, float('inf'))
+                if d_last != float('inf'):
+                    score += 0.5 / (d_last + 1.0)
+            if 1 in predicted and predicted[1]:
+                min_pred = min(bfs_distances(p).get(dest, float('inf')) for p in predicted[1])
+                score += 0.4 / (min_pred + 1.0)
+            return score
+
+        def rollout_score_for_candidate(start_pos, num_rollouts=6, depth=3):
+            total = 0.0
+            for _ in range(num_rollouts):
+                mr_pos = start_pos
+                police_pos = [p.position for p in police_list]
+                caught = False
+                cum_min_dist = 0.0
+                for _ in range(depth):
+                    mr_dist_map = bfs_distances(mr_pos)
+                    new_police_pos = []
+                    for pp in police_pos:
+                        if pp == mr_pos:
+                            caught = True
+                            break
+                        best_nb, best_d = pp, mr_dist_map.get(pp, float('inf'))
+                        for nb, _ in graph[pp]:
+                            dnb = mr_dist_map.get(nb, float('inf'))
+                            if dnb < best_d:
+                                best_d, best_nb = dnb, nb
+                        new_police_pos.append(best_nb)
+                    if caught or any(p == mr_pos for p in new_police_pos):
+                        cum_min_dist += 0
+                        break
+                    police_pos = new_police_pos
+                    nbrs = [v for v, _ in graph[mr_pos]]
+                    if not nbrs:
+                        break
+                    mr_pos = random.choice(nbrs)
+                    min_d = min(bfs_distances(pp).get(mr_pos, float('inf')) for pp in police_pos)
+                    cum_min_dist += min_d if min_d != float('inf') else max(len(graph), 1)
+                total += -100.0 if caught else cum_min_dist / max(1, depth)
+            return total / max(1, num_rollouts)
+
+        # Kandydaci – tylko ruchy możliwe z dostępnymi biletami
+        candidates, risks, deceptions = [], [], []
+        for dest, transport in options:
+            if tickets.get(transport, 0) <= 0:
+                continue
+            candidates.append((dest, transport))
+            risks.append(safety_risk_for(dest))
+            deceptions.append(deception_simple(dest))
+
+        candidate_risk_max = 1.8
+        filtered = [(c, r, d) for c, r, d in zip(candidates, risks, deceptions) if r <= candidate_risk_max]
+        if not filtered:
+            return max(candidates,
+                       key=lambda it: min(police_dists[p.position].get(it[0], float('inf')) for p in police_list),
+                       default=None)
+
+        filtered.sort(key=lambda x: x[1])
+        sim_targets = filtered[:5]
+
+        utilities, sim_moves = [], []
+        for (dest, transport), risk, deception in sim_targets:
+            rscore = rollout_score_for_candidate(dest)
+            rnorm = -1.0 if rscore < -50 else rscore / (1.0 + rscore)
+            utilities.append(deception - risk + 1.5 * rnorm)
+            sim_moves.append((dest, transport))
+
+        if all(u <= 0 for u in utilities):
+            dest, transport = max(filtered, key=lambda x: -x[1])[0]
+            return (dest, transport)
+
+        min_u = min(utilities)
+        weights = [u - min_u + 1e-6 for u in utilities]
+        total = sum(weights)
+        pick = random.random() * total
+        cum = 0.0
+        for mv, w in zip(sim_moves, weights):
+            cum += w
+            if pick <= cum:
+                return mv
+
+        return sim_moves[-1]
 
     # def _dfs_move(self, game_state):
     #     """Algorytm DFS (Depth-First Search) dla Mr. X
@@ -1616,3 +1767,4 @@ def main_menu():
 
 
 main_menu()
+
