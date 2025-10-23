@@ -7,9 +7,18 @@ namespace ScotlandYard {
 namespace Core {
 
 // Game Rules
-// Game Rules
 static constexpr int k_MaxRounds = 24;
 static constexpr int k_DetectiveCount = 4;
+
+// Mr X Reveal Rounds
+static constexpr int k_RevealRounds[] = {3, 8, 13, 18, 24};
+static constexpr int k_RevealRoundsCount = sizeof(k_RevealRounds) / sizeof(k_RevealRounds[0]);
+inline bool IsRevealRound(int i_Round) {
+    for (int i = 0; i < k_RevealRoundsCount; ++i) {
+        if (k_RevealRounds[i] == i_Round) return true;
+    }
+    return false;
+}
 
 // Initial Ticket Counts - Detectives
 static constexpr int k_DetectiveTaxiTickets = 11;

@@ -61,6 +61,13 @@ namespace UI {
         static constexpr float k_SlotNumberDeltaYPx = -3.0f;
         static constexpr float k_CameraButtonScale = 0.75f;
 
+        // Modal layout constants
+        static constexpr float k_ModalMaxWidthPx = 640.0f;
+        static constexpr float k_ModalMaxHeightPx = 240.0f;
+        static constexpr float k_ModalWidthRatio = 0.5f;
+        static constexpr float k_ModalHeightRatio = 0.35f;
+        static constexpr int k_ModalCornerRadiusPx = 12;
+
         float pillsGapPx = k_PillsGapPx;
         float pillsPadXPx = k_PillsPaddingXPx;
         float pillsPadYPx = k_PillsPaddingYPx;

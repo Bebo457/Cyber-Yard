@@ -97,9 +97,10 @@ private:
 
     // Graph manager used by the game state to query connections
     GraphManager m_graph;
+
     std::thread m_t_ConsoleThread;
     std::atomic_bool m_b_ConsoleThreadRunning{false};
-    std::mutex m_mtx_Players;
+    std::mutex m_mtx_Players;  // Protects m_vec_Players
 
     std::vector<Core::Player> m_vec_Players;
     std::atomic_bool m_b_RequestMenuChange{false};
@@ -141,6 +142,9 @@ private:
     std::atomic_bool m_b_ShowPausedModal{false};
 
     std::atomic_bool m_b_DebuggingMode{false};
+
+    // Helper method to render Mr X token at a specific position
+    void RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc);
 
     void CheckEndOfGame(Winner winner = Winner::None);
 

@@ -640,9 +640,7 @@ void GameState::ResetToInitial() {
     m_i_PlayersRemainingThisRound.store(0);
     m_i_Round.store(1);
     m_b_GameActive = false;
-    // ensure textures are reloaded next time we enter the state
     m_b_TexturesLoaded = false;
-    m_TextureID = 0;
 
     // Reset HUD
     std::vector<ScotlandYard::UI::TicketSlot> emptySlots(ScotlandYard::UI::k_TicketSlotCount);
@@ -711,6 +709,34 @@ void GameState::Update(float f_DeltaTime) {
     }
 
     UpdateCameraPhysics(f_DeltaTime);
+}
+
+void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc) {
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(vec2_Position.x, 0.01f, vec2_Position.y));
+    model = glm::scale(model, glm::vec3(0.45f));
+
+    // MisterX colour (black)
+    glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
+    glUniform3fv(i_ColorLoc, 1, glm::value_ptr(color));
+
+    // Body (cylinder)
+    glm::mat4 cylModel = glm::scale(model, glm::vec3(1.0f));
+    glm::mat4 MVP = mat4_Projection * mat4_View * cylModel;
+    glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+    glBindVertexArray(m_VAO_Cylinder);
+    glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
+    glBindVertexArray(0);
+
+    // Top (hemisphere)
+    glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
+    MVP = mat4_Projection * mat4_View * hemiModel;
+    glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+    glBindVertexArray(m_VAO_Hemisphere);
+    glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
+    glBindVertexArray(0);
 }
 
 void GameState::Render(Core::Application* p_App) {
@@ -872,11 +898,7 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
-    // Draw MisterX token(s): normally only on reveal rounds when active, but
-    // if debugging mode is enabled, always draw MisterX so it's visible at all times.
-    auto fn_IsRevealRound = [](int i_RoundVal) {
-        return (i_RoundVal == 3 || i_RoundVal == 8 || i_RoundVal == 13 || i_RoundVal == 18 || i_RoundVal == 24);
-    };
+    // if debugging mode is enabled, always draw MisterX
     int i_CurrentRoundForRender = m_i_Round.load();
 
     if (m_b_DebuggingMode.load()) {
@@ -889,37 +911,10 @@ void GameState::Render(Core::Application* p_App) {
                             [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
             if (it == m_vec_CircleStations.end()) continue;
 
-            glm::vec2 pos = it->position;
-
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
-            model = glm::scale(model, glm::vec3(0.45f));
-
-            // MisterX colour (black)
-            glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
-            glUniform3fv(colorLoc, 1, glm::value_ptr(color));
-
-            // Body
-            glm::mat4 cylModel = glm::scale(model,glm::vec3(1.0f));
-            glm::mat4 MVP = projection * view * cylModel;
-            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
-
-            glBindVertexArray(m_VAO_Cylinder);
-            glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
-            glBindVertexArray(0);
-
-            // Top
-            glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
-            MVP = projection * view * hemiModel;
-            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
-
-            glBindVertexArray(m_VAO_Hemisphere);
-            glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
-            glBindVertexArray(0);
+            RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
         }
     } else {
-        // Default behavior: draw only on reveal rounds and when MisterX is active
-        if (fn_IsRevealRound(i_CurrentRoundForRender)) {
+        if (Core::IsRevealRound(i_CurrentRoundForRender)) {
             for (const auto& player : m_vec_Players) {
                 if (player.GetType() != Core::PlayerType::MisterX) continue;
                 if (!player.IsActive()) continue;
@@ -929,33 +924,7 @@ void GameState::Render(Core::Application* p_App) {
                                 [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
                 if (it == m_vec_CircleStations.end()) continue;
 
-                glm::vec2 pos = it->position;
-
-                glm::mat4 model = glm::mat4(1.0f);
-                model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
-                model = glm::scale(model, glm::vec3(0.45f));
-
-                // MisterX colour (black)
-                glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
-                glUniform3fv(colorLoc, 1, glm::value_ptr(color));
-
-                // Body
-                glm::mat4 cylModel = glm::scale(model,glm::vec3(1.0f));
-                glm::mat4 MVP = projection * view * cylModel;
-                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
-
-                glBindVertexArray(m_VAO_Cylinder);
-                glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
-                glBindVertexArray(0);
-
-                // Top
-                glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
-                MVP = projection * view * hemiModel;
-                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
-
-                glBindVertexArray(m_VAO_Hemisphere);
-                glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
-                glBindVertexArray(0);
+                RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
             }
         }
     }
@@ -989,14 +958,14 @@ void GameState::Render(Core::Application* p_App) {
 
         int i_W = p_App->GetWidth();
         int i_H = p_App->GetHeight();
-        float f_ModalWpx = std::min(640.0f, float(i_W) * 0.5f);
-        float f_ModalHpx = std::min(240.0f, float(i_H) * 0.35f);
+        float f_ModalWpx = std::min(UI::HUDStyle::k_ModalMaxWidthPx, float(i_W) * UI::HUDStyle::k_ModalWidthRatio);
+        float f_ModalHpx = std::min(UI::HUDStyle::k_ModalMaxHeightPx, float(i_H) * UI::HUDStyle::k_ModalHeightRatio);
         float f_Left = (i_W - f_ModalWpx) * 0.5f;
         float f_Bottom = (i_H - f_ModalHpx) * 0.5f;
         float f_Right = f_Left + f_ModalWpx;
         float f_Top = f_Bottom + f_ModalHpx;
 
-        ScotlandYard::UI::DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, {0.08f, 0.08f, 0.12f, 0.95f}, 12, p_App);
+        ScotlandYard::UI::DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, {0.08f, 0.08f, 0.12f, 0.95f}, UI::HUDStyle::k_ModalCornerRadiusPx, p_App);
 
 
     std::string s_Title = "";  
