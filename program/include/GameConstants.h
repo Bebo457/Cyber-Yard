@@ -58,6 +58,20 @@ static constexpr int k_TransportTypeMetro = 3;
 static constexpr int k_TransportTypeWater = 4;
 
 } // namespace Core
+
+namespace UI {
+
+// Arrow Geometry
+static constexpr float k_ArrowLength = 0.08f;
+static constexpr float k_ArrowWidth = 0.04f;
+
+// Transport Orbital Radii (distance from station center for direction arrows)
+static constexpr float k_TaxiWaterOrbitalRadius = 0.15f;
+static constexpr float k_BusOrbitalRadius = 0.22f;
+static constexpr float k_MetroOrbitalRadius = 0.29f;
+
+} // namespace UI
+
 } // namespace ScotlandYard
 
 #endif // SCOTLANDYARD_CORE_GAMECONSTANTS_H

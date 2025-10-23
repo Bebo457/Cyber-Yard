@@ -61,9 +61,7 @@ GameState::~GameState() {}
 void GameState::OnEnter() {
     m_b_GameActive = true;
 
-    // ==============================
     // Dane wierzchołków planszy (pozycja, kolor, UV)
-    // ==============================
     float size = 1.0f;
     float planeVertices[] = {
         -size, 0.0f, -size,   0.0f, 1.0f, 0.0f,   0.0f, 0.0f,
@@ -75,9 +73,7 @@ void GameState::OnEnter() {
         -size, 0.0f,  size,   0.0f, 1.0f, 0.0f,   0.0f, 1.0f
     };
 
-    // ==============================
     // Pozycje kółek z pliku CSV
-    // ==============================
     auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
 
     if (vec_StationData.empty()) {
@@ -101,9 +97,7 @@ void GameState::OnEnter() {
         }
     }
 
-    // ==============================
     // VAO/VBO planszy
-    // ==============================
     glGenVertexArrays(1, &m_VAO_Plane);
     glGenBuffers(1, &m_VBO_Plane);
 
@@ -122,9 +116,7 @@ void GameState::OnEnter() {
 
     glBindVertexArray(0);
 
-    // ==============================
     // VAO/VBO kółek
-    // ==============================
     float f_Radius = 0.05f;
     int i_Segments = 30;
     std::vector<float> vec_CircleVertices = generateCircleVertices(f_Radius, i_Segments);
@@ -143,9 +135,7 @@ void GameState::OnEnter() {
 
     glBindVertexArray(0);
 
-   // ==============================
     // VAO/VBO cylindra i półkuli pionka
-    // ==============================
     std::vector<float> cylVerts = generateCylinderVertices(0.05f, 0.1f, 20); // radius, height, segments
     m_i_CylinderVertexCount = static_cast<int>(cylVerts.size() / 3);
     glGenVertexArrays(1, &m_VAO_Cylinder);
@@ -168,9 +158,7 @@ void GameState::OnEnter() {
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
 
-    // ==============================
     // Shadery planszy
-    // ==============================
     const char* vertexShaderSrc = R"(
         #version 330 core
         layout(location = 0) in vec3 aPos;
@@ -213,9 +201,7 @@ void GameState::OnEnter() {
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
-    // ==============================
     // Shadery kółek
-    // ==============================
     const char* circleVertexShaderSrc = R"(
         #version 330 core
         layout(location = 0) in vec3 aPos;
@@ -250,9 +236,7 @@ void GameState::OnEnter() {
     glDeleteShader(cVertexShader);
     glDeleteShader(cFragmentShader);
 
-    // ==============================
     // Shader for color picking
-    // ==============================
     const char* pickingVertexShaderSrc = R"(
         #version 330 core
         layout(location = 0) in vec3 aPos;
@@ -287,9 +271,7 @@ void GameState::OnEnter() {
     glDeleteShader(pickingVS);
     glDeleteShader(pickingFS);
 
-    // ==============================
     // Framebuffer for color picking
-    // ==============================
     glGenFramebuffers(1, &m_FBO_Picking);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO_Picking);
 
@@ -311,9 +293,7 @@ void GameState::OnEnter() {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ==============================
     // Framebuffer for dilated picking
-    // ==============================
     glGenFramebuffers(1, &m_FBO_PickingDilated);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO_PickingDilated);
 
@@ -330,9 +310,7 @@ void GameState::OnEnter() {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ==============================
     // Shader for dilation
-    // ==============================
     const char* dilationVertexShaderSrc = R"(
         #version 330 core
         layout(location = 0) in vec2 aPos;
@@ -399,9 +377,7 @@ void GameState::OnEnter() {
     glDeleteShader(dilationVS);
     glDeleteShader(dilationFS);
 
-    // ==============================
     // Fullscreen quad for dilation
-    // ==============================
     float quadVertices[] = {
         -1.0f, -1.0f,
          1.0f, -1.0f,
@@ -423,9 +399,7 @@ void GameState::OnEnter() {
 
     glBindVertexArray(0);
 
-    // ==============================
     // VAO/VBO for arrows
-    // ==============================
     std::vector<float> arrowVerts = generateArrowVertices();
     m_i_ArrowVertexCount = static_cast<int>(arrowVerts.size() / 3);
 
@@ -470,9 +444,7 @@ void GameState::OnEnter() {
 
     glEnable(GL_DEPTH_TEST);
 
-    // ==============================
     // Initialize players from graph data (random distinct nodes)
-    // ==============================
     m_vec_Players.clear();
 
     GraphManager gm(Core::k_MaxNodes);
@@ -1646,10 +1618,6 @@ void GameState::UpdateArrowsForSelectedPlayer() {
 
     auto connections = m_graph.GetConnections(i_CurrentNode);
 
-    const float f_TaxiWaterRadius = 0.15f;
-    const float f_BusRadius = 0.22f;
-    const float f_MetroRadius = 0.29f;
-
     for (const auto& conn : connections) {
         auto destIt = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
                                   [&conn](const StationCircle& sc){ return sc.stationID == conn.i_NodeId; });
@@ -1659,11 +1627,11 @@ void GameState::UpdateArrowsForSelectedPlayer() {
 
         glm::vec2 vec2_Direction = glm::normalize(vec2_DestPos - vec2_CurrentPos);
 
-        float f_OrbitalRadius = f_TaxiWaterRadius;
+        float f_OrbitalRadius = UI::k_TaxiWaterOrbitalRadius;
         if (conn.i_TransportType == Core::k_TransportTypeBus) {
-            f_OrbitalRadius = f_BusRadius;
+            f_OrbitalRadius = UI::k_BusOrbitalRadius;
         } else if (conn.i_TransportType == Core::k_TransportTypeMetro) {
-            f_OrbitalRadius = f_MetroRadius;
+            f_OrbitalRadius = UI::k_MetroOrbitalRadius;
         }
 
         glm::vec2 vec2_ArrowPos = vec2_CurrentPos + vec2_Direction * f_OrbitalRadius;
@@ -1702,13 +1670,10 @@ uint32_t GameState::RegisterClickable(ClickableType e_Type, int i_Index, int i_D
 }
 
 std::vector<float> GameState::generateArrowVertices() {
-    float f_Length = 0.08f;
-    float f_Width = 0.04f;
-
     std::vector<float> verts = {
-        f_Length, 0.0f, 0.0f,
-        0.0f, 0.0f, -f_Width,
-        0.0f, 0.0f, f_Width
+        UI::k_ArrowLength, 0.0f, 0.0f,
+        0.0f, 0.0f, -UI::k_ArrowWidth,
+        0.0f, 0.0f, UI::k_ArrowWidth
     };
 
     return verts;
