@@ -39,6 +39,20 @@ GameState::GameState()
     , m_f_CameraAngleVelocity(0.0f)
     , m_vec3_Saved3DCameraPosition(0.0f, 1.5f, 4.0f)
     , m_graph(200)
+    , m_FBO_Picking(0)
+    , m_TextureID_Picking(0)
+    , m_RBO_PickingDepth(0)
+    , m_FBO_PickingDilated(0)
+    , m_TextureID_PickingDilated(0)
+    , m_VAO_Arrow(0)
+    , m_VBO_Arrow(0)
+    , m_i_ArrowVertexCount(0)
+    , m_ShaderProgram_Picking(0)
+    , m_ShaderProgram_Dilation(0)
+    , m_VAO_FullscreenQuad(0)
+    , m_VBO_FullscreenQuad(0)
+    , m_i_SelectedPlayerIndex(-1)
+    , m_ui_NextPickingID(0)
 {
 }
 
@@ -235,6 +249,197 @@ void GameState::OnEnter() {
 
     glDeleteShader(cVertexShader);
     glDeleteShader(cFragmentShader);
+
+    // ==============================
+    // Shader for color picking
+    // ==============================
+    const char* pickingVertexShaderSrc = R"(
+        #version 330 core
+        layout(location = 0) in vec3 aPos;
+        uniform mat4 MVP;
+        void main() {
+            gl_Position = MVP * vec4(aPos, 1.0);
+        }
+    )";
+
+    const char* pickingFragmentShaderSrc = R"(
+        #version 330 core
+        uniform vec3 pickingColor;
+        out vec4 FragColor;
+        void main() {
+            FragColor = vec4(pickingColor, 1.0);
+        }
+    )";
+
+    GLuint pickingVS = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(pickingVS, 1, &pickingVertexShaderSrc, nullptr);
+    glCompileShader(pickingVS);
+
+    GLuint pickingFS = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(pickingFS, 1, &pickingFragmentShaderSrc, nullptr);
+    glCompileShader(pickingFS);
+
+    m_ShaderProgram_Picking = glCreateProgram();
+    glAttachShader(m_ShaderProgram_Picking, pickingVS);
+    glAttachShader(m_ShaderProgram_Picking, pickingFS);
+    glLinkProgram(m_ShaderProgram_Picking);
+
+    glDeleteShader(pickingVS);
+    glDeleteShader(pickingFS);
+
+    // ==============================
+    // Framebuffer for color picking
+    // ==============================
+    glGenFramebuffers(1, &m_FBO_Picking);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_FBO_Picking);
+
+    glGenTextures(1, &m_TextureID_Picking);
+    glBindTexture(GL_TEXTURE_2D, m_TextureID_Picking);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_i_Width, m_i_Height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_TextureID_Picking, 0);
+
+    glGenRenderbuffers(1, &m_RBO_PickingDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_RBO_PickingDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, m_i_Width, m_i_Height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_RBO_PickingDepth);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "[GameState] ERROR: Picking framebuffer is not complete!\n";
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // ==============================
+    // Framebuffer for dilated picking
+    // ==============================
+    glGenFramebuffers(1, &m_FBO_PickingDilated);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_FBO_PickingDilated);
+
+    glGenTextures(1, &m_TextureID_PickingDilated);
+    glBindTexture(GL_TEXTURE_2D, m_TextureID_PickingDilated);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_i_Width, m_i_Height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_TextureID_PickingDilated, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "[GameState] ERROR: Dilated picking framebuffer is not complete!\n";
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // ==============================
+    // Shader for dilation
+    // ==============================
+    const char* dilationVertexShaderSrc = R"(
+        #version 330 core
+        layout(location = 0) in vec2 aPos;
+        out vec2 TexCoords;
+        void main() {
+            TexCoords = aPos * 0.5 + 0.5;
+            gl_Position = vec4(aPos, 0.0, 1.0);
+        }
+    )";
+
+    const char* dilationFragmentShaderSrc = R"(
+        #version 330 core
+        in vec2 TexCoords;
+        uniform sampler2D idBuffer;
+        uniform vec2 texelSize;
+        out vec4 fragColor;
+
+        void main() {
+            ivec2 offsets[9] = ivec2[9](
+                ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1),
+                ivec2(-1,  0), ivec2(0,  0), ivec2(1,  0),
+                ivec2(-1,  1), ivec2(0,  1), ivec2(1,  1)
+            );
+
+            int bestID = 0;
+            float bestDist = 99999.0;
+
+            for (int i = 0; i < 9; i++) {
+                vec2 uv = TexCoords + vec2(offsets[i]) * texelSize;
+                vec3 color = texture(idBuffer, uv).rgb;
+                int id = int(color.r * 255.0) |
+                         (int(color.g * 255.0) << 8) |
+                         (int(color.b * 255.0) << 16);
+
+                if (id != 0) {
+                    float weight = length(vec2(offsets[i]));
+                    if (weight < bestDist) {
+                        bestDist = weight;
+                        bestID = id;
+                    }
+                }
+            }
+
+            fragColor = vec4(float(bestID & 255) / 255.0,
+                             float((bestID >> 8) & 255) / 255.0,
+                             float((bestID >> 16) & 255) / 255.0,
+                             1.0);
+        }
+    )";
+
+    GLuint dilationVS = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(dilationVS, 1, &dilationVertexShaderSrc, nullptr);
+    glCompileShader(dilationVS);
+
+    GLuint dilationFS = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(dilationFS, 1, &dilationFragmentShaderSrc, nullptr);
+    glCompileShader(dilationFS);
+
+    m_ShaderProgram_Dilation = glCreateProgram();
+    glAttachShader(m_ShaderProgram_Dilation, dilationVS);
+    glAttachShader(m_ShaderProgram_Dilation, dilationFS);
+    glLinkProgram(m_ShaderProgram_Dilation);
+
+    glDeleteShader(dilationVS);
+    glDeleteShader(dilationFS);
+
+    // ==============================
+    // Fullscreen quad for dilation
+    // ==============================
+    float quadVertices[] = {
+        -1.0f, -1.0f,
+         1.0f, -1.0f,
+         1.0f,  1.0f,
+        -1.0f, -1.0f,
+         1.0f,  1.0f,
+        -1.0f,  1.0f
+    };
+
+    glGenVertexArrays(1, &m_VAO_FullscreenQuad);
+    glGenBuffers(1, &m_VBO_FullscreenQuad);
+
+    glBindVertexArray(m_VAO_FullscreenQuad);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_FullscreenQuad);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
+
+    // ==============================
+    // VAO/VBO for arrows
+    // ==============================
+    std::vector<float> arrowVerts = generateArrowVertices();
+    m_i_ArrowVertexCount = static_cast<int>(arrowVerts.size() / 3);
+
+    glGenVertexArrays(1, &m_VAO_Arrow);
+    glGenBuffers(1, &m_VBO_Arrow);
+
+    glBindVertexArray(m_VAO_Arrow);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Arrow);
+    glBufferData(GL_ARRAY_BUFFER, arrowVerts.size() * sizeof(float), arrowVerts.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
 
     UI::SetCameraToggleCallback([this]() {
         m_b_Camera3D = !m_b_Camera3D;
@@ -611,6 +816,50 @@ void GameState::OnExit() {
         glDeleteProgram(m_ShaderProgram_Circle);
         m_ShaderProgram_Circle = 0;
     }
+    if (m_FBO_Picking) {
+        glDeleteFramebuffers(1, &m_FBO_Picking);
+        m_FBO_Picking = 0;
+    }
+    if (m_TextureID_Picking) {
+        glDeleteTextures(1, &m_TextureID_Picking);
+        m_TextureID_Picking = 0;
+    }
+    if (m_RBO_PickingDepth) {
+        glDeleteRenderbuffers(1, &m_RBO_PickingDepth);
+        m_RBO_PickingDepth = 0;
+    }
+    if (m_VAO_Arrow) {
+        glDeleteVertexArrays(1, &m_VAO_Arrow);
+        m_VAO_Arrow = 0;
+    }
+    if (m_VBO_Arrow) {
+        glDeleteBuffers(1, &m_VBO_Arrow);
+        m_VBO_Arrow = 0;
+    }
+    if (m_ShaderProgram_Picking) {
+        glDeleteProgram(m_ShaderProgram_Picking);
+        m_ShaderProgram_Picking = 0;
+    }
+    if (m_FBO_PickingDilated) {
+        glDeleteFramebuffers(1, &m_FBO_PickingDilated);
+        m_FBO_PickingDilated = 0;
+    }
+    if (m_TextureID_PickingDilated) {
+        glDeleteTextures(1, &m_TextureID_PickingDilated);
+        m_TextureID_PickingDilated = 0;
+    }
+    if (m_ShaderProgram_Dilation) {
+        glDeleteProgram(m_ShaderProgram_Dilation);
+        m_ShaderProgram_Dilation = 0;
+    }
+    if (m_VAO_FullscreenQuad) {
+        glDeleteVertexArrays(1, &m_VAO_FullscreenQuad);
+        m_VAO_FullscreenQuad = 0;
+    }
+    if (m_VBO_FullscreenQuad) {
+        glDeleteBuffers(1, &m_VBO_FullscreenQuad);
+        m_VBO_FullscreenQuad = 0;
+    }
     // Note: do not delete m_TextureID here -- textures are managed by Application's cache.
     // ResetToInitial() will set m_TextureID to 0 so LoadTextures() can re-acquire or reload it.
     m_b_GameActive = false;
@@ -742,8 +991,25 @@ void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& 
 void GameState::Render(Core::Application* p_App) {
     LoadTextures(p_App);
 
-    m_i_Width = p_App->GetWidth();
-    m_i_Height = p_App->GetHeight();
+    int i_NewWidth = p_App->GetWidth();
+    int i_NewHeight = p_App->GetHeight();
+
+    if (i_NewWidth != m_i_Width || i_NewHeight != m_i_Height) {
+        m_i_Width = i_NewWidth;
+        m_i_Height = i_NewHeight;
+
+        glBindTexture(GL_TEXTURE_2D, m_TextureID_Picking);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_i_Width, m_i_Height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
+        glBindRenderbuffer(GL_RENDERBUFFER, m_RBO_PickingDepth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, m_i_Width, m_i_Height);
+
+        glBindTexture(GL_TEXTURE_2D, m_TextureID_PickingDilated);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_i_Width, m_i_Height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    }
 
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
@@ -898,11 +1164,9 @@ void GameState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
-    // if debugging mode is enabled, always draw MisterX
     int i_CurrentRoundForRender = m_i_Round.load();
 
-    if (m_b_DebuggingMode.load()) {
-        // Always draw MisterX tokens (ignore reveal/active rules)
+    if (m_b_DebuggingMode.load() && m_b_ShowMrXInDebug.load()) {
         for (const auto& player : m_vec_Players) {
             if (player.GetType() != Core::PlayerType::MisterX) continue;
 
@@ -913,7 +1177,7 @@ void GameState::Render(Core::Application* p_App) {
 
             RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
         }
-    } else {
+    } else if (!m_b_DebuggingMode.load()) {
         if (Core::IsRevealRound(i_CurrentRoundForRender)) {
             for (const auto& player : m_vec_Players) {
                 if (player.GetType() != Core::PlayerType::MisterX) continue;
@@ -927,6 +1191,34 @@ void GameState::Render(Core::Application* p_App) {
                 RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
             }
         }
+    }
+
+    glUseProgram(m_ShaderProgram_Circle);
+    for (const auto& arrow : m_vec_CurrentArrows) {
+        glm::vec3 vec3_ArrowColor;
+        if (arrow.i_TransportType == Core::k_TransportTypeTaxi) {
+            vec3_ArrowColor = glm::vec3(1.0f, 1.0f, 0.0f);
+        } else if (arrow.i_TransportType == Core::k_TransportTypeBus) {
+            vec3_ArrowColor = glm::vec3(0.0f, 1.0f, 0.0f);
+        } else if (arrow.i_TransportType == Core::k_TransportTypeMetro) {
+            vec3_ArrowColor = glm::vec3(1.0f, 0.0f, 0.0f);
+        } else if (arrow.i_TransportType == Core::k_TransportTypeWater) {
+            vec3_ArrowColor = glm::vec3(0.0f, 0.4f, 1.0f);
+        } else {
+            vec3_ArrowColor = glm::vec3(1.0f, 1.0f, 1.0f);
+        }
+
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(arrow.vec2_Position.x, 0.02f, arrow.vec2_Position.y));
+        model = glm::rotate(model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        glm::mat4 MVP = projection * view * model;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_ArrowColor));
+
+        glBindVertexArray(m_VAO_Arrow);
+        glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
+        glBindVertexArray(0);
     }
 
     std::vector<std::string> labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
@@ -946,6 +1238,42 @@ void GameState::Render(Core::Application* p_App) {
     ScotlandYard::UI::SetTopBar(labels, {}, counts);
     ScotlandYard::UI::SetRound(m_i_Round.load());
     ScotlandYard::UI::RenderHUD(p_App);
+
+    if (m_b_DebuggingMode.load()) {
+        GLboolean b_DepthWasDebug = glIsEnabled(GL_DEPTH_TEST);
+        GLboolean b_BlendWasDebug = glIsEnabled(GL_BLEND);
+        if (b_DepthWasDebug) glDisable(GL_DEPTH_TEST);
+        if (!b_BlendWasDebug) glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        std::string s_DebugText1 = "DEBUG MODE - Press P: Color Picking View";
+        std::string s_DebugText2 = "Press M: Toggle Mr X Visibility";
+
+        UI::Color white{1.0f, 1.0f, 1.0f, 1.0f};
+        UI::DrawTextCenteredPx(s_DebugText1, 10, m_i_Height - 60, m_i_Width - 10, m_i_Height - 40, white, p_App, 0.0f);
+        UI::DrawTextCenteredPx(s_DebugText2, 10, m_i_Height - 40, m_i_Width - 10, m_i_Height - 20, white, p_App, 0.0f);
+
+        if (b_BlendWasDebug == GL_FALSE) glDisable(GL_BLEND);
+        if (b_DepthWasDebug) glEnable(GL_DEPTH_TEST);
+    }
+
+    if (m_b_ShowPickingBuffer.load()) {
+        m_map_PickingIDToClickable.clear();
+        m_ui_NextPickingID = 0;
+
+        RenderPickingPass(projection, view);
+        ApplyDilationPass();
+
+        int i_WindowWidth = p_App->GetWidth();
+        int i_WindowHeight = p_App->GetHeight();
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, m_FBO_PickingDilated);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(0, 0, i_WindowWidth, i_WindowHeight,
+                         0, 0, i_WindowWidth, i_WindowHeight,
+                         GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    }
 
     // Draw end-of-game modal on top of HUD if requested (before buffer swap)
     if (m_b_ShowEndGameModal.load()) {
@@ -1066,6 +1394,18 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             case SDLK_ESCAPE:
                 // Can set exit flag
                 break;
+            case SDLK_p:
+                if (m_b_DebuggingMode.load()) {
+                    m_b_ShowPickingBuffer.store(!m_b_ShowPickingBuffer.load());
+                    std::cout << "[GameState] Picking buffer debug: " << (m_b_ShowPickingBuffer.load() ? "ON" : "OFF") << "\n";
+                }
+                break;
+            case SDLK_m:
+                if (m_b_DebuggingMode.load()) {
+                    m_b_ShowMrXInDebug.store(!m_b_ShowMrXInDebug.load());
+                    std::cout << "[GameState] Mr X visibility: " << (m_b_ShowMrXInDebug.load() ? "ON" : "OFF") << "\n";
+                }
+                break;
         }
     }
 
@@ -1074,8 +1414,8 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
         int i_Y = event.button.y;
         if (m_b_ShowEndGameModal.load()) {
             int i_H = p_App ? p_App->GetHeight() : 0;
-            int i_PxY = i_Y; // top-origin
-            int i_FlippedY = i_H - i_PxY; 
+            int i_PxY = i_Y;
+            int i_FlippedY = i_H - i_PxY;
 
             if (i_X >= m_i_EndModalBtnX0 && i_X <= m_i_EndModalBtnX1 &&
                 i_FlippedY >= m_i_EndModalBtnY0 && i_FlippedY <= m_i_EndModalBtnY1) {
@@ -1087,9 +1427,11 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             return;
         }
 
-        // paused modal input handled by HUDOverlay now
-
         UI::HandleMouseClick(i_X, i_Y);
+
+        if (event.button.button == SDL_BUTTON_LEFT) {
+            HandleColorPicking(i_X, i_Y);
+        }
     }
 
     if (event.type == SDL_MOUSEWHEEL && m_b_Camera3D) {
@@ -1283,6 +1625,385 @@ void GameState::UpdateCameraPhysics(float f_DeltaTime) {
     float f_OriginalY = m_vec3_Saved3DCameraPosition.y;
     m_vec3_Saved3DCameraPosition += m_vec3_CameraVelocity * f_DeltaTime;
     m_vec3_Saved3DCameraPosition.y = f_OriginalY;
+}
+
+void GameState::UpdateArrowsForSelectedPlayer() {
+    m_vec_CurrentArrows.clear();
+
+    if (m_i_SelectedPlayerIndex < 0 || m_i_SelectedPlayerIndex >= static_cast<int>(m_vec_Players.size())) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    const auto& player = m_vec_Players[m_i_SelectedPlayerIndex];
+    int i_CurrentNode = player.GetOccupiedNode();
+
+    auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                          [i_CurrentNode](const StationCircle& sc){ return sc.stationID == i_CurrentNode; });
+    if (it == m_vec_CircleStations.end()) return;
+
+    glm::vec2 vec2_CurrentPos = it->position;
+
+    auto connections = m_graph.GetConnections(i_CurrentNode);
+
+    const float f_TaxiWaterRadius = 0.15f;
+    const float f_BusRadius = 0.22f;
+    const float f_MetroRadius = 0.29f;
+
+    for (const auto& conn : connections) {
+        auto destIt = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                                  [&conn](const StationCircle& sc){ return sc.stationID == conn.i_NodeId; });
+        if (destIt == m_vec_CircleStations.end()) continue;
+
+        glm::vec2 vec2_DestPos = destIt->position;
+
+        glm::vec2 vec2_Direction = glm::normalize(vec2_DestPos - vec2_CurrentPos);
+
+        float f_OrbitalRadius = f_TaxiWaterRadius;
+        if (conn.i_TransportType == Core::k_TransportTypeBus) {
+            f_OrbitalRadius = f_BusRadius;
+        } else if (conn.i_TransportType == Core::k_TransportTypeMetro) {
+            f_OrbitalRadius = f_MetroRadius;
+        }
+
+        glm::vec2 vec2_ArrowPos = vec2_CurrentPos + vec2_Direction * f_OrbitalRadius;
+
+        float f_Rotation = atan2(vec2_Direction.y, vec2_Direction.x);
+
+        DirectionArrow arrow;
+        arrow.vec2_Position = vec2_ArrowPos;
+        arrow.f_Rotation = f_Rotation;
+        arrow.i_DestinationNode = conn.i_NodeId;
+        arrow.i_TransportType = conn.i_TransportType;
+
+        m_vec_CurrentArrows.push_back(arrow);
+    }
+}
+
+glm::vec3 GameState::IDToColor(uint32_t ui_ID) const {
+    float f_R = ((ui_ID & 0x000000FF) >> 0) / 255.0f;
+    float f_G = ((ui_ID & 0x0000FF00) >> 8) / 255.0f;
+    float f_B = ((ui_ID & 0x00FF0000) >> 16) / 255.0f;
+    return glm::vec3(f_R, f_G, f_B);
+}
+
+uint32_t GameState::ColorToID(unsigned char r, unsigned char g, unsigned char b) const {
+    return (uint32_t(r) << 0) | (uint32_t(g) << 8) | (uint32_t(b) << 16);
+}
+
+uint32_t GameState::RegisterClickable(ClickableType e_Type, int i_Index, int i_Data) {
+    uint32_t ui_ID = ++m_ui_NextPickingID;
+    ClickableID clickable;
+    clickable.e_Type = e_Type;
+    clickable.i_Index = i_Index;
+    clickable.i_Data = i_Data;
+    m_map_PickingIDToClickable[ui_ID] = clickable;
+    return ui_ID;
+}
+
+std::vector<float> GameState::generateArrowVertices() {
+    float f_Length = 0.08f;
+    float f_Width = 0.04f;
+
+    std::vector<float> verts = {
+        f_Length, 0.0f, 0.0f,
+        0.0f, 0.0f, -f_Width,
+        0.0f, 0.0f, f_Width
+    };
+
+    return verts;
+}
+
+void GameState::HandlePlayerClick(int i_PlayerIndex) {
+    if (i_PlayerIndex < 0 || i_PlayerIndex >= static_cast<int>(m_vec_Players.size())) {
+        return;
+    }
+
+    bool b_CanSelect = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mtx_Players);
+        const auto& player = m_vec_Players[i_PlayerIndex];
+
+        bool b_IsMrX = (player.GetType() == Core::PlayerType::MisterX);
+        bool b_MrXActive = false;
+
+        for (const auto& p : m_vec_Players) {
+            if (p.GetType() == Core::PlayerType::MisterX && p.IsActive()) {
+                b_MrXActive = true;
+                break;
+            }
+        }
+
+        if (b_MrXActive && !b_IsMrX) {
+            std::cout << "[GameState] Mr X must move first this round.\n";
+            return;
+        }
+
+        if (!b_MrXActive && b_IsMrX) {
+            std::cout << "[GameState] Mr X has already moved this round.\n";
+            return;
+        }
+
+        b_CanSelect = true;
+    }
+
+    {
+        std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+        if (i_PlayerIndex < static_cast<int>(m_vec_MovedThisRound.size()) && m_vec_MovedThisRound[i_PlayerIndex]) {
+            std::cout << "[GameState] Player has already moved this round.\n";
+            return;
+        }
+    }
+
+    if (b_CanSelect) {
+        m_i_SelectedPlayerIndex = i_PlayerIndex;
+        UpdateArrowsForSelectedPlayer();
+        std::cout << "[GameState] Selected player " << i_PlayerIndex << "\n";
+    }
+}
+
+void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
+    if (i_PlayerIndex != m_i_SelectedPlayerIndex) {
+        return;
+    }
+
+    auto arrowIt = std::find_if(m_vec_CurrentArrows.begin(), m_vec_CurrentArrows.end(),
+                                [i_DestinationNode](const DirectionArrow& a) {
+                                    return a.i_DestinationNode == i_DestinationNode;
+                                });
+    if (arrowIt == m_vec_CurrentArrows.end()) {
+        return;
+    }
+
+    int i_TransportType = arrowIt->i_TransportType;
+    bool b_MoveSuccessful = false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mtx_Players);
+        auto& player = m_vec_Players[i_PlayerIndex];
+
+        bool b_TicketAvailable = true;
+        if (i_TransportType == Core::k_TransportTypeTaxi) {
+            b_TicketAvailable = player.SpendTaxiTicket();
+        } else if (i_TransportType == Core::k_TransportTypeBus) {
+            b_TicketAvailable = player.SpendBusTicket();
+        } else if (i_TransportType == Core::k_TransportTypeMetro) {
+            b_TicketAvailable = player.SpendMetroTicket();
+        } else if (i_TransportType == Core::k_TransportTypeWater) {
+            b_TicketAvailable = player.SpendWaterTicket();
+        }
+
+        if (!b_TicketAvailable) {
+            std::cout << "[GameState] No tickets available for this transport type.\n";
+            return;
+        }
+
+        player.MoveTo(i_DestinationNode);
+        b_MoveSuccessful = true;
+    }
+
+    if (b_MoveSuccessful) {
+        std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << "\n";
+
+        m_i_SelectedPlayerIndex = -1;
+        m_vec_CurrentArrows.clear();
+
+        bool b_Captured = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_Players);
+            b_Captured = CheckCapture();
+        }
+        if (b_Captured) {
+            CheckEndOfGame(Winner::Detectives);
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_Players);
+            auto& ref_Player = m_vec_Players[i_PlayerIndex];
+            if (ref_Player.GetType() == Core::PlayerType::MisterX) {
+                UI::TicketMark mark = UI::TicketMark::None;
+                if (i_TransportType == Core::k_TransportTypeTaxi) mark = UI::TicketMark::Taxi;
+                else if (i_TransportType == Core::k_TransportTypeBus) mark = UI::TicketMark::Bus;
+                else if (i_TransportType == Core::k_TransportTypeMetro) mark = UI::TicketMark::Metro;
+                else if (i_TransportType == Core::k_TransportTypeWater) mark = UI::TicketMark::Water;
+                UI::SetSlotMark(m_i_Round.load(), mark, true);
+                ref_Player.SetActive(false);
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_GameState);
+            if (!m_vec_MovedThisRound[i_PlayerIndex]) {
+                m_vec_MovedThisRound[i_PlayerIndex] = true;
+                int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                if (i_Remaining > 0) {
+                    m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                }
+            }
+
+            if (m_i_PlayersRemainingThisRound.load() == 0) {
+                int i_CurrentRound = m_i_Round.load();
+                if (i_CurrentRound >= Core::k_MaxRounds) {
+                    CheckEndOfGame();
+                } else {
+                    m_i_Round.store(i_CurrentRound + 1);
+                    std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
+                    m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
+                    UI::SetRound(m_i_Round.load());
+
+                    {
+                        std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+                        for (auto& p : m_vec_Players) {
+                            if (p.GetType() == Core::PlayerType::MisterX) p.SetActive(true);
+                            else p.SetActive(false);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
+    m_map_PickingIDToClickable.clear();
+    m_ui_NextPickingID = 0;
+
+    glm::mat4 view, projection;
+    if (m_b_Camera3D) {
+        glm::vec3 vec3_CameraTarget = m_vec3_CameraPosition + m_vec3_CameraFront;
+        view = glm::lookAt(m_vec3_CameraPosition, vec3_CameraTarget, m_vec3_CameraUp);
+        projection = glm::perspective(glm::radians(45.0f), (float)m_i_Width / (float)m_i_Height, 0.1f, 100.0f);
+    } else {
+        view = glm::lookAt(glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+        float f_Aspect = (float)m_i_Width / (float)m_i_Height;
+        float f_HalfHeight = 1.1f;
+        float f_HalfWidth = f_HalfHeight * f_Aspect;
+        projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 20.0f);
+    }
+
+    RenderPickingPass(projection, view);
+    ApplyDilationPass();
+
+    int i_PickY = m_i_Height - i_MouseY;
+    unsigned char pixel[3];
+    glBindFramebuffer(GL_FRAMEBUFFER, m_FBO_PickingDilated);
+    glReadPixels(i_MouseX, i_PickY, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    uint32_t ui_ClickedID = ColorToID(pixel[0], pixel[1], pixel[2]);
+
+    if (ui_ClickedID == 0) {
+        m_i_SelectedPlayerIndex = -1;
+        m_vec_CurrentArrows.clear();
+        return;
+    }
+
+    auto it = m_map_PickingIDToClickable.find(ui_ClickedID);
+    if (it == m_map_PickingIDToClickable.end()) {
+        return;
+    }
+
+    const ClickableID& clickable = it->second;
+
+    if (clickable.e_Type == ClickableType::Detective || clickable.e_Type == ClickableType::MisterX) {
+        HandlePlayerClick(clickable.i_Index);
+    } else if (clickable.e_Type == ClickableType::Arrow) {
+        HandleArrowClick(clickable.i_Index, clickable.i_Data);
+    }
+}
+
+void GameState::ApplyDilationPass() {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_FBO_PickingDilated);
+    glViewport(0, 0, m_i_Width, m_i_Height);
+
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(m_ShaderProgram_Dilation);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_TextureID_Picking);
+
+    GLint idBufferLoc = glGetUniformLocation(m_ShaderProgram_Dilation, "idBuffer");
+    GLint texelSizeLoc = glGetUniformLocation(m_ShaderProgram_Dilation, "texelSize");
+
+    glUniform1i(idBufferLoc, 0);
+    glUniform2f(texelSizeLoc, 1.0f / m_i_Width, 1.0f / m_i_Height);
+
+    glBindVertexArray(m_VAO_FullscreenQuad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    glEnable(GL_DEPTH_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View) {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_FBO_Picking);
+    glViewport(0, 0, m_i_Width, m_i_Height);
+
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glUseProgram(m_ShaderProgram_Picking);
+    GLint i_MvpLoc = glGetUniformLocation(m_ShaderProgram_Picking, "MVP");
+    GLint i_ColorLoc = glGetUniformLocation(m_ShaderProgram_Picking, "pickingColor");
+
+    {
+        std::lock_guard<std::mutex> lock(m_mtx_Players);
+        for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+            const auto& player = m_vec_Players[i];
+            int i_NodeId = player.GetOccupiedNode();
+
+            auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                                  [i_NodeId](const StationCircle& sc){ return sc.stationID == i_NodeId; });
+            if (it == m_vec_CircleStations.end()) continue;
+
+            ClickableType e_Type = (player.GetType() == Core::PlayerType::MisterX)
+                                   ? ClickableType::MisterX : ClickableType::Detective;
+            uint32_t ui_ID = RegisterClickable(e_Type, static_cast<int>(i), 0);
+            glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
+
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(it->position.x, 0.01f, it->position.y));
+            model = glm::scale(model, glm::vec3(0.4f));
+
+            glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
+
+            glm::mat4 MVP = mat4_Projection * mat4_View * model;
+            glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+            glBindVertexArray(m_VAO_Cylinder);
+            glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
+
+            glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
+            MVP = mat4_Projection * mat4_View * hemiModel;
+            glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+            glBindVertexArray(m_VAO_Hemisphere);
+            glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
+        }
+    }
+
+    for (const auto& arrow : m_vec_CurrentArrows) {
+        uint32_t ui_ID = RegisterClickable(ClickableType::Arrow, m_i_SelectedPlayerIndex, arrow.i_DestinationNode);
+        glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
+
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(arrow.vec2_Position.x, 0.02f, arrow.vec2_Position.y));
+        model = glm::rotate(model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        glm::mat4 MVP = mat4_Projection * mat4_View * model;
+        glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+        glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
+
+        glBindVertexArray(m_VAO_Arrow);
+        glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
+    }
+
+    glBindVertexArray(0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 } // namespace States

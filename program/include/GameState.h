@@ -8,6 +8,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vector>
+#include <map>
 #include <SDL2/SDL.h>
 #include "Player.h"
 #include "../../Graphs/graph_manage.h"
@@ -142,6 +143,57 @@ private:
     std::atomic_bool m_b_ShowPausedModal{false};
 
     std::atomic_bool m_b_DebuggingMode{false};
+    std::atomic_bool m_b_ShowPickingBuffer{false};
+    std::atomic_bool m_b_ShowMrXInDebug{true};
+
+    enum class ClickableType : uint8_t {
+        None = 0,
+        Detective = 1,
+        MisterX = 2,
+        Arrow = 3
+    };
+
+    struct ClickableID {
+        ClickableType e_Type;
+        int i_Index;
+        int i_Data;
+    };
+
+    struct DirectionArrow {
+        glm::vec2 vec2_Position;
+        float f_Rotation;
+        int i_DestinationNode;
+        int i_TransportType;
+    };
+
+    GLuint m_FBO_Picking;
+    GLuint m_TextureID_Picking;
+    GLuint m_RBO_PickingDepth;
+    GLuint m_FBO_PickingDilated;
+    GLuint m_TextureID_PickingDilated;
+    GLuint m_VAO_Arrow;
+    GLuint m_VBO_Arrow;
+    int m_i_ArrowVertexCount;
+    GLuint m_ShaderProgram_Picking;
+    GLuint m_ShaderProgram_Dilation;
+    GLuint m_VAO_FullscreenQuad;
+    GLuint m_VBO_FullscreenQuad;
+
+    int m_i_SelectedPlayerIndex;
+    std::vector<DirectionArrow> m_vec_CurrentArrows;
+    uint32_t m_ui_NextPickingID;
+    std::map<uint32_t, ClickableID> m_map_PickingIDToClickable;
+
+    glm::vec3 IDToColor(uint32_t ui_ID) const;
+    uint32_t ColorToID(unsigned char r, unsigned char g, unsigned char b) const;
+    uint32_t RegisterClickable(ClickableType e_Type, int i_Index, int i_Data);
+    std::vector<float> generateArrowVertices();
+    void UpdateArrowsForSelectedPlayer();
+    void RenderPickingPass(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View);
+    void ApplyDilationPass();
+    void HandleColorPicking(int i_MouseX, int i_MouseY);
+    void HandlePlayerClick(int i_PlayerIndex);
+    void HandleArrowClick(int i_PlayerIndex, int i_DestinationNode);
 
     // Helper method to render Mr X token at a specific position
     void RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc);
