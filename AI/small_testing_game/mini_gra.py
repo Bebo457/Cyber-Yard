@@ -292,205 +292,7 @@ class MrXAI:
 
         return sim_moves[-1]
 
-    # def _dfs_move(self, game_state):
-    #     """Algorytm DFS (Depth-First Search) dla Mr. X
-    #     TODO: Implementacja algorytmu DFS do unikania policji
-    #     """
-    #     # Placeholder dla implementacji DFS Mr. X
-    #     options = game_state.get_available_moves(game_state.mr_x)
-    #     """
-    #     choose where want to be at mrX reviel - how far is it, and how to get there (is it possible, how far police is from there and doesnt anybody go to that place)
-    #     prioritize those place starting from one with the highest moves opportunities, distance form police (can police reach that place in that number of moves,
-    #     can they catch us on the way, which tickets to use, try not to use rare tickets unless it is close to the game end or there are no other way to escape).
-    #     other ideas i skipped, but are explained in dfs sheet.
-    #     """
-    #     available_police_moves = game_state.get_available_moves(game_state.police)
-    #     current_round = game_state.round()
-
-    #     #for now copyied that from return
-    #     move = random.choice(options) if options else None
-    #     return move #random.choice(options) if options else None
-
-    # def _dfs_move(self, game_state):
-    #     """Algorytm DFS (Depth-First Search) dla Mr. X"""
-
-    #     # Parameters
-    #     TARGET_LENGTH = 5  # Desired path length
-    #     MAX_DEPTH = 8  # Maximum search depth
-    #     MAX_ATTEMPTS_PER_NODE = 3  # Max attempts per node to avoid infinite loops
-
-    #     # Helper function to calculate shortest distance between two nodes (BFS)
-    #     def shortest_distance(start, end, graph):
-    #         if start == end:
-    #             return 0
-    #         visited = {start}
-    #         queue = [(start, 0)]
-    #         idx = 0
-    #         while idx < len(queue):
-    #             current, dist = queue[idx]
-    #             idx += 1
-    #             for neighbor in get_neighbors(current, graph):
-    #                 if neighbor in visited:
-    #                     continue
-    #                 if neighbor == end:
-    #                     return dist + 1
-    #                 visited.add(neighbor)
-    #                 queue.append((neighbor, dist + 1))
-    #         return float('inf')
-
-    #     # Helper function to get neighbors
-    #     def get_neighbors(node, graph):
-    #         neighbors = []
-    #         for a, b, typ in graph:
-    #             if a == node:
-    #                 neighbors.append((b, typ))
-    #             elif b == node:
-    #                 neighbors.append((a, typ))
-    #         return neighbors
-
-    #     # Helper function to check if move is safe
-    #     def is_safe_move(node, mr_x_pos, police_positions, graph):
-    #         mr_x_distance = shortest_distance(mr_x_pos, node, graph)
-    #         for police_pos in police_positions:
-    #             police_distance = shortest_distance(police_pos, node, graph)
-    #             if mr_x_distance >= police_distance:
-    #                 return False
-    #         return True
-
-    #     # Recursive DFS function
-    #     def dfs(current, path, visited, water_tickets, attempts, current_path_length):
-    #         nonlocal best_path, successful_paths
-
-    #         # Check attempt limit
-    #         if attempts.get(current, 0) >= MAX_ATTEMPTS_PER_NODE:
-    #             return
-
-    #         attempts[current] = attempts.get(current, 0) + 1
-
-    #         # Get neighbors
-    #         neighbors = get_neighbors(current, game_state.polaczenia)
-
-    #         for neighbor, transport_type in neighbors:
-    #             # Skip if already visited
-    #             if neighbor in visited:
-    #                 continue
-
-    #             # Check if Mr. X has tickets for this transport
-    #             if game_state.mr_x.tickets.get(transport_type, 0) <= 0:
-    #                 continue
-
-    #             # Safety check: Mr. X must be closer than all police
-    #             police_positions = [p.position for p in game_state.police]
-    #             if not is_safe_move(neighbor, game_state.mr_x.position, police_positions, game_state.polaczenia):
-    #                 continue
-
-    #             # Check if current path to neighbor is optimal
-    #             optimal_distance = shortest_distance(game_state.mr_x.position, neighbor, game_state.polaczenia)
-    #             if current_path_length + 1 > optimal_distance:
-    #                 continue
-
-    #             # Handle water (ferry) tickets
-    #             water_tickets_used = 0
-    #             if transport_type == 'water':
-    #                 if water_tickets <= 0:
-    #                     continue
-    #                 water_tickets_used = 1
-
-    #             # Add to path
-    #             visited.add(neighbor)
-    #             path.append((neighbor, transport_type))
-
-    #             # Check if we reached target length
-    #             if len(path) >= TARGET_LENGTH:
-    #                 successful_paths.append(path[:])
-    #                 visited.remove(neighbor)
-    #                 path.pop()
-    #                 return
-
-    #             # Continue DFS if within depth limit
-    #             if len(path) < MAX_DEPTH:
-    #                 dfs(neighbor, path, visited, water_tickets - water_tickets_used,
-    #                     attempts.copy(), current_path_length + 1)
-
-    #             # Update best path if this is longer
-    #             if len(path) > len(best_path):
-    #                 best_path = path[:]
-
-    #             # Backtrack
-    #             visited.remove(neighbor)
-    #             path.pop()
-
-    #     # Main algorithm
-    #     options = game_state.get_available_moves(game_state.mr_x)
-    #     if not options:
-    #         return None
-
-    #     # Initialize variables
-    #     best_path = []
-    #     successful_paths = []
-    #     mr_x_pos = game_state.mr_x.position
-    #     initial_water_tickets = game_state.mr_x.tickets.get('water', 0)
-
-    #     # Try DFS from each available neighbor
-    #     initial_neighbors = get_neighbors(mr_x_pos, game_state.polaczenia)
-
-    #     for neighbor, transport_type in initial_neighbors:
-    #         # Check if move is available (has tickets)
-    #         if game_state.mr_x.tickets.get(transport_type, 0) <= 0:
-    #             continue
-
-    #         # Check if this is a valid first move
-    #         if (neighbor, transport_type) not in options:
-    #             continue
-
-    #         # Initialize for this branch
-    #         visited = {mr_x_pos, neighbor}
-    #         path = [(neighbor, transport_type)]
-    #         attempts = {}
-    #         water_used = 1 if transport_type == 'water' else 0
-
-    #         # Run DFS
-    #         dfs(neighbor, path, visited, initial_water_tickets - water_used, attempts, 1)
-
-    #         # If we found a successful path, return it
-    #         if successful_paths:
-    #             longest = max(successful_paths, key=len)
-    #             return longest[0]  # Return first move of longest path
-
-    #     # If no successful path found, return first move of best path
-    #     if best_path:
-    #         return best_path[0]
-
-    #     # Fallback: choose safest available move
-    #     police_positions = [p.position for p in game_state.police]
-    #     safe_moves = []
-    #     for dest, transport_type in options:
-    #         if is_safe_move(dest, mr_x_pos, police_positions, game_state.polaczenia):
-    #             safe_moves.append((dest, transport_type))
-
-    #     if safe_moves:
-    #         # Prefer moves that maximize distance from police
-    #         def min_police_distance(move):
-    #             dest = move[0]
-    #             return min(shortest_distance(p_pos, dest, game_state.polaczenia)
-    #                     for p_pos in police_positions)
-
-    #         return max(safe_moves, key=min_police_distance)
-
-    #     # Last resort: random move
-    #     return random.choice(options) if options else None
-
-    #     def _monte_carlo_move(self, game_state):
-    #         """Algorytm Monte Carlo dla Mr. X
-    #         TODO: Implementacja algorytmu Monte Carlo
-    #         """
-    #         # Placeholder dla implementacji Monte Carlo Mr. X
-    #         options = game_state.get_available_moves(game_state.mr_x)
-    #         return random.choice(options) if options else None
-
     def _dfs_move(self, game_state):
-        """Ulepszony algorytm DFS z predykcją ruchów policji"""
-
         TARGET_LENGTH = 6
         MAX_DEPTH = 10
         MAX_ATTEMPTS_PER_NODE = 2
@@ -700,14 +502,12 @@ class MrXAI:
                 if new_tickets[transport] != float('inf'):
                     new_tickets[transport] -= 1
 
-                # Rekurencja
                 dfs(neighbor, path, visited, new_tickets, attempts.copy(), depth + 1, predicted_police_pos)
 
-                # Backtrack
                 visited.remove(neighbor)
                 path.pop()
 
-        # === GŁÓWNA LOGIKA ===
+        # === Główna logika ===
 
         options = game_state.get_available_moves(game_state.mr_x)
         if not options:
@@ -717,28 +517,15 @@ class MrXAI:
         mr_x_pos = game_state.mr_x.position
         graph = game_state.polaczenia
 
-        # KROK 1: Przewiduj pozycje policji
-        print(f"\n🔮 Przewidywanie ruchów policji na {PREDICTION_DEPTH} tury do przodu...")
         predicted_police_positions = predict_police_positions(police_list, PREDICTION_DEPTH, graph)
-
-        for turn, positions in predicted_police_positions.items():
-            print(f"  Tura +{turn}: {len(positions)} możliwych pozycji policji")
-
-        # KROK 2: Zapisz przewidywane pozycje do wizualizacji (opcjonalne)
         game_state.predicted_police_positions = predicted_police_positions
 
-        # KROK 3: Inicjalizacja najlepszej ścieżki
         best_path = []
         best_score = -float('inf')
-
-        # KROK 4: Oceń wszystkie możliwe pierwsze ruchy
-        print(f"📊 Ocenianie {len(options)} możliwych ruchów...")
         initial_moves = []
 
         for dest, transport in options:
-            # Sprawdź bezpieczeństwo pierwszego ruchu
             if is_position_safe_at_turn(dest, 1, predicted_police_positions, mr_x_pos, graph):
-                # Szybka ocena tego ruchu
                 score = 0
                 if 1 in predicted_police_positions:
                     min_dist = float('inf')
@@ -746,12 +533,9 @@ class MrXAI:
                         dist = bfs_distances(police_pos, graph).get(dest, float('inf'))
                         min_dist = min(min_dist, dist)
                     score = min_dist
-
                 initial_moves.append((dest, transport, score))
 
         if not initial_moves:
-            print("⚠️  Brak bezpiecznych ruchów! Wybieranie najmniej niebezpiecznego...")
-            # Fallback: wybierz ruch który maksymalizuje dystans
             for dest, transport in options:
                 min_dist = float('inf')
                 for police in police_list:
@@ -761,8 +545,6 @@ class MrXAI:
 
         initial_moves.sort(key=lambda x: x[2], reverse=True)
 
-        # KROK 5: Eksploruj najlepsze początkowe ruchy za pomocą DFS
-        print(f"🔍 Eksploracja top {min(5, len(initial_moves))} ruchów...")
         for dest, transport, _ in initial_moves[:5]:
             visited = {mr_x_pos, dest}
             path = [(dest, transport)]
@@ -770,17 +552,11 @@ class MrXAI:
             if tickets[transport] != float('inf'):
                 tickets[transport] -= 1
             attempts = {}
-
             dfs(dest, path, visited, tickets, attempts, 1, predicted_police_positions)
 
-        # KROK 6: Zwróć najlepszy ruch
         if best_path:
-            print(f"✅ Wybrano ścieżkę długości {len(best_path)} ze score: {best_score:.0f}")
-            print(f"   Pierwszy ruch: {best_path[0][0]} ({best_path[0][1]})")
             return best_path[0]
 
-        # Fallback
-        print("⚠️  Używam fallback - najbezpieczniejszy pojedynczy ruch")
         if initial_moves:
             return (initial_moves[0][0], initial_moves[0][1])
 
