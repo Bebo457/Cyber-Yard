@@ -41,12 +41,16 @@ public:
     void SetVisible(bool b_Visible) { m_b_Visible = b_Visible; }
     bool IsVisible() const { return m_b_Visible; }
 
+    void SetActive(bool b_Active) { m_b_Active = b_Active; }
+    bool IsActive() const { return m_b_Active; }
+
     std::string ToString() const;
 
 private:
     PlayerType m_e_Type;
     int m_i_OccupiedNode;
     bool m_b_Visible; // whether the player token should be rendered on the board
+    bool m_b_Active; // whether the player is the active player (can move first)
     int m_i_TaxiTickets;
     int m_i_BusTickets;
     int m_i_MetroTickets;

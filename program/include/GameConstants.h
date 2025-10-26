@@ -10,6 +10,16 @@ namespace Core {
 static constexpr int k_MaxRounds = 24;
 static constexpr int k_DetectiveCount = 4;
 
+// Mr X Reveal Rounds
+static constexpr int k_RevealRounds[] = {3, 8, 13, 18, 24};
+static constexpr int k_RevealRoundsCount = sizeof(k_RevealRounds) / sizeof(k_RevealRounds[0]);
+inline bool IsRevealRound(int i_Round) {
+    for (int i = 0; i < k_RevealRoundsCount; ++i) {
+        if (k_RevealRounds[i] == i_Round) return true;
+    }
+    return false;
+}
+
 // Initial Ticket Counts - Detectives
 static constexpr int k_DetectiveTaxiTickets = 11;
 static constexpr int k_DetectiveBusTickets = 8;
@@ -25,7 +35,7 @@ static constexpr int k_MrXBlackTickets = 5;
 static constexpr int k_MrXDoubleMoveTickets = 2;
 
 // Map Data Paths - use GetMapPath() to get full paths with ASSETS_DIR
-static constexpr const char* k_NodeDataRelativePath = "maps/nodes_with_station.csv";
+static constexpr const char* k_NodeDataRelativePath = "maps/nodes_original.csv";
 static constexpr const char* k_ConnectionsRelativePath = "maps/polaczenia.csv";
 
 // Helper function to build full asset path (like GetAssetPath in Application)
@@ -48,6 +58,20 @@ static constexpr int k_TransportTypeMetro = 3;
 static constexpr int k_TransportTypeWater = 4;
 
 } // namespace Core
+
+namespace UI {
+
+// Arrow Geometry
+static constexpr float k_ArrowLength = 0.08f;
+static constexpr float k_ArrowWidth = 0.04f;
+
+// Transport Orbital Radii (distance from station center for direction arrows)
+static constexpr float k_TaxiWaterOrbitalRadius = 0.15f;
+static constexpr float k_BusOrbitalRadius = 0.22f;
+static constexpr float k_MetroOrbitalRadius = 0.29f;
+
+} // namespace UI
+
 } // namespace ScotlandYard
 
 #endif // SCOTLANDYARD_CORE_GAMECONSTANTS_H

@@ -134,221 +134,195 @@ class MrXAI:
         return random.choice(options) if options else None
 
     def _decoy_movement(self, game_state):
-        """Algorytm Decoy Movement dla Mr. X
-        TODO: Implementacja algorytmu zwodzenia policji
-        """
-        # Placeholder dla implementacji decoy Mr. X
+        import random
+        from collections import deque, defaultdict
+
+        posX = game_state.mr_x.position
+        tickets = game_state.mr_x.tickets  # bilety Mr. X
+        police_list = game_state.police
+        graph_edges = game_state.polaczenia
         options = game_state.get_available_moves(game_state.mr_x)
-        return random.choice(options) if options else None
+        if not options:
+            return None
 
-    # def _dfs_move(self, game_state):
-    #     """Algorytm DFS (Depth-First Search) dla Mr. X
-    #     TODO: Implementacja algorytmu DFS do unikania policji
-    #     """
-    #     # Placeholder dla implementacji DFS Mr. X
-    #     options = game_state.get_available_moves(game_state.mr_x)
-    #     """
-    #     choose where want to be at mrX reviel - how far is it, and how to get there (is it possible, how far police is from there and doesnt anybody go to that place)
-    #     prioritize those place starting from one with the highest moves opportunities, distance form police (can police reach that place in that number of moves,
-    #     can they catch us on the way, which tickets to use, try not to use rare tickets unless it is close to the game end or there are no other way to escape).
-    #     other ideas i skipped, but are explained in dfs sheet.
-    #     """
-    #     available_police_moves = game_state.get_available_moves(game_state.police)
-    #     current_round = game_state.round()
+        turn = getattr(game_state, 'turn', 0)
+        next_reveal_turn = getattr(game_state, 'next_reveal_turn', float('inf'))
+        prev_pos = getattr(game_state.mr_x, 'prev_pos', None)
+        last_revealed = getattr(game_state.mr_x, 'last_revealed_position', None)
 
-    #     #for now copyied that from return
-    #     move = random.choice(options) if options else None
-    #     return move #random.choice(options) if options else None
+        graph = defaultdict(list)
+        for a, b, typ in graph_edges:
+            graph[a].append((b, typ))
+            graph[b].append((a, typ))
 
-    # def _dfs_move(self, game_state):
-    #     """Algorytm DFS (Depth-First Search) dla Mr. X"""
+        def bfs_distances(start):
+            dist = {start: 0}
+            q = deque([start])
+            while q:
+                u = q.popleft()
+                for v, _ in graph[u]:
+                    if v not in dist:
+                        dist[v] = dist[u] + 1
+                        q.append(v)
+            return dist
 
-    #     # Parameters
-    #     TARGET_LENGTH = 5  # Desired path length
-    #     MAX_DEPTH = 8  # Maximum search depth
-    #     MAX_ATTEMPTS_PER_NODE = 3  # Max attempts per node to avoid infinite loops
+        police_dists = {p.position: bfs_distances(p.position) for p in police_list}
 
-    #     # Helper function to calculate shortest distance between two nodes (BFS)
-    #     def shortest_distance(start, end, graph):
-    #         if start == end:
-    #             return 0
-    #         visited = {start}
-    #         queue = [(start, 0)]
-    #         idx = 0
-    #         while idx < len(queue):
-    #             current, dist = queue[idx]
-    #             idx += 1
-    #             for neighbor in get_neighbors(current, graph):
-    #                 if neighbor in visited:
-    #                     continue
-    #                 if neighbor == end:
-    #                     return dist + 1
-    #                 visited.add(neighbor)
-    #                 queue.append((neighbor, dist + 1))
-    #         return float('inf')
+        # Fallback w przypadku zagrożenia lub ujawnienia
+        if any(police_dists[p.position].get(posX, float('inf')) <= 2 for p in police_list) \
+                or next_reveal_turn - turn <= 2:
+            # tylko ruchy z dostępnymi biletami
+            valid_options = [(dest, typ) for dest, typ in options if tickets.get(typ, 0) > 0]
+            if not valid_options:
+                return None
+            return max(valid_options,
+                       key=lambda it: min(police_dists[p.position].get(it[0], float('inf')) for p in police_list))
 
-    #     # Helper function to get neighbors
-    #     def get_neighbors(node, graph):
-    #         neighbors = []
-    #         for a, b, typ in graph:
-    #             if a == node:
-    #                 neighbors.append((b, typ))
-    #             elif b == node:
-    #                 neighbors.append((a, typ))
-    #         return neighbors
+        prediction_depth = 1
 
-    #     # Helper function to check if move is safe
-    #     def is_safe_move(node, mr_x_pos, police_positions, graph):
-    #         mr_x_distance = shortest_distance(mr_x_pos, node, graph)
-    #         for police_pos in police_positions:
-    #             police_distance = shortest_distance(police_pos, node, graph)
-    #             if mr_x_distance >= police_distance:
-    #                 return False
-    #         return True
+        def predict_police_positions(turns_ahead=prediction_depth):
+            predicted = {0: set(p.position for p in police_list)}
+            for t in range(1, turns_ahead + 1):
+                nextset = set()
+                for police in police_list:
+                    frontier = {police.position}
+                    for _ in range(t):
+                        new_front = set()
+                        for pos in frontier:
+                            new_front.update([v for v, _ in graph[pos]])
+                        if new_front:
+                            frontier = new_front
+                    nextset.update(frontier)
+                predicted[t] = nextset
+            return predicted
 
-    #     # Recursive DFS function
-    #     def dfs(current, path, visited, water_tickets, attempts, current_path_length):
-    #         nonlocal best_path, successful_paths
+        predicted = predict_police_positions()
 
-    #         # Check attempt limit
-    #         if attempts.get(current, 0) >= MAX_ATTEMPTS_PER_NODE:
-    #             return
+        def safety_risk_for(node):
+            min_dist = min(police_dists[p.position].get(node, float('inf')) for p in police_list)
+            return 1.0 / (min_dist + 1e-6) + 0.8 / max(1, len(graph[node]))
 
-    #         attempts[current] = attempts.get(current, 0) + 1
+        def deception_simple(dest):
+            score = 0.0
+            if prev_pos and prev_pos != posX and prev_pos != dest:
+                d_prev = bfs_distances(prev_pos)
+                if d_prev.get(dest, float('inf')) > d_prev.get(posX, float('inf')):
+                    score += 0.6
+            if last_revealed:
+                d_last = bfs_distances(last_revealed).get(dest, float('inf'))
+                if d_last != float('inf'):
+                    score += 0.5 / (d_last + 1.0)
+            if 1 in predicted and predicted[1]:
+                min_pred = min(bfs_distances(p).get(dest, float('inf')) for p in predicted[1])
+                score += 0.4 / (min_pred + 1.0)
+            return score
 
-    #         # Get neighbors
-    #         neighbors = get_neighbors(current, game_state.polaczenia)
+        def rollout_score_for_candidate(start_pos, num_rollouts=6, depth=3):
+            total = 0.0
+            for _ in range(num_rollouts):
+                mr_pos = start_pos
+                police_pos = [p.position for p in police_list]
+                caught = False
+                cum_min_dist = 0.0
+                for _ in range(depth):
+                    mr_dist_map = bfs_distances(mr_pos)
+                    new_police_pos = []
+                    for pp in police_pos:
+                        if pp == mr_pos:
+                            caught = True
+                            break
+                        best_nb, best_d = pp, mr_dist_map.get(pp, float('inf'))
+                        for nb, _ in graph[pp]:
+                            dnb = mr_dist_map.get(nb, float('inf'))
+                            if dnb < best_d:
+                                best_d, best_nb = dnb, nb
+                        new_police_pos.append(best_nb)
+                    if caught or any(p == mr_pos for p in new_police_pos):
+                        cum_min_dist += 0
+                        break
+                    police_pos = new_police_pos
+                    nbrs = [v for v, _ in graph[mr_pos]]
+                    if not nbrs:
+                        break
+                    mr_pos = random.choice(nbrs)
+                    min_d = min(bfs_distances(pp).get(mr_pos, float('inf')) for pp in police_pos)
+                    cum_min_dist += min_d if min_d != float('inf') else max(len(graph), 1)
+                total += -100.0 if caught else cum_min_dist / max(1, depth)
+            return total / max(1, num_rollouts)
 
-    #         for neighbor, transport_type in neighbors:
-    #             # Skip if already visited
-    #             if neighbor in visited:
-    #                 continue
+        # Kandydaci – tylko ruchy możliwe z dostępnymi biletami
+        candidates, risks, deceptions = [], [], []
+        for dest, transport in options:
+            if tickets.get(transport, 0) <= 0:
+                continue
+            candidates.append((dest, transport))
+            risks.append(safety_risk_for(dest))
+            deceptions.append(deception_simple(dest))
 
-    #             # Check if Mr. X has tickets for this transport
-    #             if game_state.mr_x.tickets.get(transport_type, 0) <= 0:
-    #                 continue
+        candidate_risk_max = 1.8
+        filtered = [(c, r, d) for c, r, d in zip(candidates, risks, deceptions) if r <= candidate_risk_max]
+        if not filtered:
+            return max(candidates,
+                       key=lambda it: min(police_dists[p.position].get(it[0], float('inf')) for p in police_list),
+                       default=None)
 
-    #             # Safety check: Mr. X must be closer than all police
-    #             police_positions = [p.position for p in game_state.police]
-    #             if not is_safe_move(neighbor, game_state.mr_x.position, police_positions, game_state.polaczenia):
-    #                 continue
+        filtered.sort(key=lambda x: x[1])
+        sim_targets = filtered[:5]
 
-    #             # Check if current path to neighbor is optimal
-    #             optimal_distance = shortest_distance(game_state.mr_x.position, neighbor, game_state.polaczenia)
-    #             if current_path_length + 1 > optimal_distance:
-    #                 continue
+        utilities, sim_moves = [], []
+        for (dest, transport), risk, deception in sim_targets:
+            rscore = rollout_score_for_candidate(dest)
+            rnorm = -1.0 if rscore < -50 else rscore / (1.0 + rscore)
+            utilities.append(deception - risk + 1.5 * rnorm)
+            sim_moves.append((dest, transport))
 
-    #             # Handle water (ferry) tickets
-    #             water_tickets_used = 0
-    #             if transport_type == 'water':
-    #                 if water_tickets <= 0:
-    #                     continue
-    #                 water_tickets_used = 1
+        if all(u <= 0 for u in utilities):
+            dest, transport = max(filtered, key=lambda x: -x[1])[0]
+            return (dest, transport)
 
-    #             # Add to path
-    #             visited.add(neighbor)
-    #             path.append((neighbor, transport_type))
+        min_u = min(utilities)
+        weights = [u - min_u + 1e-6 for u in utilities]
+        total = sum(weights)
+        pick = random.random() * total
+        cum = 0.0
+        for mv, w in zip(sim_moves, weights):
+            cum += w
+            if pick <= cum:
+                return mv
 
-    #             # Check if we reached target length
-    #             if len(path) >= TARGET_LENGTH:
-    #                 successful_paths.append(path[:])
-    #                 visited.remove(neighbor)
-    #                 path.pop()
-    #                 return
-
-    #             # Continue DFS if within depth limit
-    #             if len(path) < MAX_DEPTH:
-    #                 dfs(neighbor, path, visited, water_tickets - water_tickets_used,
-    #                     attempts.copy(), current_path_length + 1)
-
-    #             # Update best path if this is longer
-    #             if len(path) > len(best_path):
-    #                 best_path = path[:]
-
-    #             # Backtrack
-    #             visited.remove(neighbor)
-    #             path.pop()
-
-    #     # Main algorithm
-    #     options = game_state.get_available_moves(game_state.mr_x)
-    #     if not options:
-    #         return None
-
-    #     # Initialize variables
-    #     best_path = []
-    #     successful_paths = []
-    #     mr_x_pos = game_state.mr_x.position
-    #     initial_water_tickets = game_state.mr_x.tickets.get('water', 0)
-
-    #     # Try DFS from each available neighbor
-    #     initial_neighbors = get_neighbors(mr_x_pos, game_state.polaczenia)
-
-    #     for neighbor, transport_type in initial_neighbors:
-    #         # Check if move is available (has tickets)
-    #         if game_state.mr_x.tickets.get(transport_type, 0) <= 0:
-    #             continue
-
-    #         # Check if this is a valid first move
-    #         if (neighbor, transport_type) not in options:
-    #             continue
-
-    #         # Initialize for this branch
-    #         visited = {mr_x_pos, neighbor}
-    #         path = [(neighbor, transport_type)]
-    #         attempts = {}
-    #         water_used = 1 if transport_type == 'water' else 0
-
-    #         # Run DFS
-    #         dfs(neighbor, path, visited, initial_water_tickets - water_used, attempts, 1)
-
-    #         # If we found a successful path, return it
-    #         if successful_paths:
-    #             longest = max(successful_paths, key=len)
-    #             return longest[0]  # Return first move of longest path
-
-    #     # If no successful path found, return first move of best path
-    #     if best_path:
-    #         return best_path[0]
-
-    #     # Fallback: choose safest available move
-    #     police_positions = [p.position for p in game_state.police]
-    #     safe_moves = []
-    #     for dest, transport_type in options:
-    #         if is_safe_move(dest, mr_x_pos, police_positions, game_state.polaczenia):
-    #             safe_moves.append((dest, transport_type))
-
-    #     if safe_moves:
-    #         # Prefer moves that maximize distance from police
-    #         def min_police_distance(move):
-    #             dest = move[0]
-    #             return min(shortest_distance(p_pos, dest, game_state.polaczenia)
-    #                     for p_pos in police_positions)
-
-    #         return max(safe_moves, key=min_police_distance)
-
-    #     # Last resort: random move
-    #     return random.choice(options) if options else None
-
-    #     def _monte_carlo_move(self, game_state):
-    #         """Algorytm Monte Carlo dla Mr. X
-    #         TODO: Implementacja algorytmu Monte Carlo
-    #         """
-    #         # Placeholder dla implementacji Monte Carlo Mr. X
-    #         options = game_state.get_available_moves(game_state.mr_x)
-    #         return random.choice(options) if options else None
+        return sim_moves[-1]
 
     def _dfs_move(self, game_state):
-        """Ulepszony algorytm DFS z predykcją ruchów policji"""
-
         TARGET_LENGTH = 6
         MAX_DEPTH = 10
         MAX_ATTEMPTS_PER_NODE = 2
-        PREDICTION_DEPTH = 3  # Ile ruchów policji do przodu przewidujemy
+        MINIMAX_DEPTH = 3
+        
+        if not hasattr(self, '_distance_cache'):
+            self._distance_cache = {}
+        if not hasattr(self, '_neighbors_cache'):
+            self._neighbors_cache = {}
+        if not hasattr(self, '_connectivity_cache'):
+            self._connectivity_cache = {}
+        if not hasattr(self, '_reachable_cache'):
+            self._reachable_cache = {}
+        if not hasattr(self, '_police_predictions'):
+            self._police_predictions = {}
+        if not hasattr(self, '_last_police_positions'):
+            self._last_police_positions = None
+        
+        local_distance_cache = {}
+        local_eval_cache = {}
 
         # === HELPER FUNCTIONS ===
-
         def bfs_distances(start, graph):
             """Zwraca słownik odległości od start do wszystkich węzłów"""
+            if start in self._distance_cache:
+                return self._distance_cache[start]
+            
+            if start in local_distance_cache:
+                return local_distance_cache[start]
+            
             distances = {start: 0}
             queue = [start]
             idx = 0
@@ -359,134 +333,415 @@ class MrXAI:
                     if neighbor not in distances:
                         distances[neighbor] = distances[current] + 1
                         queue.append(neighbor)
+            # Cache in persistent storage
+            self._distance_cache[start] = distances
+            local_distance_cache[start] = distances
             return distances
 
         def get_neighbors(node, graph):
             """Zwraca listę (sąsiad, typ_transportu)"""
+            if node in self._neighbors_cache:
+                return self._neighbors_cache[node]
+            
             neighbors = []
             for a, b, typ in graph:
                 if a == node:
                     neighbors.append((b, typ))
                 elif b == node:
                     neighbors.append((a, typ))
+            
+            self._neighbors_cache[node] = neighbors
             return neighbors
+        
 
-        def predict_police_positions(police_list, turns_ahead, graph):
+
+        def get_connectivity(node, graph):
+            """Get number of connections from node"""
+            if node in self._connectivity_cache:
+                return self._connectivity_cache[node]
+            
+            connectivity = len(get_neighbors(node, graph))
+            self._connectivity_cache[node] = connectivity
+            return connectivity
+        
+        def get_all_reachable_positions(start, max_steps, graph, tickets):
             """
-            Przewiduje możliwe pozycje policji po 'turns_ahead' turach.
-            Zwraca słownik: {turn: set(możliwe_pozycje_wszystkich_policjantów)}
+            Get all positions reachable within max_steps
             """
-            predicted_positions = {0: set(p.position for p in police_list)}
-
-            for turn in range(1, turns_ahead + 1):
-                current_positions = predicted_positions[turn - 1]
-                next_positions = set()
-
-                for police in police_list:
-                    # Dla każdego policjanta, znajdź wszystkie możliwe pozycje po 'turn' ruchach
-                    reachable = {police.position}
-
-                    for _ in range(turn):
-                        new_reachable = set()
-                        for pos in reachable:
-                            # Symuluj możliwe ruchy policjanta
-                            for neighbor, transport in get_neighbors(pos, graph):
-                                # Sprawdź czy policjant ma bilet
-                                if police.tickets.get(transport, 0) > 0:
-                                    new_reachable.add(neighbor)
-                        reachable = new_reachable if new_reachable else reachable
-
-                    next_positions.update(reachable)
-
-                predicted_positions[turn] = next_positions
-
-            return predicted_positions
-
-        def is_position_safe_at_turn(position, turn, predicted_police_positions, mr_x_position, graph):
+            # Create cache key from tickets
+            ticket_key = tuple(sorted(tickets.items()))
+            cache_key = (start, max_steps, ticket_key)
+            
+            if cache_key in self._reachable_cache:
+                return self._reachable_cache[cache_key]
+            
+            reachable = {start: 0}
+            queue = [(start, 0, tickets.copy())]
+            
+            while queue:
+                pos, steps, current_tickets = queue.pop(0)
+                
+                if steps >= max_steps:
+                    continue
+                
+                for neighbor, transport in get_neighbors(pos, graph):
+                    if current_tickets.get(transport, 0) <= 0:
+                        continue
+                    
+                    new_steps = steps + 1
+                    
+                    if neighbor not in reachable or new_steps < reachable[neighbor]:
+                        reachable[neighbor] = new_steps
+                        
+                        new_tickets = current_tickets.copy()
+                        if new_tickets[transport] != float('inf'):
+                            new_tickets[transport] -= 1
+                        
+                        queue.append((neighbor, new_steps, new_tickets))
+            
+            self._reachable_cache[cache_key] = reachable
+            return reachable
+        
+        def update_police_predictions(police_list, mr_x_position, graph):
             """
-            Sprawdza czy pozycja jest bezpieczna w danej turze.
-            Pozycja jest bezpieczna jeśli Mr. X jest bliżej niż przewidywane pozycje policji.
+            Update police predictions based on their actual moves.
+            Reuses previous predictions and only updates what changed.
             """
-            if turn not in predicted_police_positions:
-                return True
-
+            current_positions = tuple(p.position for p in police_list)
+            
+            # If police didn't move or this is first turn, recalculate
+            if self._last_police_positions is None or self._last_police_positions == current_positions:
+                self._last_police_positions = current_positions
+                return simulate_detective_moves_advanced(police_list, mr_x_position, graph)
+            
+            # Police moved - check if we can reuse predictions
+            if current_positions in self._police_predictions:
+                # We predicted this configuration, reuse it
+                predicted_next = self._police_predictions[current_positions]
+                self._last_police_positions = current_positions
+                return predicted_next
+            
+            # Calculate new predictions
+            self._last_police_positions = current_positions
+            new_predictions = simulate_detective_moves_advanced(police_list, mr_x_position, graph)
+            
+            # Cache for future
+            self._police_predictions[current_positions] = new_predictions
+            
+            return new_predictions
+        
+        def simulate_detective_moves_advanced(police_list, mr_x_position, graph):
+            """
+            Simulates intelligent detective movement
+            Uses cached distances and connectivity.
+            """
+            new_positions = []
+            occupied = set(p.position for p in police_list)
+            
+            # Pre-calculate Mr X distances once
             mr_x_distances = bfs_distances(mr_x_position, graph)
-            mr_x_dist_to_pos = mr_x_distances.get(position, float('inf'))
-
-            for police_pos in predicted_police_positions[turn]:
-                police_distances = bfs_distances(police_pos, graph)
-                police_dist = police_distances.get(position, float('inf'))
-
-                # Jeśli policja może być tak blisko lub bliżej, pozycja nie jest bezpieczna
-                if police_dist <= mr_x_dist_to_pos:
-                    return False
-
-            return True
-
-        def calculate_path_safety_score(path, predicted_police_positions, mr_x_start, graph):
+            
+            for police in police_list:
+                best_move = police.position
+                best_score = float('-inf')
+                
+                neighbors = get_neighbors(police.position, graph)
+                
+                for neighbor, transport in neighbors:
+                    if neighbor in occupied or police.tickets.get(transport, 0) <= 0:
+                        continue
+                    
+                    score = 0
+                    
+                    # Use cached distance
+                    dist_to_mrx = mr_x_distances.get(neighbor, float('inf'))
+                    score -= dist_to_mrx * 100
+                    
+                    # Use cached connectivity
+                    connectivity = get_connectivity(neighbor, graph)
+                    score += connectivity * 10
+                    
+                    # Blocking strategy
+                    if neighbor in mr_x_distances and mr_x_distances[neighbor] == 1:
+                        score += 500
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_move = neighbor
+                
+                new_positions.append(best_move)
+                occupied.add(best_move)
+            
+            return new_positions
+        
+        def minimax_evaluate_position(position, tickets, police_list, depth, is_mrx_turn, alpha, beta, graph, mr_x_start):
             """
-            Ocenia bezpieczeństwo całej ścieżki biorąc pod uwagę przewidywane pozycje policji.
+            Minimax evaluation with alpha-beta pruning
+            """
+            # Create cache key
+            police_positions = tuple(sorted(p.position for p in police_list))
+            tickets_key = tuple(sorted(tickets.items()))
+            cache_key = (position, tickets_key, police_positions, depth, is_mrx_turn)
+            
+            if cache_key in local_eval_cache:
+                return local_eval_cache[cache_key]
+            
+            # Terminal conditions
+            if depth == 0:
+                result = evaluate_position_comprehensive(position, tickets, police_list, graph)
+                local_eval_cache[cache_key] = result
+                return result
+            
+            # Check if caught
+            if position in police_positions:
+                return -100000
+            
+            if is_mrx_turn:
+                max_eval = float('-inf')
+                neighbors = get_neighbors(position, graph)
+                
+                # Pre-calculate distances for sorting
+                neighbor_scores = []
+                for neighbor, transport in neighbors:
+                    if tickets.get(transport, 0) <= 0:
+                        continue
+                    
+                    # Use cached distances
+                    min_dist = float('inf')
+                    for p in police_list:
+                        dist = bfs_distances(p.position, graph).get(neighbor, float('inf'))
+                        min_dist = min(min_dist, dist)
+                    
+                    neighbor_scores.append((neighbor, transport, min_dist))
+                
+                # Sort once
+                neighbor_scores.sort(key=lambda x: x[2], reverse=True)
+                
+                for neighbor, transport, _ in neighbor_scores[:8]:
+                    new_tickets = tickets.copy()
+                    if new_tickets[transport] != float('inf'):
+                        new_tickets[transport] -= 1
+                    
+                    eval_score = minimax_evaluate_position(
+                        neighbor, new_tickets, police_list, depth - 1, 
+                        False, alpha, beta, graph, mr_x_start
+                    )
+                    
+                    max_eval = max(max_eval, eval_score)
+                    alpha = max(alpha, eval_score)
+                    
+                    if beta <= alpha:
+                        break
+                
+                result = max_eval if max_eval != float('-inf') else -10000
+                local_eval_cache[cache_key] = result
+                return result
+            
+            else:
+                # Use updated predictions instead of recalculating
+                new_police_positions = update_police_predictions(police_list, position, graph)
+                
+                # Create new police state (reuse objects)
+                new_police_list = []
+                for i, police in enumerate(police_list):
+                    new_police = type('Police', (), {})()
+                    new_police.position = new_police_positions[i]
+                    new_police.tickets = police.tickets  # Reference, not copy
+                    new_police_list.append(new_police)
+                
+                eval_score = minimax_evaluate_position(
+                    position, tickets, new_police_list, depth - 1, 
+                    True, alpha, beta, graph, mr_x_start
+                )
+                
+                local_eval_cache[cache_key] = eval_score
+                return eval_score
+        
+        def evaluate_position_comprehensive(position, tickets, police_list, graph):
+            """
+            Comprehensive position evaluation
             """
             score = 0
-            current_turn = 0
-
-            for node, transport in path:
-                current_turn += 1
-
-                # Sprawdź bezpieczeństwo w tej turze
-                if is_position_safe_at_turn(node, current_turn, predicted_police_positions, mr_x_start, graph):
-                    score += 100
-                else:
-                    score -= 200  # Duża kara za niebezpieczną pozycję
-
-                # Dodatkowy bonus za dystans od przewidywanych pozycji policji
-                if current_turn in predicted_police_positions:
-                    min_dist_to_police = float('inf')
-                    for police_pos in predicted_police_positions[current_turn]:
-                        dist = bfs_distances(police_pos, graph).get(node, float('inf'))
-                        min_dist_to_police = min(min_dist_to_police, dist)
-
-                    score += min_dist_to_police * 15
-
-            return score
-
-        def count_available_moves_from(node, tickets, graph):
-            """Liczy ile ruchów jest dostępnych z danego węzła"""
-            count = 0
-            for neighbor, transport in get_neighbors(node, graph):
+            
+            # 1. Distance calculations - use cached BFS
+            distances_to_police = []
+            for police in police_list:
+                dist = bfs_distances(police.position, graph).get(position, float('inf'))
+                distances_to_police.append(dist)
+            
+            min_distance = min(distances_to_police) if distances_to_police else float('inf')
+            avg_distance = sum(distances_to_police) / len(distances_to_police) if distances_to_police else 0
+            
+            # Distance scoring
+            if min_distance <= 1:
+                score -= 50000
+            elif min_distance <= 2:
+                score -= 10000
+            elif min_distance <= 3:
+                score -= 2000
+            
+            score += min_distance * 500
+            score += avg_distance * 100
+            
+            # 2. Liczba dostępnych ruchów z tego węzła
+            neighbors = get_neighbors(position, graph)
+            available_moves = sum(1 for _, transport in neighbors if tickets.get(transport, 0) > 0)
+            score += available_moves * 150
+            
+            # 3. Różnorodność transportu
+            available_transports = set(transport for _, transport in neighbors 
+                                    if tickets.get(transport, 0) > 0)
+            score += len(available_transports) * 100
+            
+            # 4. Drugorzędne połączenia
+            secondary_mobility = 0
+            for neighbor, transport in neighbors:
                 if tickets.get(transport, 0) > 0:
-                    count += 1
-            return count
-
-        def evaluate_endpoint(node, predicted_police_positions, graph, tickets):
-            """Ocenia końcowy węzeł ścieżki"""
+                    secondary_mobility += get_connectivity(neighbor, graph)
+            
+            avg_secondary = secondary_mobility / len(neighbors) if neighbors else 0
+            score += avg_secondary * 30
+            
+            # 5. Strategiczne pozycjonowanie
+            if available_moves <= 2:
+                score -= 500
+            elif available_moves >= 5:
+                score += 300
+            
+            # 6. Dystans od przewidywanych pozycji policji w ostatniej turze
+            police_in_vicinity = sum(1 for dist in distances_to_police if dist <= 3)
+            if police_in_vicinity >= 3:
+                score -= 2000
+            elif police_in_vicinity >= 2:
+                score -= 800
+            
+            # 7. Ticket management
+            total_tickets = sum(v for k, v in tickets.items() if v != float('inf'))
+            score += total_tickets * 20
+            score += tickets.get('black', 0) * 200
+            
+            # 8. Metro access
+            has_metro = any(transport == 'metro' for _, transport in neighbors)
+            if has_metro and tickets.get('metro', 0) > 0:
+                score += 250
+            
+            # 9. Police ticket depletion
+            for police in police_list:
+                total_police_tickets = sum(police.tickets.values())
+                if total_police_tickets < 5:
+                    score += 400
+                if total_police_tickets < 3:
+                    score += 1000
+            
+            # 10. Future mobility
+            future_reachable = get_all_reachable_positions(position, 2, graph, tickets)
+            score += len(future_reachable) * 50
+            
+            return score
+        
+        def evaluate_move_strategic(position, transport, tickets, police_list, graph, turn_number):
+            """
+            Strategic evaluation
+            """
+            bonus = 0
+            
+            # Pre-calculate distances once if needed
+            min_dist = None
+            
+            def get_min_distance():
+                nonlocal min_dist
+                if min_dist is None:
+                    min_dist = float('inf')
+                    for p in police_list:
+                        dist = bfs_distances(p.position, graph).get(position, float('inf'))
+                        min_dist = min(min_dist, dist)
+                return min_dist
+            
+            # 1. Transport type bonuses
+            if transport == 'black':
+                dist = get_min_distance()
+                if dist <= 3:
+                    bonus += 300
+                if turn_number < 8 and tickets.get('black', 0) > 3:
+                    bonus -= 150
+            
+            elif transport == 'metro':
+                bonus += 150
+            
+            elif transport == 'ferry':
+                bonus += 200
+            
+            # 2. Game phase strategy
+            game_progress = turn_number / 24
+            
+            if game_progress < 0.3:
+                connectivity = get_connectivity(position, graph)
+                bonus += connectivity * 50
+            
+            elif game_progress < 0.7:
+                dist = get_min_distance()
+                bonus += dist * 80
+            
+            else:
+                dist = get_min_distance()
+                bonus += dist * 200
+                if dist <= 2:
+                    bonus -= 1000
+            
+            # 3. Hub control
+            connectivity = get_connectivity(position, graph)
+            if connectivity >= 6:
+                bonus += 400
+            
+            # 4. Escape corridors
+            escape_directions = 0
+            for neighbor, _ in get_neighbors(position, graph):
+                if get_connectivity(neighbor, graph) >= 4:
+                    escape_directions += 1
+            
+            bonus += escape_directions * 60
+            
+            return bonus
+        
+        def calculate_path_quality(path, police_list, mr_x_start, tickets, graph, turn_number):
+            """
+            Path quality evaluation 
+            """
             score = 0
-
-            # 1. Liczba dostępnych ruchów z tego węzła
-            moves_count = count_available_moves_from(node, tickets, graph)
-            score += moves_count * 20
-
-            # 2. Różnorodność transportu
-            transport_types = set()
-            for neighbor, transport in get_neighbors(node, graph):
-                if tickets.get(transport, 0) > 0:
-                    transport_types.add(transport)
-            score += len(transport_types) * 10
-
-            # 3. Dystans od przewidywanych pozycji policji w ostatniej turze
-            max_turn = max(predicted_police_positions.keys())
-            if max_turn in predicted_police_positions:
-                min_dist = float('inf')
-                for police_pos in predicted_police_positions[max_turn]:
-                    dist = bfs_distances(police_pos, graph).get(node, float('inf'))
-                    min_dist = min(min_dist, dist)
-                score += min_dist * 25
-
+            current_tickets = tickets.copy()
+            
+            # Batch process path evaluation
+            for i, (position, transport) in enumerate(path):
+                if current_tickets.get(transport, float('inf')) != float('inf'):
+                    current_tickets[transport] -= 1
+                
+                # Reduced minimax depth for intermediate positions
+                depth = min(2, MINIMAX_DEPTH, len(path) - i)
+                
+                minimax_score = minimax_evaluate_position(
+                    position, current_tickets, police_list, 
+                    depth, True, 
+                    float('-inf'), float('inf'), graph, mr_x_start
+                )
+                score += minimax_score
+                
+                strategic_bonus = evaluate_move_strategic(
+                    position, transport, current_tickets, police_list, graph, turn_number + i
+                )
+                score += strategic_bonus
+                score += i * 50
+            
+            # Final position gets full evaluation
+            final_score = evaluate_position_comprehensive(
+                path[-1][0], current_tickets, police_list, graph
+            )
+            score += final_score * 2
+            
             return score
-
+        
         # === GŁÓWNA FUNKCJA DFS ===
 
-        def dfs(current, path, visited, tickets, attempts, depth, predicted_police_pos):
+        def dfs(current, path, visited, tickets, attempts, depth):
             nonlocal best_path, best_score
 
             if attempts.get(current, 0) >= MAX_ATTEMPTS_PER_NODE:
@@ -494,145 +749,156 @@ class MrXAI:
 
             attempts[current] = attempts.get(current, 0) + 1
 
-            # Oceń obecną ścieżkę
-            path_safety = calculate_path_safety_score(path, predicted_police_pos, mr_x_pos, graph)
-            endpoint_quality = evaluate_endpoint(current, predicted_police_pos, graph, tickets)
-            current_score = path_safety + endpoint_quality + len(path) * 15
-
-            if current_score > best_score:
-                best_score = current_score
-                best_path = path[:]
-
-            # Zatrzymaj się jeśli osiągnięto cel
+            # Evaluate less frequently for deeper paths
+            if len(path) % 2 == 0:  # Evaluate every 2nd step
+                current_score = calculate_path_quality(
+                    path, police_list, mr_x_pos, tickets, graph, current_turn
+                )
+                
+                if current_score > best_score:
+                    best_score = current_score
+                    best_path = path[:]
+            
             if len(path) >= TARGET_LENGTH or depth >= MAX_DEPTH:
                 return
-
-            # Pobierz i oceń sąsiadów
+            
             neighbors = get_neighbors(current, graph)
-
-            def neighbor_score(neighbor_info):
-                neighbor, transport = neighbor_info
+            
+            # Batch calculate priorities
+            neighbor_priorities = []
+            for neighbor, transport in neighbors:
                 if neighbor in visited or tickets.get(transport, 0) <= 0:
-                    return -float('inf')
-
-                # Sprawdź bezpieczeństwo w następnej turze
-                next_turn = len(path) + 1
-                if not is_position_safe_at_turn(neighbor, next_turn, predicted_police_pos, mr_x_pos, graph):
-                    return -float('inf')
-
-                # Oceń potencjał tego ruchu
+                    continue
+                
                 score = 0
-                if next_turn in predicted_police_pos:
-                    min_dist = float('inf')
-                    for police_pos in predicted_police_pos[next_turn]:
-                        dist = bfs_distances(police_pos, graph).get(neighbor, float('inf'))
-                        min_dist = min(min_dist, dist)
-                    score += min_dist * 20
 
-                return score
-
-            neighbors_sorted = sorted(neighbors, key=neighbor_score, reverse=True)
-
-            # Eksploruj najlepsze kierunki
-            for neighbor, transport in neighbors_sorted[:8]:  # Top 8 kierunków
-                if neighbor in visited or tickets.get(transport, 0) <= 0:
-                    continue
-
-                next_turn = len(path) + 1
-                if not is_position_safe_at_turn(neighbor, next_turn, predicted_police_pos, mr_x_pos, graph):
-                    continue
-
-                # Dodaj do ścieżki
+                min_dist = float('inf')
+                for p in police_list:
+                    dist = bfs_distances(p.position, graph).get(neighbor, float('inf'))
+                    min_dist = min(min_dist, dist)
+                
+                score += min_dist * 100
+                score += get_connectivity(neighbor, graph) * 50
+                
+                neighbor_priorities.append((neighbor, transport, score))
+            
+            # Sort once
+            neighbor_priorities.sort(key=lambda x: x[2], reverse=True)
+            
+            # Explore top moves
+            for neighbor, transport, _ in neighbor_priorities[:10]:
                 visited.add(neighbor)
                 path.append((neighbor, transport))
                 new_tickets = tickets.copy()
                 if new_tickets[transport] != float('inf'):
                     new_tickets[transport] -= 1
 
-                # Rekurencja
-                dfs(neighbor, path, visited, new_tickets, attempts.copy(), depth + 1, predicted_police_pos)
+                dfs(neighbor, path, visited, new_tickets, attempts.copy(), depth + 1)
 
-                # Backtrack
                 visited.remove(neighbor)
                 path.pop()
 
-        # === GŁÓWNA LOGIKA ===
+        # === Główna logika ===
 
         options = game_state.get_available_moves(game_state.mr_x)
         if not options:
             return None
-
+        
         police_list = game_state.police
         mr_x_pos = game_state.mr_x.position
         graph = game_state.polaczenia
+        
+        # Get current turn
+        current_turn = 1
 
-        # KROK 1: Przewiduj pozycje policji
-        print(f"\n🔮 Przewidywanie ruchów policji na {PREDICTION_DEPTH} tury do przodu...")
-        predicted_police_positions = predict_police_positions(police_list, PREDICTION_DEPTH, graph)
-
-        for turn, positions in predicted_police_positions.items():
-            print(f"  Tura +{turn}: {len(positions)} możliwych pozycji policji")
-
-        # KROK 2: Zapisz przewidywane pozycje do wizualizacji (opcjonalne)
-        game_state.predicted_police_positions = predicted_police_positions
-
-        # KROK 3: Inicjalizacja najlepszej ścieżki
+        if hasattr(game_state, 'turn_number'):
+            current_turn = game_state.turn_number
+        elif hasattr(game_state, 'turn'):
+            current_turn = game_state.turn
+        elif hasattr(game_state, 'turn_number'):
+            current_turn = game_state.turn_number
+        elif hasattr(game_state, 'current_turn'):
+            current_turn = game_state.current_turn
+        
+        # Clean old cache entries periodically
+        if len(self._distance_cache) > 500:
+            # Keep only most recently used entries
+            self._distance_cache = dict(list(self._distance_cache.items())[-300:])
+        
+        if len(self._reachable_cache) > 200:
+            self._reachable_cache = dict(list(self._reachable_cache.items())[-100:])
+        
         best_path = []
-        best_score = -float('inf')
-
-        # KROK 4: Oceń wszystkie możliwe pierwsze ruchy
-        print(f"📊 Ocenianie {len(options)} możliwych ruchów...")
+        best_score = float('-inf')
+        
+        # Pre-calculate all police distances once
+        police_distance_maps = {p.position: bfs_distances(p.position, graph) for p in police_list}
+        
+        # Batch evaluate initial moves
         initial_moves = []
-
         for dest, transport in options:
-            # Sprawdź bezpieczeństwo pierwszego ruchu
-            if is_position_safe_at_turn(dest, 1, predicted_police_positions, mr_x_pos, graph):
-                # Szybka ocena tego ruchu
-                score = 0
-                if 1 in predicted_police_positions:
-                    min_dist = float('inf')
-                    for police_pos in predicted_police_positions[1]:
-                        dist = bfs_distances(police_pos, graph).get(dest, float('inf'))
-                        min_dist = min(min_dist, dist)
-                    score = min_dist
-
-                initial_moves.append((dest, transport, score))
-
-        if not initial_moves:
-            print("⚠️  Brak bezpiecznych ruchów! Wybieranie najmniej niebezpiecznego...")
-            # Fallback: wybierz ruch który maksymalizuje dystans
-            for dest, transport in options:
-                min_dist = float('inf')
-                for police in police_list:
-                    dist = bfs_distances(police.position, graph).get(dest, float('inf'))
-                    min_dist = min(min_dist, dist)
-                initial_moves.append((dest, transport, min_dist))
-
+            temp_tickets = game_state.mr_x.tickets.copy()
+            if temp_tickets[transport] != float('inf'):
+                temp_tickets[transport] -= 1
+            
+            # Use lighter evaluation for initial screening
+            quick_score = 0
+            for p_pos, dist_map in police_distance_maps.items():
+                quick_score += dist_map.get(dest, 0) * 100
+            
+            quick_score += get_connectivity(dest, graph) * 50
+            
+            initial_moves.append((dest, transport, quick_score))
+        
+        # Sort and take top candidates
         initial_moves.sort(key=lambda x: x[2], reverse=True)
-
-        # KROK 5: Eksploruj najlepsze początkowe ruchy za pomocą DFS
-        print(f"🔍 Eksploracja top {min(5, len(initial_moves))} ruchów...")
-        for dest, transport, _ in initial_moves[:5]:
+        top_candidates = initial_moves[:7]
+        
+        # Full evaluation only for top candidates
+        evaluated_moves = []
+        for dest, transport, _ in top_candidates:
+            temp_tickets = game_state.mr_x.tickets.copy()
+            if temp_tickets[transport] != float('inf'):
+                temp_tickets[transport] -= 1
+            
+            score = minimax_evaluate_position(
+                dest, temp_tickets, police_list, MINIMAX_DEPTH, 
+                False, float('-inf'), float('inf'), graph, mr_x_pos
+            )
+            
+            strategic_score = evaluate_move_strategic(
+                dest, transport, temp_tickets, police_list, graph, current_turn
+            )
+            
+            total_score = score + strategic_score
+            evaluated_moves.append((dest, transport, total_score))
+        
+        evaluated_moves.sort(key=lambda x: x[2], reverse=True)
+        
+        # Explore with DFS
+        for dest, transport, _ in evaluated_moves[:5]:  # Reduced from 7 to 5
             visited = {mr_x_pos, dest}
             path = [(dest, transport)]
             tickets = game_state.mr_x.tickets.copy()
             if tickets[transport] != float('inf'):
                 tickets[transport] -= 1
             attempts = {}
+            dfs(dest, path, visited, tickets, attempts, 1)
 
-            dfs(dest, path, visited, tickets, attempts, 1, predicted_police_positions)
-
-        # KROK 6: Zwróć najlepszy ruch
         if best_path:
-            print(f"✅ Wybrano ścieżkę długości {len(best_path)} ze score: {best_score:.0f}")
-            print(f"   Pierwszy ruch: {best_path[0][0]} ({best_path[0][1]})")
             return best_path[0]
 
-        # Fallback
-        print("⚠️  Używam fallback - najbezpieczniejszy pojedynczy ruch")
-        if initial_moves:
-            return (initial_moves[0][0], initial_moves[0][1])
+        if evaluated_moves:
+            return (evaluated_moves[0][0], evaluated_moves[0][1])
 
+        return random.choice(options) if options else None
+
+    def _monte_carlo_move(self, game_state):
+        """Algorytm Monte Carlo dla Mr. X
+        TODO: Implementacja algorytmu Monte Carlo
+        """
+        # Placeholder dla implementacji Monte Carlo Mr. X
+        options = game_state.get_available_moves(game_state.mr_x)
         return random.choice(options) if options else None
 
 
@@ -1336,7 +1602,7 @@ class Game:
         pygame.draw.rect(screen, BLUE, (panel_x, panel_y, panel_width, panel_height), 3)
         title = FONT.render("Mr. X transport", True, BLUE)
         screen.blit(title, (panel_x + 10, panel_y + 10))
-        for i, move in enumerate(self.mr_x_moves[-10:]):
+        for i, move in enumerate(self.mr_x_moves[-22:]):
             text = FONT.render(f"{i + 1}. {move}", True, BLACK)
             screen.blit(text, (panel_x + 10, panel_y + 40 + i * 25))
 
@@ -1615,4 +1881,5 @@ def main_menu():
         pygame.display.flip()
 
 
-main_menu()
+if __name__ == "__main__":
+    main_menu()
