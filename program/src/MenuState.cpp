@@ -87,7 +87,7 @@ void MenuState::RenderText(const std::string& s_Text, float f_X, float f_Y, floa
         const Core::Character& ch = it->second;
 
         float f_Xpos = f_X + ch.m_i_BearingX * f_Scale;
-        float f_Ypos = f_Y + (ch.m_i_Height - ch.m_i_BearingY) * f_Scale; 
+        float f_Ypos = f_Y + ch.m_i_BearingY * f_Scale; 
 
         float f_W = ch.m_i_Width * f_Scale;
         float f_H = ch.m_i_Height * f_Scale;
@@ -183,15 +183,15 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
 
     float f_TextScale = 1.0f;
     float f_TextWidth = 0.0f;
-    float maxTopOffset = -1e6f;  
+    float maxTopOffset = -1e6f;
     float minBottomOffset = 1e6f;
     for (auto c : button.m_s_Text) {
         auto it = characters.find(c);
         if (it != characters.end()) {
             const auto& ch = it->second;
             f_TextWidth += (ch.m_i_Advance >> 6) * f_TextScale;
-            float topOff = (ch.m_i_Height - ch.m_i_BearingY) * f_TextScale;
-            float botOff = -ch.m_i_BearingY * f_TextScale;
+            float topOff = ch.m_i_BearingY * f_TextScale;
+            float botOff = (ch.m_i_BearingY - ch.m_i_Height) * f_TextScale;
             if (topOff > maxTopOffset) maxTopOffset = topOff;
             if (botOff < minBottomOffset) minBottomOffset = botOff;
         }
