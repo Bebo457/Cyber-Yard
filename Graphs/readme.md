@@ -2,6 +2,8 @@
 
 `draw_graph.cpp` allows to visualise connections.
 
+Make sure to point proper files in `draw_graph.cpp` as pos_file and con_file.
+
 To toggle all connections press T
 
 To compile: 
