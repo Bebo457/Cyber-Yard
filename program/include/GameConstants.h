@@ -35,7 +35,7 @@ static constexpr int k_MrXBlackTickets = 5;
 static constexpr int k_MrXDoubleMoveTickets = 2;
 
 // Map Data Paths - use GetMapPath() to get full paths with ASSETS_DIR
-static constexpr const char* k_NodeDataRelativePath = "maps/nodes_with_station.csv";
+static constexpr const char* k_NodeDataRelativePath = "maps/nodes_original.csv";
 static constexpr const char* k_ConnectionsRelativePath = "maps/polaczenia.csv";
 
 // Helper function to build full asset path (like GetAssetPath in Application)

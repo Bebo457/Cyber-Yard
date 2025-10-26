@@ -1636,9 +1636,9 @@ void GameState::UpdateArrowsForSelectedPlayer() {
 
         glm::vec2 vec2_ArrowPos = vec2_CurrentPos + vec2_Direction * f_OrbitalRadius;
 
-        float f_Rotation = atan2(vec2_Direction.y, vec2_Direction.x);
-
+        float f_Rotation = atan2(-vec2_Direction.y, vec2_Direction.x);
         DirectionArrow arrow;
+        
         arrow.vec2_Position = vec2_ArrowPos;
         arrow.f_Rotation = f_Rotation;
         arrow.i_DestinationNode = conn.i_NodeId;
