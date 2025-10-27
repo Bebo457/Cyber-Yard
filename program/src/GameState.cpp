@@ -1155,7 +1155,7 @@ void GameState::RenderPlayers(const glm::mat4& view, const glm::mat4& projection
     int i_CurrentRoundForRender = m_i_Round.load();
     for (const auto& player : m_vec_Players) {
         if (player.GetType() != Core::PlayerType::MisterX) continue;
-        if (!m_b_DebuggingMode.load() && !Core::IsRevealRound(i_CurrentRoundForRender)) continue;
+        //if (!m_b_DebuggingMode.load() && !Core::IsRevealRound(i_CurrentRoundForRender)) continue;
         if (!player.IsActive()) continue;
 
         int nodeId = player.GetOccupiedNode();
@@ -1182,7 +1182,7 @@ void GameState::RenderArrows(const glm::mat4& view, const glm::mat4& projection)
             default: color = glm::vec3(1.0f); break;
         }
 
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(arrow.vec2_Position.x, 0.02f, arrow.vec2_Position.y));
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(arrow.vec2_Position.x, 0.1f, arrow.vec2_Position.y));
         model = glm::rotate(model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
 
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * model));
@@ -1911,7 +1911,7 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
 
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3(it->position.x, 0.01f, it->position.y));
-            model = glm::scale(model, glm::vec3(0.4f));
+            model = glm::scale(model, glm::vec3(2.0f));
 
             glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
 
