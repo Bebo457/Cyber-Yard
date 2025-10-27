@@ -62,16 +62,18 @@ void GameState::OnEnter() {
     m_b_GameActive = true;
 
     // Dane wierzchołków planszy (pozycja, kolor, UV)
-    float size = 1.0f;
     float planeVertices[] = {
-        -size, 0.0f, -size,   0.0f, 1.0f, 0.0f,   0.0f, 0.0f,
-         size, 0.0f, -size,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
-         size, 0.0f,  size,   0.0f, 1.0f, 0.0f,   1.0f, 1.0f,
+        // pozycja xyz           // normalne        // uv (odwrócone pionowo)
+        -1.0f, 0.0f, 17.0f,      0.0f, 1.0f, 0.0f,   0.0f, 1.0f,   // left_down
+        23.0f, 0.0f, 17.0f,      0.0f, 1.0f, 0.0f,   1.0f, 1.0f,   // right_down
+        23.0f, 0.0f,  -1.0f,      0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // right_up
 
-        -size, 0.0f, -size,   0.0f, 1.0f, 0.0f,   0.0f, 0.0f,
-         size, 0.0f,  size,   0.0f, 1.0f, 0.0f,   1.0f, 1.0f,
-        -size, 0.0f,  size,   0.0f, 1.0f, 0.0f,   0.0f, 1.0f
+        -1.0f, 0.0f, 17.0f,      0.0f, 1.0f, 0.0f,   0.0f, 1.0f,   // left_down
+        23.0f, 0.0f,  -1.0f,      0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // right_up
+        -1.0f, 0.0f,  -1.0f,      0.0f, 1.0f, 0.0f,   0.0f, 0.0f    // left_up
     };
+
+
 
     // Pozycje kółek z pliku CSV
     auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
@@ -935,7 +937,7 @@ void GameState::Update(float f_DeltaTime) {
 void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc) {
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(vec2_Position.x, 0.01f, vec2_Position.y));
-    model = glm::scale(model, glm::vec3(0.45f));
+    model = glm::scale(model, glm::vec3(2.0f));
 
     // MisterX colour (black)
     glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -962,7 +964,47 @@ void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& 
 
 void GameState::Render(Core::Application* p_App) {
     LoadTextures(p_App);
+    HandleResize(p_App);
 
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glm::mat4 view, projection;
+    if (m_b_Camera3D) {
+        m_vec3_CameraPosition = m_vec3_Saved3DCameraPosition;
+        glm::vec3 target = m_vec3_CameraPosition + m_vec3_CameraFront;
+        view = glm::lookAt(m_vec3_CameraPosition, target, m_vec3_CameraUp);
+        projection = glm::perspective(glm::radians(45.0f), float(m_i_Width)/m_i_Height, 0.1f,100.0f);
+    } else {
+        m_vec3_CameraVelocity = glm::vec3(0.0f);
+        view = glm::lookAt(glm::vec3(0,10,0), glm::vec3(0), glm::vec3(0,0,-1));
+        float aspect = float(m_i_Width)/m_i_Height;
+        float halfH=1.1f, halfW=halfH*aspect;
+        projection = glm::ortho(-halfW,halfW,-halfH,halfH,0.1f,20.0f);
+    }
+
+    RenderBoard(p_App, view, projection);
+    RenderStations(view, projection);
+    RenderPlayers(view, projection);
+    RenderArrows(view, projection);
+    RenderHUD(p_App);
+    RenderDebugOverlay(p_App);
+    RenderPicking(p_App, view, projection);
+    RenderEndGameModal(p_App);
+
+    SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+
+    if (m_b_RequestMenuChange.load() && p_App) {
+        if (auto mgr = p_App->GetStateManager()) {
+            std::cout << "[GameState] Requesting state change to menu...\n";
+            mgr->ChangeState("menu");
+        }
+        m_b_RequestMenuChange.store(false);
+    }
+}
+
+void GameState::HandleResize(Core::Application* p_App) {
     int i_NewWidth = p_App->GetWidth();
     int i_NewHeight = p_App->GetHeight();
 
@@ -982,100 +1024,75 @@ void GameState::Render(Core::Application* p_App) {
         glBindTexture(GL_TEXTURE_2D, 0);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
     }
+}
 
-    glEnable(GL_DEPTH_TEST);
-    glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+void GameState::RenderBoard(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection) {
     glUseProgram(m_ShaderProgram_Plane);
 
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    glm::mat4 view, projection;
-
-    if (m_b_Camera3D) {
-        m_vec3_CameraPosition = m_vec3_Saved3DCameraPosition;
-        glm::vec3 vec3_CameraTarget = m_vec3_CameraPosition + m_vec3_CameraFront;
-        view = glm::lookAt(m_vec3_CameraPosition, vec3_CameraTarget, m_vec3_CameraUp);
-        projection = glm::perspective(glm::radians(45.0f), (float)m_i_Width / (float)m_i_Height, 0.1f, 100.0f);
-    }
-    else {
-        m_vec3_CameraVelocity = glm::vec3(0.0f, 0.0f, 0.0f);
-
-        view = glm::lookAt(
-            glm::vec3(0.0f, 10.0f, 0.0f),
-            glm::vec3(0.0f, 0.0f, 0.0f),
-            glm::vec3(0.0f, 0.0f, -1.0f)
-        );
-
-        float f_Aspect = (float)m_i_Width / (float)m_i_Height;
-        float f_HalfHeight = 1.1f;
-        float f_HalfWidth = f_HalfHeight * f_Aspect;
-
-        projection = glm::ortho(
-            -f_HalfWidth, f_HalfWidth,
-            -f_HalfHeight, f_HalfHeight,
-            0.1f, 20.0f
-        );
-    }
-
     glm::mat4 MVP = projection * view * model;
-
     GLuint mvpLocPlane = glGetUniformLocation(m_ShaderProgram_Plane, "MVP");
     glUniformMatrix4fv(mvpLocPlane, 1, GL_FALSE, glm::value_ptr(MVP));
 
-    // Ustawienie tekstury
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_TextureID);
     GLuint texLoc = glGetUniformLocation(m_ShaderProgram_Plane, "ourTexture");
     glUniform1i(texLoc, 0);
 
-    // Rysowanie planszy
     glBindVertexArray(m_VAO_Plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+}
 
-    // Rysowanie wielokolorowych kółek
+void GameState::RenderStations(const glm::mat4& view, const glm::mat4& projection) {
     glUseProgram(m_ShaderProgram_Circle);
+
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
 
-    float baseScale = 0.5f;      // White circle base scale
-    float ringStep = 0.1f;       // Step increase for each transport type
-    float yStep = 0.005f;         // Vertical offset step to prevent z-fighting
+    // Base settings
+    float baseScale = 5.2f;      // smallest colored ring radius
+    float ringStep = 1.5f;       // how much each successive ring grows
+    float yStep = 0.02f;         // vertical gap between rings
+    float topCircleScale = 5.0f; // fixed size for the top white circle
 
-    for (const auto& station : m_vec_CircleStations)
-    {
-        glm::mat4 modelBase = glm::mat4(1.0f);
-        modelBase = glm::translate(modelBase, glm::vec3(station.position.x, 0.0f, station.position.y));
+    std::vector<std::string> order = { "metro", "bus", "taxi", "water" };
 
-        // Twarda kolejność typów transportu od dołu do góry
-        std::vector<std::string> order = { "metro", "bus", "taxi", "water" };
+    for (const auto& station : m_vec_CircleStations) {
+        glm::mat4 modelBase = glm::translate(glm::mat4(1.0f),
+                                             glm::vec3(station.position.x, 0.0f, station.position.y));
 
-        // Filtrujemy tylko typy, które są w stacji
+        // Filter types in the desired order
         std::vector<std::string> typesPresent;
-        for (const auto& t : order)
-            if (std::find(station.transportTypes.begin(), station.transportTypes.end(), t) != station.transportTypes.end())
+        for (const auto& t : order) {
+            if (std::find(station.transportTypes.begin(),
+                          station.transportTypes.end(), t) != station.transportTypes.end()) {
                 typesPresent.push_back(t);
+            }
+        }
 
         int count = static_cast<int>(typesPresent.size());
-        for (int i = 0; i < count; ++i)
-        {
+        float yStart = 0.01f;  // small offset above the board
+
+        // Render colored rings (bottom → top)
+        for (int i = 0; i < count; ++i) {
             const std::string& type = typesPresent[i];
+
             glm::vec3 color;
+            if (type == "metro") color = glm::vec3(1.0f, 0.0f, 0.0f);
+            else if (type == "bus") color = glm::vec3(0.0f, 1.0f, 0.0f);
+            else if (type == "taxi") color = glm::vec3(1.0f, 1.0f, 0.0f);
+            else color = glm::vec3(0.0f, 0.4f, 1.0f);
 
-            if (type == "metro") color = glm::vec3(1.0f, 0.0f, 0.0f);      // czerwony
-            else if (type == "bus") color = glm::vec3(0.0f, 1.0f, 0.0f);   // zielony
-            else if (type == "taxi") color = glm::vec3(1.0f, 1.0f, 0.0f);  // żółty
-            else color = glm::vec3(0.0f, 0.4f, 1.0f);                      // woda/łódź
-
-            // Odwrócone skalowanie: największe na dole
+            // Tapered size: bottom largest, top smallest
             float scale = baseScale + (count - i) * ringStep;
-            float yOffset = 0.01f + i * yStep;
 
+            float yOffset = yStart + i * yStep;
             glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yOffset, 0.0f));
-            model = glm::scale(model, glm::vec3(scale));
+            model = glm::scale(model, glm::vec3(scale, 0.2f, scale)); // flattened vertically
+
             glm::mat4 MVP = projection * view * model;
 
             glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
@@ -1086,240 +1103,202 @@ void GameState::Render(Core::Application* p_App) {
             glBindVertexArray(0);
         }
 
-        glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, 0.01f + count * yStep, 0.0f));
-        model = glm::scale(model, glm::vec3(baseScale));
-        glm::mat4 MVP = projection * view * model;
+        // Top white circle (fixed size)
+        float yTop = yStart + count * yStep;
+        glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yTop, 0.0f));
+        model = glm::scale(model, glm::vec3(topCircleScale, 0.2f, topCircleScale));
 
+        glm::mat4 MVP = projection * view * model;
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
-        glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 1.0f)));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(1.0f)));
 
         glBindVertexArray(m_VAO_Circle);
         glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
         glBindVertexArray(0);
     }
+}
 
-    for (const auto& player : m_vec_Players)
-    {
+void GameState::RenderPlayers(const glm::mat4& view, const glm::mat4& projection) {
+    glUseProgram(m_ShaderProgram_Circle);
+    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
+    GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
+
+    for (const auto& player : m_vec_Players) {
         if (player.GetType() != Core::PlayerType::Detective) continue;
 
         int nodeId = player.GetOccupiedNode();
         auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
-                            [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
+                               [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
         if (it == m_vec_CircleStations.end()) continue;
 
         glm::vec2 pos = it->position;
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, 0.05f, pos.y));
+        model = glm::scale(model, glm::vec3(2.0f));
 
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(pos.x, 0.01f, pos.y));
-        model = glm::scale(model, glm::vec3(0.4f));
-        
-        // Kolor detektywa (np. niebieski)
         glm::vec3 color = glm::vec3(0.0f, 0.0f, 1.0f);
         glUniform3fv(colorLoc, 1, glm::value_ptr(color));
-        
-        // Body
-        glm::mat4 cylModel = glm::scale(model,glm::vec3(1.0f));
-        glm::mat4 MVP = projection * view * cylModel;
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
 
         glBindVertexArray(m_VAO_Cylinder);
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * model));
         glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
         glBindVertexArray(0);
 
-        // Top
-        glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f)); // przesunięcie na górę cylindra
-        MVP = projection * view * hemiModel;
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+        glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * hemiModel));
 
         glBindVertexArray(m_VAO_Hemisphere);
         glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
         glBindVertexArray(0);
     }
 
+    // Render Mister X if appropriate (debug or reveal round)
     int i_CurrentRoundForRender = m_i_Round.load();
+    for (const auto& player : m_vec_Players) {
+        if (player.GetType() != Core::PlayerType::MisterX) continue;
+        if (!m_b_DebuggingMode.load() && !Core::IsRevealRound(i_CurrentRoundForRender)) continue;
+        if (!player.IsActive()) continue;
 
-    if (m_b_DebuggingMode.load() && m_b_ShowMrXInDebug.load()) {
-        for (const auto& player : m_vec_Players) {
-            if (player.GetType() != Core::PlayerType::MisterX) continue;
+        int nodeId = player.GetOccupiedNode();
+        auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                               [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
+        if (it == m_vec_CircleStations.end()) continue;
 
-            int nodeId = player.GetOccupiedNode();
-            auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
-                            [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
-            if (it == m_vec_CircleStations.end()) continue;
-
-            RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
-        }
-    } else if (!m_b_DebuggingMode.load()) {
-        if (Core::IsRevealRound(i_CurrentRoundForRender)) {
-            for (const auto& player : m_vec_Players) {
-                if (player.GetType() != Core::PlayerType::MisterX) continue;
-                if (!player.IsActive()) continue;
-
-                int nodeId = player.GetOccupiedNode();
-                auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
-                                [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
-                if (it == m_vec_CircleStations.end()) continue;
-
-                RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
-            }
-        }
+        RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
     }
+}
 
+void GameState::RenderArrows(const glm::mat4& view, const glm::mat4& projection) {
     glUseProgram(m_ShaderProgram_Circle);
+    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
+    GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
+
     for (const auto& arrow : m_vec_CurrentArrows) {
-        glm::vec3 vec3_ArrowColor;
-        if (arrow.i_TransportType == Core::k_TransportTypeTaxi) {
-            vec3_ArrowColor = glm::vec3(1.0f, 1.0f, 0.0f);
-        } else if (arrow.i_TransportType == Core::k_TransportTypeBus) {
-            vec3_ArrowColor = glm::vec3(0.0f, 1.0f, 0.0f);
-        } else if (arrow.i_TransportType == Core::k_TransportTypeMetro) {
-            vec3_ArrowColor = glm::vec3(1.0f, 0.0f, 0.0f);
-        } else if (arrow.i_TransportType == Core::k_TransportTypeWater) {
-            vec3_ArrowColor = glm::vec3(0.0f, 0.4f, 1.0f);
-        } else {
-            vec3_ArrowColor = glm::vec3(1.0f, 1.0f, 1.0f);
+        glm::vec3 color;
+        switch (arrow.i_TransportType) {
+            case Core::k_TransportTypeTaxi: color = glm::vec3(1.0f, 1.0f, 0.0f); break;
+            case Core::k_TransportTypeBus: color = glm::vec3(0.0f, 1.0f, 0.0f); break;
+            case Core::k_TransportTypeMetro: color = glm::vec3(1.0f, 0.0f, 0.0f); break;
+            case Core::k_TransportTypeWater: color = glm::vec3(0.0f, 0.4f, 1.0f); break;
+            default: color = glm::vec3(1.0f); break;
         }
 
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(arrow.vec2_Position.x, 0.02f, arrow.vec2_Position.y));
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(arrow.vec2_Position.x, 0.02f, arrow.vec2_Position.y));
         model = glm::rotate(model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
 
-        glm::mat4 MVP = projection * view * model;
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
-        glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_ArrowColor));
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * model));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(color));
 
         glBindVertexArray(m_VAO_Arrow);
         glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
         glBindVertexArray(0);
     }
+}
 
+void GameState::RenderHUD(Core::Application* p_App) {
     std::vector<std::string> labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
 
-    // counters for Black and 2x tickets for Mr X
     int black = -1, dbl = -1;
     for (const auto& pl : m_vec_Players) {
-        if (pl.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
-            black = pl.GetBlackTickets(); // 5 for Mr X
-            dbl = pl.GetDoubleMoveTickets(); // 2 for Mr X
+        if (pl.GetType() == Core::PlayerType::MisterX) {
+            black = pl.GetBlackTickets();
+            dbl = pl.GetDoubleMoveTickets();
             break;
         }
     }
     std::vector<int> counts = { -1, black, dbl, -1, -1, -1 };
 
-    // to HUD
     ScotlandYard::UI::SetTopBar(labels, {}, counts);
     ScotlandYard::UI::SetRound(m_i_Round.load());
     ScotlandYard::UI::RenderHUD(p_App);
+}
 
-    if (m_b_DebuggingMode.load()) {
-        GLboolean b_DepthWasDebug = glIsEnabled(GL_DEPTH_TEST);
-        GLboolean b_BlendWasDebug = glIsEnabled(GL_BLEND);
-        if (b_DepthWasDebug) glDisable(GL_DEPTH_TEST);
-        if (!b_BlendWasDebug) glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+void GameState::RenderDebugOverlay(Core::Application* p_App) {
+    if (!m_b_DebuggingMode.load()) return;
 
-        std::string s_DebugText1 = "DEBUG MODE - Press P: Color Picking View";
-        std::string s_DebugText2 = "Press M: Toggle Mr X Visibility";
+    GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+    if (b_DepthWas) glDisable(GL_DEPTH_TEST);
+    if (!b_BlendWas) glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        UI::Color white{1.0f, 1.0f, 1.0f, 1.0f};
-        UI::DrawTextCenteredPx(s_DebugText1, 10, m_i_Height - 60, m_i_Width - 10, m_i_Height - 40, white, p_App, 0.0f);
-        UI::DrawTextCenteredPx(s_DebugText2, 10, m_i_Height - 40, m_i_Width - 10, m_i_Height - 20, white, p_App, 0.0f);
+    UI::Color white{1.0f,1.0f,1.0f,1.0f};
+    UI::DrawTextCenteredPx("DEBUG MODE - Press P: Color Picking View", 10, m_i_Height-60, m_i_Width-10, m_i_Height-40, white, p_App, 0.0f);
+    UI::DrawTextCenteredPx("Press M: Toggle Mr X Visibility", 10, m_i_Height-40, m_i_Width-10, m_i_Height-20, white, p_App, 0.0f);
 
-        if (b_BlendWasDebug == GL_FALSE) glDisable(GL_BLEND);
-        if (b_DepthWasDebug) glEnable(GL_DEPTH_TEST);
-    }
+    if (!b_BlendWas) glDisable(GL_BLEND);
+    if (b_DepthWas) glEnable(GL_DEPTH_TEST);
+}
 
-    if (m_b_ShowPickingBuffer.load()) {
-        m_map_PickingIDToClickable.clear();
-        m_ui_NextPickingID = 0;
+void GameState::RenderPicking(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection) {
+    if (!m_b_ShowPickingBuffer.load()) return;
 
-        RenderPickingPass(projection, view);
-        ApplyDilationPass();
+    m_map_PickingIDToClickable.clear();
+    m_ui_NextPickingID = 0;
 
-        int i_WindowWidth = p_App->GetWidth();
-        int i_WindowHeight = p_App->GetHeight();
+    RenderPickingPass(projection, view);
+    ApplyDilationPass();
 
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, m_FBO_PickingDilated);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, i_WindowWidth, i_WindowHeight,
-                         0, 0, i_WindowWidth, i_WindowHeight,
-                         GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    }
+    int i_WindowWidth = p_App->GetWidth();
+    int i_WindowHeight = p_App->GetHeight();
 
-    // Draw end-of-game modal on top of HUD if requested (before buffer swap)
-    if (m_b_ShowEndGameModal.load()) {
-        // ensure UI-friendly state
-        GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
-        GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
-        if (b_DepthWas) glDisable(GL_DEPTH_TEST);
-        if (!b_BlendWas) glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_FBO_PickingDilated);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0,0,i_WindowWidth,i_WindowHeight,0,0,i_WindowWidth,i_WindowHeight,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+}
 
-        int i_W = p_App->GetWidth();
-        int i_H = p_App->GetHeight();
-        float f_ModalWpx = std::min(UI::HUDStyle::k_ModalMaxWidthPx, float(i_W) * UI::HUDStyle::k_ModalWidthRatio);
-        float f_ModalHpx = std::min(UI::HUDStyle::k_ModalMaxHeightPx, float(i_H) * UI::HUDStyle::k_ModalHeightRatio);
-        float f_Left = (i_W - f_ModalWpx) * 0.5f;
-        float f_Bottom = (i_H - f_ModalHpx) * 0.5f;
-        float f_Right = f_Left + f_ModalWpx;
-        float f_Top = f_Bottom + f_ModalHpx;
+void GameState::RenderEndGameModal(Core::Application* p_App) {
+    if (!m_b_ShowEndGameModal.load()) return;
 
-        ScotlandYard::UI::DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, {0.08f, 0.08f, 0.12f, 0.95f}, UI::HUDStyle::k_ModalCornerRadiusPx, p_App);
+    GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+    if (b_DepthWas) glDisable(GL_DEPTH_TEST);
+    if (!b_BlendWas) glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    int i_W = p_App->GetWidth();
+    int i_H = p_App->GetHeight();
+    float f_ModalWpx = std::min(UI::HUDStyle::k_ModalMaxWidthPx, float(i_W) * UI::HUDStyle::k_ModalWidthRatio);
+    float f_ModalHpx = std::min(UI::HUDStyle::k_ModalMaxHeightPx, float(i_H) * UI::HUDStyle::k_ModalHeightRatio);
+    float f_Left = (i_W - f_ModalWpx) * 0.5f;
+    float f_Bottom = (i_H - f_ModalHpx) * 0.5f;
+    float f_Right = f_Left + f_ModalWpx;
+    float f_Top = f_Bottom + f_ModalHpx;
 
-    std::string s_Title = "";  
+    ScotlandYard::UI::DrawRoundedRectScreen(f_Left,f_Bottom,f_Right,f_Top,{0.08f,0.08f,0.12f,0.95f}, UI::HUDStyle::k_ModalCornerRadiusPx, p_App);
+
+    std::string s_Title = "";
     std::string s_Message = "GAME OVER";
     if (m_EndGameWinner == Winner::Detectives) s_Title = "Congratulations! Detectives win";
     else if (m_EndGameWinner == Winner::MisterX) s_Title = "Congratulations! Mister X wins";
     else s_Title = "Game ended";
 
-        ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
-    float f_TitleH = f_ModalHpx * 0.14f;    
-    float f_MsgH = f_ModalHpx * 0.40f;      
-
-    float f_TitleBottom = f_Bottom + f_ModalHpx * 0.74f;
+    ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
+    float f_TitleH = f_ModalHpx * 0.14f;
+    float f_MsgH = f_ModalHpx * 0.40f;
+    float f_TitleBottom = f_Bottom + f_ModalHpx*0.74f;
     float f_TitleTop = f_TitleBottom + f_TitleH;
-
-    float f_MsgBottom = f_Bottom + f_ModalHpx * 0.25f;
+    float f_MsgBottom = f_Bottom + f_ModalHpx*0.25f;
     float f_MsgTop = f_MsgBottom + f_MsgH;
 
-    ScotlandYard::UI::DrawTextCenteredPx(s_Title, f_Left + 20.0f, f_TitleBottom, f_Right - 20.0f, f_TitleTop, white, p_App, 0.0f);
-    ScotlandYard::UI::DrawTextCenteredPx(s_Message, f_Left + 20.0f, f_MsgBottom, f_Right - 20.0f, f_MsgTop, white, p_App, -6.0f);
+    ScotlandYard::UI::DrawTextCenteredPx(s_Title,f_Left+20,f_TitleBottom,f_Right-20,f_TitleTop,white,p_App,0.0f);
+    ScotlandYard::UI::DrawTextCenteredPx(s_Message,f_Left+20,f_MsgBottom,f_Right-20,f_MsgTop,white,p_App,-6.0f);
 
-        float f_BtnW = 260.0f;
-        float f_BtnH = 54.0f;
-        float f_BtnX0 = f_Left + (f_ModalWpx - f_BtnW) * 0.5f;
-        float f_BtnY0 = f_Bottom + 18.0f;
-        float f_BtnX1 = f_BtnX0 + f_BtnW;
-        float f_BtnY1 = f_BtnY0 + f_BtnH;
+    // Draw MENU button
+    float f_BtnW=260,f_BtnH=54,f_BtnX0=f_Left+(f_ModalWpx-f_BtnW)*0.5f,f_BtnY0=f_Bottom+18.0f;
+    float f_BtnX1=f_BtnX0+f_BtnW,f_BtnY1=f_BtnY0+f_BtnH;
 
     if (m_b_EndModalBtnHover.load()) {
-        float pad = 6.0f;
-        ScotlandYard::UI::DrawRoundedRectScreen(f_BtnX0 - pad, f_BtnY0 - pad, f_BtnX1 + pad, f_BtnY1 + pad, {1.0f,1.0f,1.0f,0.08f}, 14, p_App);
+        ScotlandYard::UI::DrawRoundedRectScreen(f_BtnX0-6,f_BtnY0-6,f_BtnX1+6,f_BtnY1+6,{1,1,1,0.08f},14,p_App);
     }
-    ScotlandYard::UI::DrawRoundedRectScreen(f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {0.0f,0.5f,0.9f,1.0f}, 10, p_App);
-    ScotlandYard::UI::DrawTextCenteredPx("MENU", f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, white, p_App, -12.0f);
+    ScotlandYard::UI::DrawRoundedRectScreen(f_BtnX0,f_BtnY0,f_BtnX1,f_BtnY1,{0.0f,0.5f,0.9f,1.0f},10,p_App);
+    ScotlandYard::UI::DrawTextCenteredPx("MENU",f_BtnX0,f_BtnY0,f_BtnX1,f_BtnY1,white,p_App,-12.0f);
 
-        m_i_EndModalBtnX0 = static_cast<int>(f_BtnX0);
-        m_i_EndModalBtnY0 = static_cast<int>(f_BtnY0);
-        m_i_EndModalBtnX1 = static_cast<int>(f_BtnX1);
-        m_i_EndModalBtnY1 = static_cast<int>(f_BtnY1);
+    m_i_EndModalBtnX0=int(f_BtnX0); m_i_EndModalBtnY0=int(f_BtnY0);
+    m_i_EndModalBtnX1=int(f_BtnX1); m_i_EndModalBtnY1=int(f_BtnY1);
 
-        if (b_BlendWas == GL_FALSE) glDisable(GL_BLEND);
-        if (b_DepthWas) glEnable(GL_DEPTH_TEST);
-    }
-
-
-    SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
-    if (m_b_RequestMenuChange.load() && p_App) {
-        auto mgr = p_App->GetStateManager();
-        if (mgr) {
-            std::cout << "[GameState] Requesting state change to menu...\n";
-            mgr->ChangeState("menu");
-        }
-        m_b_RequestMenuChange.store(false);
-    }
+    if (!b_BlendWas) glDisable(GL_BLEND);
+    if (b_DepthWas) glEnable(GL_DEPTH_TEST);
 }
 
 void GameState::CheckEndOfGame(Winner winner) {
@@ -1426,7 +1405,6 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     }
 
 }
-
 
 std::vector<float> GameState::generateCircleVertices(float f_Radius, int i_Segments) {
     std::vector<float> vec_Vertices;

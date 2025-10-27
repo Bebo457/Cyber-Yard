@@ -195,8 +195,17 @@ private:
     void HandlePlayerClick(int i_PlayerIndex);
     void HandleArrowClick(int i_PlayerIndex, int i_DestinationNode);
 
-    // Helper method to render Mr X token at a specific position
+    // Render funcions
     void RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc);
+    void HandleResize(Core::Application* p_App);
+    void RenderBoard(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection);
+    void RenderStations(const glm::mat4& view, const glm::mat4& projection);
+    void RenderPlayers(const glm::mat4& view, const glm::mat4& projection);
+    void RenderArrows(const glm::mat4& view, const glm::mat4& projection);
+    void RenderHUD(Core::Application* p_App);
+    void RenderDebugOverlay(Core::Application* p_App);
+    void RenderPicking(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection);
+    void RenderEndGameModal(Core::Application* p_App);
 
     void CheckEndOfGame(Winner winner = Winner::None);
 
