@@ -1877,12 +1877,22 @@ class PoliceAI:
 
 
 class Game:
-    def __init__(self, mr_x_player, police_players, mr_x_algorithm="random", police_algorithm="random"):
+    def __init__(
+            self,
+            mr_x_player,
+            police_players,
+            mr_x_algorithm="random",
+            police_algorithm="random",
+            quiet=False,
+    ):
         self.mr_x_player = mr_x_player
         self.police_players = police_players
         self.mr_x_algorithm = mr_x_algorithm
         self.police_algorithm = police_algorithm
         self.running = True
+        self.quiet = quiet
+        self.winner = None
+        self.win_reason = None
 
         self.punkty = wczytaj_punkty('punkty.txt')
         self.polaczenia = wczytaj_polaczenia('polaczenia.txt')
@@ -1911,6 +1921,7 @@ class Game:
         self.front_plan = None
         self.front_plan_turn = None
         self.front_cached_belief = None
+        self.predicted_police_positions = {}
 
         self.ai_mode = all(isinstance(p, (MrXAI, PoliceAI)) for p in [mr_x_player, *police_players])
         self.mixed_mode = not self.ai_mode and any(
@@ -2067,7 +2078,11 @@ class Game:
                             self.reset_pawn_moves()
                             self.turn_number += 1
                             if self.turn_number > self.max_turns:
-                                print("KONIEC GRY – Mr. X nie został złapany!")
+                                if self.winner is None:
+                                    self.winner = "mr_x"
+                                    self.win_reason = "timeout"
+                                if not self.quiet:
+                                    print("KONIEC GRY – Mr. X nie został złapany!")
                                 self.running = False
                     self.update_highlighted_nodes()
                     break
@@ -2097,14 +2112,22 @@ class Game:
             self.reset_pawn_moves()
             self.turn_number += 1
             if self.turn_number > self.max_turns:
-                print("KONIEC GRY – Mr. X nie został złapany!")
+                if self.winner is None:
+                    self.winner = "mr_x"
+                    self.win_reason = "timeout"
+                if not self.quiet:
+                    print("KONIEC GRY – Mr. X nie został złapany!")
                 self.running = False
             self.update_highlighted_nodes()
 
     def check_game_end(self):
         for p in self.police:
             if p.position == self.mr_x.position:
-                print("KONIEC GRY – Mr. X złapany!")
+                if self.winner is None:
+                    self.winner = "police"
+                    self.win_reason = "capture"
+                if not self.quiet:
+                    print("KONIEC GRY – Mr. X złapany!")
                 self.running = False
 
     def draw_map(self, screen):

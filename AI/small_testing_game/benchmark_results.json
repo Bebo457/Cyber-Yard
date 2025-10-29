@@ -1,0 +1,423 @@
+{
+  "config": {
+    "games_per_pair": 10,
+    "max_turns": 22,
+    "seed": 1337,
+    "workers": 6,
+    "mr_x_algorithms": [
+      "random",
+      "decoy",
+      "dfs",
+      "monte_carlo"
+    ],
+    "police_algorithms": [
+      "random",
+      "astar_greedy",
+      "monte_carlo",
+      "minimax",
+      "front_encirclement"
+    ]
+  },
+  "run_stats": {
+    "total_games": 200,
+    "elapsed_seconds": 358.4755172729492
+  },
+  "pairings": [
+    {
+      "mr_x_algo": "decoy",
+      "police_algo": "astar_greedy",
+      "games": 10,
+      "police_wins": 6,
+      "mr_x_wins": 4,
+      "unknown": 0,
+      "average_turns": 16.8,
+      "reasons": {
+        "capture": 6,
+        "timeout": 4
+      }
+    },
+    {
+      "mr_x_algo": "decoy",
+      "police_algo": "front_encirclement",
+      "games": 10,
+      "police_wins": 8,
+      "mr_x_wins": 2,
+      "unknown": 0,
+      "average_turns": 13.0,
+      "reasons": {
+        "capture": 8,
+        "timeout": 2
+      }
+    },
+    {
+      "mr_x_algo": "decoy",
+      "police_algo": "minimax",
+      "games": 10,
+      "police_wins": 0,
+      "mr_x_wins": 10,
+      "unknown": 0,
+      "average_turns": 23.0,
+      "reasons": {
+        "timeout": 10
+      }
+    },
+    {
+      "mr_x_algo": "decoy",
+      "police_algo": "monte_carlo",
+      "games": 10,
+      "police_wins": 7,
+      "mr_x_wins": 3,
+      "unknown": 0,
+      "average_turns": 16.4,
+      "reasons": {
+        "capture": 7,
+        "timeout": 3
+      }
+    },
+    {
+      "mr_x_algo": "decoy",
+      "police_algo": "random",
+      "games": 10,
+      "police_wins": 0,
+      "mr_x_wins": 10,
+      "unknown": 0,
+      "average_turns": 23.0,
+      "reasons": {
+        "timeout": 10
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "astar_greedy",
+      "games": 10,
+      "police_wins": 6,
+      "mr_x_wins": 4,
+      "unknown": 0,
+      "average_turns": 19.7,
+      "reasons": {
+        "capture": 6,
+        "timeout": 4
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "front_encirclement",
+      "games": 10,
+      "police_wins": 5,
+      "mr_x_wins": 5,
+      "unknown": 0,
+      "average_turns": 18.5,
+      "reasons": {
+        "capture": 5,
+        "timeout": 5
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "minimax",
+      "games": 10,
+      "police_wins": 0,
+      "mr_x_wins": 10,
+      "unknown": 0,
+      "average_turns": 23.0,
+      "reasons": {
+        "timeout": 10
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "monte_carlo",
+      "games": 10,
+      "police_wins": 5,
+      "mr_x_wins": 5,
+      "unknown": 0,
+      "average_turns": 16.5,
+      "reasons": {
+        "capture": 5,
+        "timeout": 5
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "random",
+      "games": 10,
+      "police_wins": 1,
+      "mr_x_wins": 9,
+      "unknown": 0,
+      "average_turns": 20.9,
+      "reasons": {
+        "timeout": 9,
+        "capture": 1
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "astar_greedy",
+      "games": 10,
+      "police_wins": 10,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 8.1,
+      "reasons": {
+        "capture": 10
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "front_encirclement",
+      "games": 10,
+      "police_wins": 10,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 6.0,
+      "reasons": {
+        "capture": 10
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "minimax",
+      "games": 10,
+      "police_wins": 6,
+      "mr_x_wins": 4,
+      "unknown": 0,
+      "average_turns": 14.5,
+      "reasons": {
+        "capture": 6,
+        "timeout": 4
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "monte_carlo",
+      "games": 10,
+      "police_wins": 10,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 6.9,
+      "reasons": {
+        "capture": 10
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "random",
+      "games": 10,
+      "police_wins": 4,
+      "mr_x_wins": 6,
+      "unknown": 0,
+      "average_turns": 15.3,
+      "reasons": {
+        "timeout": 6,
+        "capture": 4
+      }
+    },
+    {
+      "mr_x_algo": "random",
+      "police_algo": "astar_greedy",
+      "games": 10,
+      "police_wins": 10,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 7.7,
+      "reasons": {
+        "capture": 10
+      }
+    },
+    {
+      "mr_x_algo": "random",
+      "police_algo": "front_encirclement",
+      "games": 10,
+      "police_wins": 10,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 5.4,
+      "reasons": {
+        "capture": 10
+      }
+    },
+    {
+      "mr_x_algo": "random",
+      "police_algo": "minimax",
+      "games": 10,
+      "police_wins": 4,
+      "mr_x_wins": 6,
+      "unknown": 0,
+      "average_turns": 16.2,
+      "reasons": {
+        "timeout": 6,
+        "capture": 4
+      }
+    },
+    {
+      "mr_x_algo": "random",
+      "police_algo": "monte_carlo",
+      "games": 10,
+      "police_wins": 10,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 9.1,
+      "reasons": {
+        "capture": 10
+      }
+    },
+    {
+      "mr_x_algo": "random",
+      "police_algo": "random",
+      "games": 10,
+      "police_wins": 2,
+      "mr_x_wins": 8,
+      "unknown": 0,
+      "average_turns": 21.9,
+      "reasons": {
+        "capture": 2,
+        "timeout": 8
+      }
+    }
+  ],
+  "police_ranking": [
+    {
+      "algorithm": "front_encirclement",
+      "games": 40,
+      "wins": 33,
+      "win_rate": 0.825,
+      "average_turns": 10.725,
+      "capture_rate": 0.825,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "astar_greedy",
+      "games": 40,
+      "wins": 32,
+      "win_rate": 0.8,
+      "average_turns": 13.075,
+      "capture_rate": 0.8,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "monte_carlo",
+      "games": 40,
+      "wins": 32,
+      "win_rate": 0.8,
+      "average_turns": 12.225,
+      "capture_rate": 0.8,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "minimax",
+      "games": 40,
+      "wins": 10,
+      "win_rate": 0.25,
+      "average_turns": 19.175,
+      "capture_rate": 0.25,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "random",
+      "games": 40,
+      "wins": 7,
+      "win_rate": 0.175,
+      "average_turns": 20.275,
+      "capture_rate": 0.175,
+      "unknown_rate": 0.0
+    }
+  ],
+  "mr_x_ranking": [
+    {
+      "algorithm": "dfs",
+      "games": 50,
+      "wins": 33,
+      "win_rate": 0.66,
+      "average_turns": 19.72,
+      "timeout_rate": 0.66,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "decoy",
+      "games": 50,
+      "wins": 29,
+      "win_rate": 0.58,
+      "average_turns": 18.44,
+      "timeout_rate": 0.58,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "random",
+      "games": 50,
+      "wins": 14,
+      "win_rate": 0.28,
+      "average_turns": 12.06,
+      "timeout_rate": 0.28,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "monte_carlo",
+      "games": 50,
+      "wins": 10,
+      "win_rate": 0.2,
+      "average_turns": 10.16,
+      "timeout_rate": 0.2,
+      "unknown_rate": 0.0
+    }
+  ],
+  "average_turns_matrix": [
+    [
+      21.9,
+      7.7,
+      9.1,
+      16.2,
+      5.4
+    ],
+    [
+      23.0,
+      16.8,
+      16.4,
+      23.0,
+      13.0
+    ],
+    [
+      20.9,
+      19.7,
+      16.5,
+      23.0,
+      18.5
+    ],
+    [
+      15.3,
+      8.1,
+      6.9,
+      14.5,
+      6.0
+    ]
+  ],
+  "police_win_rate_matrix": [
+    [
+      0.2,
+      1.0,
+      1.0,
+      0.4,
+      1.0
+    ],
+    [
+      0.0,
+      0.6,
+      0.7,
+      0.0,
+      0.8
+    ],
+    [
+      0.1,
+      0.6,
+      0.5,
+      0.0,
+      0.5
+    ],
+    [
+      0.4,
+      1.0,
+      1.0,
+      0.6,
+      1.0
+    ]
+  ]
+}
