@@ -907,6 +907,15 @@ class PoliceAI:
         self.role = role
         self.algorithm = algorithm  # "random", "astar_greedy", "monte_carlo"
         self.alpha = 0.5  # Parametr ważenia odległości w mapie probabilistycznej
+        # Heurystyczne wagi preferencji środków transportu używane przy aktualizacji przekonań
+        self.transport_likelihoods = {
+            'taxi': 1.0,
+            'bus': 0.75,
+            'underground': 0.55,
+            'water': 0.4,
+            'ferry': 0.4,
+            'black': 0.6,
+        }
 
     def get_move(self, game_state, pawn):
         if self.algorithm == "random":
@@ -917,6 +926,8 @@ class PoliceAI:
             return self._monte_carlo_move(game_state, pawn)
         elif self.algorithm == "minimax":
             return self._minimax_move(game_state, pawn)
+        elif self.algorithm == "front_encirclement":
+            return self._front_encirclement_move(game_state, pawn)
         else:
             return self._random_move(game_state, pawn)
 
@@ -1311,6 +1322,435 @@ class PoliceAI:
 
         return max(move_scores.items(), key=lambda kv: kv[1])[0]
 
+    # ==== Front search / encirclement ====
+
+    def _ensure_front_state(self, game_state):
+        if not hasattr(game_state, 'front_blocked_nodes') or game_state.front_blocked_nodes is None:
+            game_state.front_blocked_nodes = {}
+        if not hasattr(game_state, 'front_plan'):
+            game_state.front_plan = None
+        if not hasattr(game_state, 'front_plan_turn'):
+            game_state.front_plan_turn = None
+        if not hasattr(game_state, 'front_cached_belief'):
+            game_state.front_cached_belief = None
+
+    def _front_encirclement_move(self, game_state, pawn):
+        self._ensure_front_state(game_state)
+
+        if game_state.front_plan is None or game_state.front_plan_turn != game_state.turn_number:
+            plan = self._build_front_encirclement_plan(game_state)
+            game_state.front_plan = plan
+            game_state.front_plan_turn = game_state.turn_number
+
+        plan = game_state.front_plan or {}
+        moves_map = plan.get('moves') if isinstance(plan, dict) else None
+        if not moves_map:
+            return self._fallback_to_safe_move(game_state, pawn)
+
+        entry = moves_map.get(pawn.name)
+        if not entry:
+            return self._fallback_to_safe_move(game_state, pawn)
+
+        next_move = entry.get('next_move')
+        if not next_move:
+            moves_map[pawn.name] = None
+            return None
+
+        available = game_state.get_available_moves(pawn)
+        if next_move not in available:
+            target = entry.get('target')
+            if target is not None:
+                self._mark_blocked_node(game_state, target)
+            moves_map[pawn.name] = None
+            return self._fallback_to_safe_move(game_state, pawn)
+
+        moves_map[pawn.name]['next_move'] = None
+        reserved = plan.get('reserved')
+        if isinstance(reserved, set):
+            reserved.add(next_move[0])
+        return next_move
+
+    def _build_front_encirclement_plan(self, game_state):
+        graph = self._build_graph(game_state)
+        belief = self._build_belief_distribution(game_state, graph)
+
+        moves_map = {}
+        centroid = self._compute_weighted_centroid(belief, game_state)
+
+        detectives = list(game_state.police)
+        if not detectives:
+            return {'moves': {}, 'reserved': set(), 'belief': belief, 'centroid': centroid}
+
+        front_nodes = self._select_front_nodes(belief, len(detectives))
+        assignments = self._assign_detectives_to_front(front_nodes, detectives, graph)
+        guard_nodes = self._select_guard_nodes(belief, assignments.values(), centroid, graph)
+
+        reserved_destinations = set()
+        occupied_nodes = {p.position for p in detectives}
+
+        for pawn in detectives:
+            occupied_nodes.discard(pawn.position)
+            target = assignments.get(pawn.name)
+            if target is None and guard_nodes:
+                target = guard_nodes.pop(0)
+
+            path = None
+            if target is not None and target != pawn.position:
+                path = self._ticket_aware_astar_path(
+                    game_state,
+                    pawn,
+                    target,
+                    blocked_next_step=occupied_nodes | reserved_destinations,
+                    graph=graph
+                )
+
+            next_move = None
+            if path and len(path) > 1:
+                candidate_node = path[1]
+                transport = self._select_transport_for_step(graph, pawn, candidate_node)
+                if transport and candidate_node not in occupied_nodes and candidate_node not in reserved_destinations:
+                    next_move = (candidate_node, transport)
+                    reserved_destinations.add(candidate_node)
+                else:
+                    path = None
+
+            if next_move is None:
+                fallback = self._fallback_to_safe_move(
+                    game_state,
+                    pawn,
+                    centroid=centroid,
+                    reserved=occupied_nodes | reserved_destinations,
+                    belief=belief
+                )
+                if fallback:
+                    next_move = fallback
+                    reserved_destinations.add(fallback[0])
+
+            if next_move is None:
+                if target is not None:
+                    self._mark_blocked_node(game_state, target)
+                occupied_nodes.add(pawn.position)
+            else:
+                occupied_nodes.add(next_move[0])
+
+            moves_map[pawn.name] = {
+                'target': target,
+                'path': path,
+                'next_move': next_move,
+                'probability': belief.get(target, 0.0) if target else 0.0,
+            }
+
+        self._decay_blocked_nodes(game_state)
+
+        return {
+            'moves': moves_map,
+            'reserved': reserved_destinations,
+            'belief': belief,
+            'centroid': centroid,
+        }
+
+    def _build_graph(self, game_state):
+        graph = {}
+        for a, b, typ in game_state.polaczenia:
+            graph.setdefault(a, []).append((b, typ))
+            graph.setdefault(b, []).append((a, typ))
+        return graph
+
+    def _build_belief_distribution(self, game_state, graph):
+        if game_state.front_cached_belief is not None and not game_state.is_mr_x_revealed():
+            return dict(game_state.front_cached_belief)
+
+        if game_state.is_mr_x_revealed():
+            belief = {game_state.mr_x.position: 1.0}
+            game_state.front_cached_belief = dict(belief)
+            return belief
+
+        if game_state.last_known_pos is not None:
+            start_belief = {game_state.last_known_pos: 1.0}
+            moves_sequence = game_state.mr_x_moves[game_state.last_reveal_move_index:]
+        elif game_state.suspected_positions:
+            positions = list(game_state.suspected_positions)
+            if not positions:
+                positions = list(game_state.punkty.keys())
+            prob = 1.0 / len(positions)
+            start_belief = {node: prob for node in positions}
+            moves_sequence = []
+        else:
+            nodes = [n for n in game_state.punkty.keys() if n not in {p.position for p in game_state.police}]
+            if not nodes:
+                nodes = list(game_state.punkty.keys())
+            prob = 1.0 / len(nodes)
+            start_belief = {node: prob for node in nodes}
+            moves_sequence = []
+
+        belief = dict(start_belief)
+        for transport in moves_sequence:
+            belief = self._propagate_belief(belief, transport, graph)
+            if not belief:
+                break
+
+        if not belief:
+            belief = dict(start_belief)
+
+        police_positions = {p.position for p in game_state.police}
+        adjusted = {}
+        for node, value in belief.items():
+            if node in police_positions:
+                continue
+            penalty = 1.0
+            if node in game_state.front_blocked_nodes:
+                penalty -= min(0.6, 0.15 * game_state.front_blocked_nodes[node])
+            adjusted[node] = max(value * penalty, 0.0)
+
+        total = sum(adjusted.values())
+        if total <= 0:
+            adjusted = dict(start_belief)
+            total = sum(adjusted.values())
+
+        if total > 0:
+            adjusted = {node: val / total for node, val in adjusted.items() if val > 0}
+
+        # Prune extremely unlikely nodes
+        threshold = 0.01
+        filtered = {node: prob for node, prob in adjusted.items() if prob >= threshold}
+        if filtered:
+            scale = sum(filtered.values())
+            belief_result = {node: prob / scale for node, prob in filtered.items()}
+        else:
+            belief_result = adjusted
+
+        game_state.front_cached_belief = dict(belief_result)
+        return belief_result
+
+    def _propagate_belief(self, belief, transport, graph):
+        candidate = {}
+        weight = self.transport_likelihoods.get(transport, 0.5)
+        for node, prob in belief.items():
+            neighbors = []
+            for neighbor, typ in graph.get(node, []):
+                if transport == 'black' or typ == transport:
+                    neighbors.append(neighbor)
+            if not neighbors:
+                candidate[node] = candidate.get(node, 0.0) + prob * 0.2
+                continue
+            share = prob * weight
+            step = share / len(neighbors)
+            for neighbor in neighbors:
+                candidate[neighbor] = candidate.get(neighbor, 0.0) + step
+
+        total = sum(candidate.values())
+        if total <= 0:
+            return {}
+
+        normalized = {node: val / total for node, val in candidate.items() if val > 0}
+        return normalized
+
+    def _compute_weighted_centroid(self, belief, game_state):
+        if not belief:
+            return None
+        total = sum(belief.values())
+        if total <= 0:
+            return None
+        sx = 0.0
+        sy = 0.0
+        for node, prob in belief.items():
+            point = game_state.punkty.get(node)
+            if not point:
+                continue
+            sx += prob * point['x']
+            sy += prob * point['y']
+        return (sx / total, sy / total) if total > 0 else None
+
+    def _select_front_nodes(self, belief, max_nodes):
+        if not belief:
+            return []
+        sorted_nodes = sorted(belief.items(), key=lambda item: item[1], reverse=True)
+        front = []
+        cumulative = 0.0
+        limit = max(1, max_nodes)
+        for node, prob in sorted_nodes:
+            front.append((node, prob))
+            cumulative += prob
+            if len(front) >= limit or cumulative >= 0.75:
+                break
+        return front
+
+    def _assign_detectives_to_front(self, front_nodes, detectives, graph):
+        if not front_nodes:
+            return {}
+        distance_maps = {}
+        for pawn in detectives:
+            distance_maps[pawn.name] = self._bfs_distances(graph, pawn.position)
+
+        available = {pawn.name for pawn in detectives}
+        assignments = {}
+        for node, prob in front_nodes:
+            best_name = None
+            best_score = float('inf')
+            for pawn in detectives:
+                if pawn.name not in available:
+                    continue
+                dist = distance_maps[pawn.name].get(node, float('inf'))
+                score = dist - prob * 2.0
+                if score < best_score:
+                    best_score = score
+                    best_name = pawn.name
+            if best_name is not None and best_score != float('inf'):
+                assignments[best_name] = node
+                available.remove(best_name)
+        return assignments
+
+    def _select_guard_nodes(self, belief, used_nodes, centroid, graph):
+        used_nodes = set(used_nodes)
+        ferry_nodes = {node for node, neighbors in graph.items() if any(typ == 'water' for _, typ in neighbors)}
+        sorted_nodes = sorted(belief.items(), key=lambda item: item[1], reverse=True)
+
+        guards = []
+        for node, prob in sorted_nodes:
+            if node in used_nodes:
+                continue
+            guards.append(node)
+        ferry_priority = [node for node in ferry_nodes if node not in used_nodes]
+        guards = ferry_priority + guards
+
+        # Deduplicate preserving order
+        seen = set()
+        result = []
+        for node in guards:
+            if node not in seen:
+                seen.add(node)
+                result.append(node)
+        return result
+
+    def _ticket_aware_astar_path(self, game_state, pawn, target, blocked_next_step=None, graph=None):
+        from heapq import heappush, heappop
+
+        transports = ['taxi', 'bus', 'underground', 'water']
+
+        def encode_tickets(tickets):
+            encoded = []
+            for t in transports:
+                value = tickets.get(t, 0)
+                if value == float('inf'):
+                    value = 99
+                encoded.append(int(max(0, value)))
+            return tuple(encoded)
+
+        start_state = (pawn.position, encode_tickets(pawn.tickets))
+        goal_node = target
+
+        open_set = []
+        heappush(open_set, (0, 0, start_state))
+        came_from = {}
+        g_cost = {start_state: 0}
+
+        while open_set:
+            _, cost_so_far, (node, tickets_state) = heappop(open_set)
+
+            if node == goal_node:
+                path = [node]
+                state = (node, tickets_state)
+                while state in came_from:
+                    state, transport = came_from[state]
+                    path.append(state[0])
+                path = list(reversed(path))
+                if blocked_next_step and len(path) > 1 and path[1] in blocked_next_step and path[1] != goal_node:
+                    return None
+                return path
+
+            for neighbor, transport in (graph or {}).get(node, []):
+                idx = transports.index(transport) if transport in transports else None
+                available = None
+                new_tickets = list(tickets_state)
+                if idx is not None:
+                    available = tickets_state[idx]
+                    if available <= 0:
+                        continue
+                    if available != 99:
+                        new_tickets[idx] -= 1
+                else:
+                    # Transport nieobsługiwany
+                    continue
+
+                next_state = (neighbor, tuple(new_tickets))
+                new_cost = cost_so_far + 1
+
+                if next_state not in g_cost or new_cost < g_cost[next_state]:
+                    g_cost[next_state] = new_cost
+                    priority = new_cost + self._heuristic_distance(neighbor, goal_node, game_state)
+                    heappush(open_set, (priority, new_cost, next_state))
+                    came_from[next_state] = ((node, tickets_state), transport)
+
+        return None
+
+    def _select_transport_for_step(self, graph, pawn, destination):
+        options = []
+        for neighbor, transport in graph.get(pawn.position, []):
+            if neighbor == destination and pawn.tickets.get(transport, 0) > 0:
+                options.append((transport, pawn.tickets.get(transport, 0)))
+        if not options:
+            return None
+        options.sort(key=lambda item: (-item[1], -self.transport_likelihoods.get(item[0], 0.5)))
+        return options[0][0]
+
+    def _fallback_to_safe_move(self, game_state, pawn, centroid=None, reserved=None, belief=None):
+        options = game_state.get_available_moves(pawn)
+        if not options:
+            return None
+
+        reserved = reserved or set()
+        filtered = [move for move in options if move[0] not in reserved]
+        if not filtered:
+            filtered = options
+
+        def move_score(move):
+            node, transport = move
+            prob = belief.get(node, 0.0) if belief else 0.0
+            dist = self._distance_to_centroid(node, centroid, game_state) if centroid else 0.0
+            return (-prob, dist)
+
+        filtered.sort(key=move_score)
+        return filtered[0] if filtered else options[0]
+
+    def _distance_to_centroid(self, node, centroid, game_state):
+        if centroid is None:
+            return 0.0
+        point = game_state.punkty.get(node)
+        if not point:
+            return float('inf')
+        dx = point['x'] - centroid[0]
+        dy = point['y'] - centroid[1]
+        return (dx * dx + dy * dy) ** 0.5
+
+    def _decay_blocked_nodes(self, game_state):
+        nodes = game_state.front_blocked_nodes or {}
+        to_delete = []
+        for node in list(nodes.keys()):
+            nodes[node] = max(nodes[node] - 1, 0)
+            if nodes[node] <= 0:
+                to_delete.append(node)
+        for node in to_delete:
+            nodes.pop(node, None)
+        game_state.front_blocked_nodes = nodes
+
+    def _mark_blocked_node(self, game_state, node):
+        nodes = game_state.front_blocked_nodes or {}
+        nodes[node] = nodes.get(node, 0) + 2
+        game_state.front_blocked_nodes = nodes
+
+    def _bfs_distances(self, graph, start):
+        from collections import deque
+
+        dist = {start: 0}
+        queue = deque([start])
+        while queue:
+            node = queue.popleft()
+            for neighbor, _ in graph.get(node, []):
+                if neighbor not in dist:
+                    dist[neighbor] = dist[node] + 1
+                    queue.append(neighbor)
+        return dist
+
     def _minimax_move(self, game_state, pawn):
         """
         Mini-Max z przycinaniem alfa–beta i heurystyką inspirowaną dokumentem:
@@ -1465,6 +1905,13 @@ class Game:
         self.mr_x_position_history = {}  # Historia pozycji: tura -> pozycja (tylko ujawnienia)
         self.suspected_positions = set()  # Potencjalne pozycje - puste dopóki brak danych
 
+        # Stan pomocniczy dla algorytmu front search-encirclement
+        self.last_reveal_move_index = 0
+        self.front_blocked_nodes = {}
+        self.front_plan = None
+        self.front_plan_turn = None
+        self.front_cached_belief = None
+
         self.ai_mode = all(isinstance(p, (MrXAI, PoliceAI)) for p in [mr_x_player, *police_players])
         self.mixed_mode = not self.ai_mode and any(
             isinstance(p, (MrXAI, PoliceAI)) for p in [mr_x_player, *police_players])
@@ -1496,6 +1943,9 @@ class Game:
         self.mr_x.moved_this_turn = False
         for p in self.police:
             p.moved_this_turn = False
+        # Resetuj plan front search przy rozpoczęciu nowej tury policji
+        self.front_plan = None
+        self.front_plan_turn = None
 
     def are_connected(self, a, b):
         return any((x == a and y == b) or (x == b and y == a) for x, y, t in self.polaczenia)
@@ -1518,17 +1968,23 @@ class Game:
         self.mr_x_moves.append(typ)
         self.mr_x.move_to(dest, typ)
 
+        # Unieważnij plan front search po każdym ruchu Mr. X
+        self.front_plan = None
+        self.front_plan_turn = None
+
         # Jeśli Mr. X jest ujawniony, zaktualizuj ostatnią znaną pozycję
         if self.is_mr_x_revealed():
             self.last_known_pos = dest
             self.last_reveal_turn = self.turn_number
             self.mr_x_position_history[self.turn_number] = dest
             self.suspected_positions = {dest}
+            self.last_reveal_move_index = len(self.mr_x_moves)
+            self.front_cached_belief = None
         else:
             # Jeśli Mr. X nie jest ujawniony, aktualizuj podejrzane pozycje na podstawie ruchów
             if self.last_known_pos is not None:
                 # Mamy ostatnią znaną pozycję - filtruj na podstawie sekwencji ruchów
-                moves_since_reveal = self.mr_x_moves[self.last_reveal_turn - 1:]
+                moves_since_reveal = self.mr_x_moves[self.last_reveal_move_index:]
 
                 # Oblicz możliwe węzły przy danej sekwencji transportów
                 from collections import deque
@@ -1559,6 +2015,8 @@ class Game:
                                 queue.append(state)
 
                 self.suspected_positions = reachable if reachable else {self.last_known_pos}
+            # Po każdym ukrytym ruchu czyszczony cache przekonań front search
+            self.front_cached_belief = None
 
     def handle_click(self, pos):
         for nr, dane in self.punkty.items():
@@ -1762,6 +2220,7 @@ class Game:
             'dfs': 'DFS',
             'monte_carlo': 'Monte Carlo',
             'astar_greedy': 'A* Greedy',
+            'front_encirclement': 'Front Encirclement',
         }
         return names.get(algorithm, algorithm)
 
@@ -1943,6 +2402,7 @@ police_algorithms = [
     RadioButton("A* Greedy", 600, 300, "police_algo", "astar_greedy"),
     RadioButton("Monte Carlo", 600, 335, "police_algo", "monte_carlo"),
     RadioButton("Mini-Max", 600, 370, "police_algo", "monte_carlo"),
+    RadioButton("Front Encirclement", 600, 405, "police_algo", "front_encirclement"),
 ]
 
 radio_groups = {
