@@ -67,8 +67,8 @@ static constexpr float k_ArrowWidth = 0.04f;
 
 // Transport Orbital Radii (distance from station center for direction arrows)
 static constexpr float k_TaxiWaterOrbitalRadius = 0.15f;
-static constexpr float k_BusOrbitalRadius = 0.22f;
-static constexpr float k_MetroOrbitalRadius = 0.29f;
+static constexpr float k_BusOrbitalRadius = 0.27f;
+static constexpr float k_MetroOrbitalRadius = 0.34f;
 
 } // namespace UI
 

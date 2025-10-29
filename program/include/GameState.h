@@ -92,7 +92,9 @@ private:
     static constexpr float k_MinCameraAngle = -1.55f;  // -90 degrees
     static constexpr float k_MaxCameraAngle = -0.2915f;  // ~-16.7 degrees
 
-   
+    // Global scale for the board and objects
+    float ScotlandYard::States::GameState::globalScale = 0.1f;
+    glm::mat4 globalScaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(globalScale));
 
     void LoadTextures(Core::Application* p_App);
 
@@ -142,7 +144,7 @@ private:
 
     std::atomic_bool m_b_ShowPausedModal{false};
 
-    std::atomic_bool m_b_DebuggingMode{false};
+    std::atomic_bool m_b_DebuggingMode{true};
     std::atomic_bool m_b_ShowPickingBuffer{false};
     std::atomic_bool m_b_ShowMrXInDebug{true};
 

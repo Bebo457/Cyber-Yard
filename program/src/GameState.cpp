@@ -77,6 +77,10 @@ void GameState::OnEnter() {
 
     // Pozycje kółek z pliku CSV
     auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
+        for (auto& station : vec_StationData) {
+        station.vec2_Position.x *= globalScale;
+        station.vec2_Position.y *= globalScale;
+    }
 
     if (vec_StationData.empty()) {
         std::cerr << "[GameState] Warning: No positions loaded from CSV, using defaults.\n";
@@ -936,8 +940,9 @@ void GameState::Update(float f_DeltaTime) {
 
 void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc) {
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(vec2_Position.x, 0.01f, vec2_Position.y));
+    model = glm::translate(model, glm::vec3(vec2_Position.x, 0.05f * globalScale, vec2_Position.y));
     model = glm::scale(model, glm::vec3(2.0f));
+    model = model * globalScaleMat;
 
     // MisterX colour (black)
     glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -963,6 +968,7 @@ void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& 
 }
 
 void GameState::Render(Core::Application* p_App) {
+    
     LoadTextures(p_App);
     HandleResize(p_App);
 
@@ -978,10 +984,13 @@ void GameState::Render(Core::Application* p_App) {
         projection = glm::perspective(glm::radians(45.0f), float(m_i_Width)/m_i_Height, 0.1f,100.0f);
     } else {
         m_vec3_CameraVelocity = glm::vec3(0.0f);
-        view = glm::lookAt(glm::vec3(0,10,0), glm::vec3(0), glm::vec3(0,0,-1));
+        glm::vec3 camPos = glm::vec3(11.0f * globalScale, 5.0f * globalScale, 8.0f * globalScale); // x=centerX, y=height, z=centerZ
+        glm::vec3 camTarget = glm::vec3(11.0f * globalScale, 0.0f, 8.0f * globalScale); // look at center of plane
+        glm::vec3 camUp = glm::vec3(0, 0, -1); // points towards -Z for top-down
+        view = glm::lookAt(camPos, camTarget, camUp);
         float aspect = float(m_i_Width)/m_i_Height;
-        float halfH=1.1f, halfW=halfH*aspect;
-        projection = glm::ortho(-halfW,halfW,-halfH,halfH,0.1f,20.0f);
+        float halfH=10.0f * globalScale, halfW=halfH*aspect;
+        projection = glm::ortho(-halfW,halfW,-halfH,halfH,0.1f,10.0f);
     }
 
     RenderBoard(p_App, view, projection);
@@ -1030,7 +1039,8 @@ void GameState::RenderBoard(Core::Application* p_App, const glm::mat4& view, con
     glUseProgram(m_ShaderProgram_Plane);
 
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+    model = globalScaleMat * model;
+    model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));    
 
     glm::mat4 MVP = projection * view * model;
     GLuint mvpLocPlane = glGetUniformLocation(m_ShaderProgram_Plane, "MVP");
@@ -1052,11 +1062,10 @@ void GameState::RenderStations(const glm::mat4& view, const glm::mat4& projectio
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
 
-    // Base settings
-    float baseScale = 5.2f;      // smallest colored ring radius
-    float ringStep = 1.5f;       // how much each successive ring grows
-    float yStep = 0.02f;         // vertical gap between rings
-    float topCircleScale = 5.0f; // fixed size for the top white circle
+    float baseScale = 7.0f;
+    float ringStep = 1.0f;
+    float yStep = 0.02f;
+    float topCircleScale = 6.4f;
 
     std::vector<std::string> order = { "metro", "bus", "taxi", "water" };
 
@@ -1064,37 +1073,30 @@ void GameState::RenderStations(const glm::mat4& view, const glm::mat4& projectio
         glm::mat4 modelBase = glm::translate(glm::mat4(1.0f),
                                              glm::vec3(station.position.x, 0.0f, station.position.y));
 
-        // Filter types in the desired order
         std::vector<std::string> typesPresent;
         for (const auto& t : order) {
-            if (std::find(station.transportTypes.begin(),
-                          station.transportTypes.end(), t) != station.transportTypes.end()) {
+            if (std::find(station.transportTypes.begin(), station.transportTypes.end(), t) != station.transportTypes.end()) {
                 typesPresent.push_back(t);
             }
         }
 
         int count = static_cast<int>(typesPresent.size());
-        float yStart = 0.01f;  // small offset above the board
+        float yStart = 0.001f;
 
-        // Render colored rings (bottom → top)
         for (int i = 0; i < count; ++i) {
             const std::string& type = typesPresent[i];
-
             glm::vec3 color;
-            if (type == "metro") color = glm::vec3(1.0f, 0.0f, 0.0f);
-            else if (type == "bus") color = glm::vec3(0.0f, 1.0f, 0.0f);
-            else if (type == "taxi") color = glm::vec3(1.0f, 1.0f, 0.0f);
-            else color = glm::vec3(0.0f, 0.4f, 1.0f);
+            if (type == "metro") color = {1.0f, 0.0f, 0.0f};
+            else if (type == "bus") color = {0.0f, 1.0f, 0.0f};
+            else if (type == "taxi") color = {1.0f, 1.0f, 0.0f};
+            else color = {0.0f, 0.4f, 1.0f};
 
-            // Tapered size: bottom largest, top smallest
             float scale = baseScale + (count - i) * ringStep;
-
             float yOffset = yStart + i * yStep;
-            glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yOffset, 0.0f));
-            model = glm::scale(model, glm::vec3(scale, 0.2f, scale)); // flattened vertically
+            glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yOffset * globalScale, 0.0f));
+            model = glm::scale(model, glm::vec3(scale, 0.2f, scale)) * globalScaleMat;
 
             glm::mat4 MVP = projection * view * model;
-
             glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
             glUniform3fv(colorLoc, 1, glm::value_ptr(color));
 
@@ -1103,10 +1105,9 @@ void GameState::RenderStations(const glm::mat4& view, const glm::mat4& projectio
             glBindVertexArray(0);
         }
 
-        // Top white circle (fixed size)
         float yTop = yStart + count * yStep;
-        glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yTop, 0.0f));
-        model = glm::scale(model, glm::vec3(topCircleScale, 0.2f, topCircleScale));
+        glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yTop * globalScale, 0.0f));
+        model = glm::scale(model, glm::vec3(topCircleScale, 0.2f, topCircleScale)) * globalScaleMat;
 
         glm::mat4 MVP = projection * view * model;
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
@@ -1132,8 +1133,9 @@ void GameState::RenderPlayers(const glm::mat4& view, const glm::mat4& projection
         if (it == m_vec_CircleStations.end()) continue;
 
         glm::vec2 pos = it->position;
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, 0.05f, pos.y));
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, 0.05f * globalScale, pos.y));
         model = glm::scale(model, glm::vec3(2.0f));
+        model = model * globalScaleMat;
 
         glm::vec3 color = glm::vec3(0.0f, 0.0f, 1.0f);
         glUniform3fv(colorLoc, 1, glm::value_ptr(color));
@@ -1151,12 +1153,16 @@ void GameState::RenderPlayers(const glm::mat4& view, const glm::mat4& projection
         glBindVertexArray(0);
     }
 
-    // Render Mister X if appropriate (debug or reveal round)
+    // Render Mister X if appropriate (debug or misterX is active)
     int i_CurrentRoundForRender = m_i_Round.load();
     for (const auto& player : m_vec_Players) {
         if (player.GetType() != Core::PlayerType::MisterX) continue;
-        //if (!m_b_DebuggingMode.load() && !Core::IsRevealRound(i_CurrentRoundForRender)) continue;
-        if (!player.IsActive()) continue;
+
+
+        bool b_ShouldRenderMrX = false;
+        if (m_b_DebuggingMode && m_b_ShowMrXInDebug) b_ShouldRenderMrX = true;
+        if (player.IsActive()) b_ShouldRenderMrX = true;
+        if (!b_ShouldRenderMrX) continue;
 
         int nodeId = player.GetOccupiedNode();
         auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
@@ -1182,14 +1188,23 @@ void GameState::RenderArrows(const glm::mat4& view, const glm::mat4& projection)
             default: color = glm::vec3(1.0f); break;
         }
 
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(arrow.vec2_Position.x, 0.1f, arrow.vec2_Position.y));
-        model = glm::rotate(model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 baseModel = glm::translate(glm::mat4(1.0f), glm::vec3(arrow.vec2_Position.x, 0.1f * globalScale, arrow.vec2_Position.y));
+        baseModel = glm::rotate(baseModel, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
 
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * model));
-        glUniform3fv(colorLoc, 1, glm::value_ptr(color));
-
+        // --- Draw black outline slightly larger ---
+        glm::mat4 outlineModel = baseModel * glm::scale(globalScaleMat, glm::vec3(1.5f)); // slightly bigger
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * outlineModel));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, 0.0f))); // black
         glBindVertexArray(m_VAO_Arrow);
         glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
+
+        // --- Draw colored arrow on top ---
+        glm::mat4 coloredModel = baseModel * globalScaleMat;
+        coloredModel = glm::translate(coloredModel, glm::vec3(0.0f, 0.01f, 0.0f)); // slight offset to prevent z-fighting
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * coloredModel));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+        glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
+
         glBindVertexArray(0);
     }
 }
@@ -1606,10 +1621,13 @@ void GameState::UpdateArrowsForSelectedPlayer() {
         glm::vec2 vec2_Direction = glm::normalize(vec2_DestPos - vec2_CurrentPos);
 
         float f_OrbitalRadius = UI::k_TaxiWaterOrbitalRadius;
+        f_OrbitalRadius = f_OrbitalRadius * globalScale;
         if (conn.i_TransportType == Core::k_TransportTypeBus) {
             f_OrbitalRadius = UI::k_BusOrbitalRadius;
+            f_OrbitalRadius = f_OrbitalRadius * globalScale;
         } else if (conn.i_TransportType == Core::k_TransportTypeMetro) {
             f_OrbitalRadius = UI::k_MetroOrbitalRadius;
+            f_OrbitalRadius = f_OrbitalRadius * globalScale;
         }
 
         glm::vec2 vec2_ArrowPos = vec2_CurrentPos + vec2_Direction * f_OrbitalRadius;
@@ -1910,8 +1928,9 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
             glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
 
             glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(it->position.x, 0.01f, it->position.y));
+            model = glm::translate(model, glm::vec3(it->position.x, 0.05f * globalScale, it->position.y));
             model = glm::scale(model, glm::vec3(2.0f));
+            model = model * globalScaleMat;
 
             glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
 
@@ -1933,8 +1952,9 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
         glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
 
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(arrow.vec2_Position.x, 0.02f, arrow.vec2_Position.y));
+        model = glm::translate(model, glm::vec3(arrow.vec2_Position.x , 0.1f * globalScale, arrow.vec2_Position.y));
         model = glm::rotate(model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+        model = model * globalScaleMat;
 
         glm::mat4 MVP = mat4_Projection * mat4_View * model;
         glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
