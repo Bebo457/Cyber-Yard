@@ -28,7 +28,7 @@ public:
 private:
     int m_i_SelectedOption;
     int m_i_HoverOption;
-    static constexpr int BUTTON_COUNT = 4;
+    static constexpr int BUTTON_COUNT = 5;
     float m_f_FrameAlpha[BUTTON_COUNT];
     GLuint m_WhiteTexture;
 

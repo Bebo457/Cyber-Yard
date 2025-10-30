@@ -15,7 +15,7 @@ import os
 import random
 import time
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass
 from itertools import product
 from typing import Any, DefaultDict, Dict, Iterable, List, Tuple
@@ -162,52 +162,153 @@ def run_benchmark(
             seed = base_seed + pair_idx * 1000 + game_idx
             tasks.append((mr_x_algo, police_algo, seed, max_turns, step_guard_multiplier))
 
+    total_games = len(tasks)
+    if total_games == 0:
+        print("[Benchmark] No games scheduled; check selected algorithms or games per pair.", flush=True)
+        return (
+            results,
+            pair_stats,
+            police_wins_matrix,
+            games_matrix,
+            turn_sum_matrix,
+            police_overall,
+            mr_x_overall,
+        )
+
+    print(
+        f"[Benchmark] Dispatching {total_games} games across {len(mr_x_algos)}x{len(police_algos)} matchups.",
+        flush=True,
+    )
+
+    completed_games = 0
+    progress_interval = max(5.0, min(30.0, max_turns / 2.0 if max_turns > 0 else 5.0))
+    last_progress_notice = time.time()
+    pair_start_times: Dict[Tuple[str, str], float] = {}
+
+    def emit_progress(now: float, *, force: bool = False) -> None:
+        nonlocal last_progress_notice
+        if total_games == 0:
+            return
+        if not force and (now - last_progress_notice) < progress_interval:
+            return
+        percent = (completed_games / total_games) * 100.0 if total_games else 0.0
+        active_pairs = [
+            f"{mr}->{pol} {stats['games']}/{games_per_pair}"
+            for (mr, pol), stats in pair_stats.items()
+            if stats["games"] < games_per_pair
+        ]
+        if len(active_pairs) > 3:
+            active_summary = ", ".join(active_pairs[:3]) + f", +{len(active_pairs) - 3} more"
+        elif active_pairs:
+            active_summary = ", ".join(active_pairs)
+        else:
+            active_summary = "none"
+        print(
+            f"[Progress] {completed_games}/{total_games} games done ({percent:.1f}%). Active pairs: {active_summary}",
+            flush=True,
+        )
+        last_progress_notice = now
+
+    def process_match(match: MatchResult, now: float) -> None:
+        nonlocal completed_games
+        results.append(match)
+        completed_games += 1
+
+        key = (match.mr_x_algo, match.police_algo)
+        if key not in pair_start_times:
+            pair_start_times[key] = now
+            print(
+                f"[Pair start] {match.mr_x_algo} vs {match.police_algo} kicked off ({games_per_pair} games).",
+                flush=True,
+            )
+
+        stats = pair_stats[key]
+        stats["games"] += 1
+        stats["turn_sum"] += match.turns
+        stats["reasons"][match.win_reason] += 1
+
+        mr_total = mr_x_overall[match.mr_x_algo]
+        mr_total["games"] += 1
+        mr_total["turn_sum"] += match.turns
+
+        police_total = police_overall[match.police_algo]
+        police_total["games"] += 1
+        police_total["turn_sum"] += match.turns
+
+        i = mrx_index[match.mr_x_algo]
+        j = police_index[match.police_algo]
+        games_matrix[i, j] += 1
+        turn_sum_matrix[i, j] += match.turns
+
+        if match.winner == "police":
+            stats["police_wins"] += 1
+            police_total["wins"] += 1
+            if match.win_reason == "capture":
+                police_total["captures"] += 1
+            police_wins_matrix[i, j] += 1
+        elif match.winner == "mr_x":
+            stats["mr_x_wins"] += 1
+            mr_total["wins"] += 1
+            if match.win_reason == "timeout":
+                mr_total["timeouts"] += 1
+        else:
+            stats["unknown"] += 1
+            mr_total["unknown"] += 1
+            police_total["unknown"] += 1
+
+        avg_turns_so_far = stats["turn_sum"] / stats["games"] if stats["games"] else 0.0
+        print(
+            f"[Result] {match.mr_x_algo} vs {match.police_algo} "
+            f"game {stats['games']}/{games_per_pair}: winner={match.winner} "
+            f"({match.win_reason}), turns={match.turns}, seed={match.seed}, avg turns so far={avg_turns_so_far:.2f}",
+            flush=True,
+        )
+
+        if stats["games"] == games_per_pair:
+            pair_elapsed = now - pair_start_times.pop(key, now)
+            police_win_rate = stats["police_wins"] / games_per_pair if games_per_pair else 0.0
+            print(
+                f"[Pair complete] {match.mr_x_algo} vs {match.police_algo}: "
+                f"{games_per_pair} games in {pair_elapsed:.2f}s; police win rate={police_win_rate:.1%}, "
+                f"mr_x wins={stats['mr_x_wins']}, police wins={stats['police_wins']}, unknown={stats['unknown']}, "
+                f"avg turns={stats['turn_sum'] / games_per_pair if games_per_pair else 0.0:.2f}",
+                flush=True,
+            )
+
+        emit_progress(now)
+
     executor = None
-    if workers <= 1 or len(tasks) <= 1:
-        task_iter = map(_simulate_game_task, tasks)
-    else:
-        max_workers = min(workers, len(tasks))
-        executor = ProcessPoolExecutor(max_workers=max_workers)
-        task_iter = executor.map(_simulate_game_task, tasks)
-
     try:
-        for match in task_iter:
-            results.append(match)
-
-            stats = pair_stats[(match.mr_x_algo, match.police_algo)]
-            stats["games"] += 1
-            stats["turn_sum"] += match.turns
-            stats["reasons"][match.win_reason] += 1
-
-            mr_total = mr_x_overall[match.mr_x_algo]
-            mr_total["games"] += 1
-            mr_total["turn_sum"] += match.turns
-
-            police_total = police_overall[match.police_algo]
-            police_total["games"] += 1
-            police_total["turn_sum"] += match.turns
-
-            i = mrx_index[match.mr_x_algo]
-            j = police_index[match.police_algo]
-            games_matrix[i, j] += 1
-            turn_sum_matrix[i, j] += match.turns
-
-            if match.winner == "police":
-                stats["police_wins"] += 1
-                police_total["wins"] += 1
-                if match.win_reason == "capture":
-                    police_total["captures"] += 1
-                police_wins_matrix[i, j] += 1
-            elif match.winner == "mr_x":
-                stats["mr_x_wins"] += 1
-                mr_total["wins"] += 1
-                if match.win_reason == "timeout":
-                    mr_total["timeouts"] += 1
-            else:
-                stats["unknown"] += 1
-                mr_total["unknown"] += 1
-                police_total["unknown"] += 1
+        if workers <= 1 or total_games <= 1:
+            print("[Benchmark] Running sequentially (workers=1).", flush=True)
+            for payload in tasks:
+                match = _simulate_game_task(payload)
+                process_match(match, time.time())
+        else:
+            max_workers = min(workers, len(tasks))
+            print(f"[Benchmark] Using up to {max_workers} worker processes.", flush=True)
+            executor = ProcessPoolExecutor(max_workers=max_workers)
+            future_to_payload = {executor.submit(_simulate_game_task, payload): payload for payload in tasks}
+            pending = set(future_to_payload.keys())
+            while pending:
+                done, pending = wait(pending, timeout=progress_interval, return_when=FIRST_COMPLETED)
+                if not done:
+                    emit_progress(time.time(), force=True)
+                    continue
+                for future in done:
+                    payload = future_to_payload.pop(future)
+                    try:
+                        match = future.result()
+                    except Exception as exc:  # noqa: PERF203 - provide helpful context before propagating
+                        mr_x_algo, police_algo, seed, *_ = payload
+                        print(
+                            f"[Error] Simulation failed for {mr_x_algo} vs {police_algo} (seed {seed}): {exc}",
+                            flush=True,
+                        )
+                        raise
+                    process_match(match, time.time())
     finally:
+        emit_progress(time.time(), force=True)
         if executor is not None:
             executor.shutdown(wait=True)
 
