@@ -50,6 +50,7 @@ set(SOURCES
     src/HUDOverlay.cpp
     src/Player.cpp
     src/MapDataLoader.cpp
+    src/MapGeneratorState.cpp
 )
 
 set(HEADERS
@@ -65,6 +66,7 @@ set(HEADERS
     include/Player.h
     include/GameConstants.h
     include/MapDataLoader.h
+    include/MapGeneratorState.h
 )
 
 # EXE =================================================

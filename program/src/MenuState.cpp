@@ -21,9 +21,10 @@ MenuState::MenuState()
 {
     for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
     m_Buttons[0] = {0.0f, 0.0f, 320.0f, 70.0f, "New Game"};
-    m_Buttons[1] = {0.0f, 0.0f, 320.0f, 70.0f, "Load Game"};
-    m_Buttons[2] = {0.0f, 0.0f, 320.0f, 70.0f, "Settings"};
-    m_Buttons[3] = {0.0f, 0.0f, 320.0f, 70.0f, "Exit"};
+    m_Buttons[1] = { 0.0f, 0.0f, 320.0f, 70.0f, "Map Generator" };
+    m_Buttons[2] = {0.0f, 0.0f, 320.0f, 70.0f, "Load Game"};
+    m_Buttons[3] = {0.0f, 0.0f, 320.0f, 70.0f, "Settings"};
+    m_Buttons[4] = {0.0f, 0.0f, 320.0f, 70.0f, "Exit"};
 }
 
 MenuState::~MenuState() {
@@ -287,11 +288,14 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                     case 0: // New Game
                         p_App->GetStateManager()->ChangeState("game");
                         break;
-                    case 1: // Load Game 
+                    case 1: // Map Generator
+                        p_App->GetStateManager()->ChangeState("mapgen");
                         break;
-                    case 2: // Settings
+                    case 2: // Load Game 
                         break;
-                    case 3: // Exit
+                    case 3: // Settings
+                        break;
+                    case 4: // Exit
                         p_App->RequestExit();
                         break;
                 }
@@ -318,11 +322,14 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                     case 0: // New Game
                         p_App->GetStateManager()->ChangeState("game");
                         break;
-                    case 1: // Load Game 
+                    case 1: 
+                        p_App->GetStateManager()->ChangeState("mapgen"); 
                         break;
-                    case 2: // Settings
+                    case 2: // Load Game 
                         break;
-                    case 3: // Exit
+                    case 3: // Settings
+                        break;
+                    case 4: // Exit
                         p_App->RequestExit();
                         break;
                 }

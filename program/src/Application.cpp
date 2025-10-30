@@ -2,6 +2,7 @@
 #include "StateManager.h"
 #include "MenuState.h"
 #include "GameState.h"
+#include "MapGeneratorState.h"
 #include <GL/glew.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -137,6 +138,7 @@ bool Application::Initialize() {
 void Application::LoadStates() {
     m_p_StateManager->RegisterState("menu", std::make_unique<States::MenuState>());
     m_p_StateManager->RegisterState("game", std::make_unique<States::GameState>());
+    m_p_StateManager->RegisterState("mapgen", std::make_unique<States::MapGeneratorState>());
     m_p_StateManager->ChangeState("menu");
 }
 
