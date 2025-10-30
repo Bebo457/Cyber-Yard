@@ -104,6 +104,8 @@ namespace UI {
             glUseProgram(0);
         }
 
+
+
         void drawRoundedRect(float f_X0, float f_Y0, float f_X1, float f_Y1, Color c, float f_RadiusNDC, Core::Application* p_App) {
             const float f_Verts[] = { f_X0, f_Y0,  f_X1, f_Y0,  f_X0, f_Y1,  f_X1, f_Y0,  f_X1, f_Y1,  f_X0, f_Y1 };
 
@@ -420,6 +422,36 @@ namespace UI {
     } // namespace
 
     // API
+
+    void DrawMenuLikeButton(const SDL_Rect& r, const char* text,
+        Core::Application* app,
+        bool highlighted) {
+        ScotlandYard::UI::Color shadow{ 0.12f, 0.14f, 0.16f, 1.0f };
+        ScotlandYard::UI::Color btn{ 0.25f, 0.27f, 0.30f, 0.98f };
+        ScotlandYard::UI::Color border{ 0.08f, 0.08f, 0.08f, 1.0f };
+        ScotlandYard::UI::Color white{ 1,1,1,1 };
+
+        if (highlighted) { btn.r *= 1.06f; btn.g *= 1.06f; btn.b *= 1.06f; }
+
+        const float rad = 12.0f;
+        const float shadowOffset = 6.0f;
+        const float px = 3.0f;
+
+        DrawRoundedRectScreen(r.x, r.y - (int)shadowOffset,
+            r.x + r.w, r.y - (int)shadowOffset + r.h,
+            shadow, rad, app);
+
+        DrawRoundedRectScreen(r.x, r.y, r.x + r.w, r.y + r.h,
+            btn, rad, app);
+
+        DrawRoundedRectScreen(r.x - px / 2, r.y - px / 2,
+            r.x + r.w + px / 2, r.y + r.h + px / 2,
+            border, rad, app);
+
+        DrawTextCenteredPx(text, (float)r.x, (float)r.y,
+            (float)(r.x + r.w), (float)(r.y + r.h),
+            white, app, -4.0f);
+    }
 
     void LoadCameraIconPNG(const char* p_Path, Core::Application* p_App) {
         if (g_GLuint_TexCamera) {

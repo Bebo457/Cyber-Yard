@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+struct SDL_Rect;
 
 namespace ScotlandYard { namespace Core { class Application; } }
 
@@ -25,7 +26,7 @@ namespace UI {
     struct TicketSlot {
         Color color{ -1.f,-1.f,-1.f,-1.f };
         bool  used = false;
-        TicketMark mark = TicketMark::None;   // NOWE: co pokazać zamiast numeru
+        TicketMark mark = TicketMark::None;
     };
 
     // used tickets
@@ -107,6 +108,10 @@ namespace UI {
 
     void HandleMouseMotion(int x_px, int y_px);
     void SetPausedDebugState(bool enabled);
+
+    void DrawMenuLikeButton(const SDL_Rect& r, const char* text,
+        Core::Application* app,
+        bool highlighted = false);
 
 
 } // namespace UI
