@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import random
 from heapq import heappush, heappop
+import itertools
 
 pygame.init()
 WIDTH, HEIGHT = 1200, 800
@@ -115,7 +116,7 @@ class HumanPlayer:
 class MrXAI:
     def __init__(self, role, algorithm="random"):
         self.role = role
-        self.algorithm = algorithm  # "random", "decoy", "dfs", "monte_carlo"
+        self.algorithm = algorithm  # "random", "decoy", "dfs", "monte_carlo", "distance_maximalization"
 
     def get_move(self, game_state):
         if self.algorithm == "random":
@@ -126,6 +127,8 @@ class MrXAI:
             return self._dfs_move(game_state)
         elif self.algorithm == "monte_carlo":
             return self._monte_carlo_move(game_state)
+        elif self.algorithm == "distance_maximization":
+            return self._distance_maximization_move(game_state)
         else:
             return self._random_move(game_state)
 
@@ -292,6 +295,68 @@ class MrXAI:
                 return mv
 
         return sim_moves[-1]
+
+    def _distance_maximization_move(self, game_state):
+        import random
+        from collections import deque, defaultdict
+
+        posX = game_state.mr_x.position
+        tickets = game_state.mr_x.tickets
+        police_list = getattr(game_state, 'police', [])
+        graph_edges = getattr(game_state, 'polaczenia', [])
+        options = game_state.get_available_moves(game_state.mr_x)
+        if not options:
+            return None
+
+        graph = defaultdict(list)
+        for a, b, typ in graph_edges:
+            graph[a].append((b, typ))
+            graph[b].append((a, typ))
+
+        def bfs(start):
+            dist = {start: 0}
+            q = deque([start])
+            while q:
+                u = q.popleft()
+                for v, _ in graph[u]:
+                    if v not in dist:
+                        dist[v] = dist[u] + 1
+                        q.append(v)
+            return dist
+
+        police_dists = [bfs(p.position) for p in police_list]
+        police_weights = []
+        for p in police_list:
+            total = 0
+            for val in getattr(p, 'tickets', {}).values():
+                total += 50 if val == float('inf') else int(val)
+            police_weights.append(total)
+
+        valid = [(d, t) for d, t in options if tickets.get(t, 0) > 0]
+        if not valid:
+            valid = options[:]
+            if not valid:
+                return None
+
+        INF = float('inf')
+        best_score = float('-inf')
+        best_moves = []
+
+        for dest, transport in valid:
+            min_eff = INF
+            for pd, w in zip(police_dists, police_weights):
+                d = pd.get(dest, INF)
+                eff = d / (1 + w)
+                if eff < min_eff:
+                    min_eff = eff
+            score = min_eff
+            if score > best_score:
+                best_score = score
+                best_moves = [(dest, transport)]
+            elif score == best_score:
+                best_moves.append((dest, transport))
+
+        return random.choice(best_moves) if best_moves else None
 
     def _dfs_move(self, game_state):
         TARGET_LENGTH = 6
@@ -1751,127 +1816,173 @@ class PoliceAI:
                     queue.append(neighbor)
         return dist
 
+    import itertools
+    import random
+
     def _minimax_move(self, game_state, pawn):
         """
-        Mini-Max z przycinaniem alfa–beta i heurystyką inspirowaną dokumentem:
-        - wykorzystuje mapę prawdopodobieństwa pozycji Mr. X
-        - przewiduje kontrruchy Mr. X
-        - stosuje ograniczoną głębokość wyszukiwania
-        - heurystyka: dystans + presja biletowa + kara za skupienie
+        MiniMax z alfa–beta dla wszystkich detektywów, przyspieszone:
+        - ograniczone ruchy policjantów do najlepszych N
+        - ograniczone pozycje Mr. X do najprawdopodobniejszych
         """
 
         options = game_state.get_available_moves(pawn)
         if not options:
             return None
 
-        # parametry wyszukiwania
-        MAX_DEPTH = 3
+        MAX_DEPTH = 5
         ALPHA_INIT = float("-inf")
         BETA_INIT = float("inf")
+        N_BEST_POLICE_MOVES = 4
+        N_BEST_MRX_POSITIONS = 4
 
-        # rozkład przekonań o pozycji Mr. X
+        # Rozkład pozycji Mr. X
         prob_map = self._compute_probability_map(game_state, pawn)
         if not prob_map:
-            return random.choice(options)
+            prob_map = {game_state.mr_x.position: 1.0}
 
-        mr_x_positions = list(prob_map.keys())
-        mr_x_weights = list(prob_map.values())
+        mr_x_positions = sorted(prob_map.items(), key=lambda x: -x[1])[:N_BEST_MRX_POSITIONS]
 
-        # --- heurystyka stanu ---
-        def evaluate_state(police_positions, mr_x_pos):
-            """
-            Kombinuje kilka czynników heurystycznych:
-            - dystans minimalny do Mr X (im bliżej, tym lepiej)
-            - kara za skupienie (zbyt bliskie pozycje detektywów)
-            - presja biletowa (premia jeśli policjanci mają więcej opcji niż Mr X)
-            """
-            # średni minimalny dystans do Mr. X
-            dists = [
-                self._heuristic_distance(p.position, mr_x_pos, game_state)
-                for p in game_state.police
-            ]
-            avg_dist = sum(dists) / len(dists)
+        # pomocnicze
+        def evaluate_state(state):
+            mx = state.mr_x.position
+            dists = [self._heuristic_distance(p.position, mx, state) for p in state.police]
+            davg = sum(dists) / max(1, len(dists))
 
-            # kara za clustering
+            # kara za skupienie
             cluster_penalty = 0
-            for i in range(len(game_state.police)):
-                for j in range(i + 1, len(game_state.police)):
-                    d = self._heuristic_distance(
-                        game_state.police[i].position,
-                        game_state.police[j].position,
-                        game_state
-                    )
-                    if d < 30:  # arbitralny próg odległości
+            for i in range(len(state.police)):
+                for j in range(i + 1, len(state.police)):
+                    d = self._heuristic_distance(state.police[i].position, state.police[j].position, state)
+                    if d < 30:
                         cluster_penalty += (30 - d) / 10.0
 
-            # przewaga biletowa
-            ticket_advantage = sum(
-                sum(p.tickets.values()) for p in game_state.police
-            ) - sum(game_state.mr_x.tickets.values())
+            ticket_adv = sum(sum(p.tickets.values()) for p in state.police) - sum(state.mr_x.tickets.values())
+            return -(0.7 * davg - 0.1 * ticket_adv + 0.3 * cluster_penalty)
 
-            # niższy wynik = gorzej dla policji, więc odwracamy znak
-            return -(avg_dist * 0.7 - ticket_advantage * 0.1 + cluster_penalty * 0.3)
+        def best_moves_for_police(p, state, N):
+            moves = state.get_available_moves(p)
+            if not moves:
+                return [(p.position, None)]
+            scored = []
+            for dest, ticket in moves:
+                dist = min(self._heuristic_distance(dest, state.mr_x.position, state) for _ in [0])
+                scored.append(((dest, ticket), dist))
+            scored.sort(key=lambda x: x[1])
+            return [m for m, _ in scored[:N]]
 
-        # --- MiniMax z alpha–beta ---
-        def minimax(police_pos, mr_x_pos, depth, alpha, beta, maximizing):
-            if depth == 0:
-                return evaluate_state(police_pos, mr_x_pos)
+        def generate_joint_moves(state):
+            moves_per_police = []
+            for i, p in enumerate(state.police):
+                moves_per_police.append([(d, t, i) for (d, t) in best_moves_for_police(p, state, N_BEST_POLICE_MOVES)])
+            joint_moves = []
+            for combo in itertools.product(*moves_per_police):
+                dests = [d for (d, _, _) in combo]
+                if len(set(dests)) != len(dests):
+                    continue
+                valid = True
+                for (dest, ticket, i) in combo:
+                    if ticket is None:
+                        continue
+                    if state.police[i].tickets.get(ticket, 0) <= 0:
+                        valid = False
+                        break
+                if valid:
+                    joint_moves.append([(i, d, ticket) for (d, ticket, i) in combo])
+            return joint_moves
 
-            if maximizing:
-                # tura policji (max)
+        def is_terminal(state):
+            mx = state.mr_x.position
+            if any(p.position == mx for p in state.police):
+                return True
+            if not state.get_available_moves(state.mr_x):
+                return True
+            if not generate_joint_moves(state):
+                return True
+            return False
+
+        def minimax(state, depth, alpha, beta, is_mr_x_turn):
+            if depth == 0 or is_terminal(state):
+                return evaluate_state(state)
+
+            if is_mr_x_turn:
                 max_eval = float("-inf")
-                moves = game_state.get_available_moves(
-                    type('Pawn', (), {'position': police_pos, 'tickets': pawn.tickets})()
-                )
-                if not moves:
-                    return evaluate_state(police_pos, mr_x_pos)
-
-                for dest, _ in moves:
-                    val = minimax(dest, mr_x_pos, depth - 1, alpha, beta, False)
+                for mx_pos, _ in mr_x_positions:
+                    prev = state.mr_x.position
+                    state.mr_x.position = mx_pos
+                    val = minimax(state, depth - 1, alpha, beta, False)
+                    state.mr_x.position = prev
                     max_eval = max(max_eval, val)
                     alpha = max(alpha, val)
                     if beta <= alpha:
-                        break  # przycinanie
+                        break
                 return max_eval
-
             else:
-                # tura Mr. X (min)
                 min_eval = float("inf")
-                mr_x_tickets = getattr(game_state.mr_x, 'tickets',
-                                       {'taxi': float('inf'), 'bus': float('inf'),
-                                        'underground': float('inf'), 'water': 5})
-                mr_x_moves = game_state.get_available_moves(
-                    type('Pawn', (), {'position': mr_x_pos, 'tickets': mr_x_tickets})()
-                )
-                if not mr_x_moves:
-                    return evaluate_state(police_pos, mr_x_pos)
-
-                for dest, _ in mr_x_moves:
-                    val = minimax(police_pos, dest, depth - 1, alpha, beta, True)
+                joint_moves = generate_joint_moves(state)
+                for joint in joint_moves:
+                    prev = []
+                    valid = True
+                    for i, dest, ticket in joint:
+                        p = state.police[i]
+                        prev.append((i, p.position, ticket, p.tickets.get(ticket, None)))
+                        p.position = dest
+                        if ticket:
+                            if p.tickets.get(ticket, 0) <= 0:
+                                valid = False
+                                break
+                            p.tickets[ticket] -= 1
+                    if not valid:
+                        for i, pos0, ticket, cnt0 in reversed(prev):
+                            state.police[i].position = pos0
+                            if ticket and cnt0 is not None:
+                                state.police[i].tickets[ticket] = cnt0
+                        continue
+                    val = minimax(state, depth - 1, alpha, beta, True)
                     min_eval = min(min_eval, val)
                     beta = min(beta, val)
+                    for i, pos0, ticket, cnt0 in reversed(prev):
+                        state.police[i].position = pos0
+                        if ticket and cnt0 is not None:
+                            state.police[i].tickets[ticket] = cnt0
                     if beta <= alpha:
-                        break  # przycinanie
+                        break
                 return min_eval
 
-        # --- ocenianie wszystkich ruchów ---
-        best_move = None
+        # wybór ruchu
         best_score = float("-inf")
+        best_move = None
+        p = next(pp for pp in game_state.police if pp.name == pawn.name)
+        for dest, ticket in options:
+            prev_pos = p.position
+            prev_cnt = p.tickets.get(ticket, 0)
+            p.position = dest
+            if ticket:
+                p.tickets[ticket] -= 1
+            total = 0.0
+            prev_mx = game_state.mr_x.position
+            for mx_pos, w in mr_x_positions:
+                game_state.mr_x.position = mx_pos
+                total += w * minimax(game_state, MAX_DEPTH, ALPHA_INIT, BETA_INIT, True)
+            game_state.mr_x.position = prev_mx
+            p.position = prev_pos
+            if ticket:
+                p.tickets[ticket] = prev_cnt
+            if total > best_score:
+                best_score = total
+                best_move = (dest, ticket)
 
-        for move in options:
-            dest, transport = move
-            score = 0.0
+        if best_move:
+            return best_move
 
-            # średnia ważona po wszystkich prawdopodobnych pozycjach Mr X
-            for mr_x_pos, weight in zip(mr_x_positions, mr_x_weights):
-                val = minimax(dest, mr_x_pos, MAX_DEPTH, ALPHA_INIT, BETA_INIT, False)
-                score += weight * val
+        # Deterministyczny fallback: wybierz ruch minimalizujący odległość do
+        # najbardziej prawdopodobnej pozycji Mr. X (zamiast losowego wyboru).
+        most_prob_node = mr_x_positions[0][0] if mr_x_positions else game_state.mr_x.position
 
-            if score > best_score:
-                best_score = score
-                best_move = move
-
-        return best_move if best_move else random.choice(options)
+        def _fallback_score(move):
+            dest, _ = move
+            return self._heuristic_distance(dest, most_prob_node, game_state)
+        return min(options, key=_fallback_score)
 
     # ======= Game =======
 
@@ -2163,7 +2274,7 @@ class Game:
             pygame.draw.circle(screen, (200, 100, 200), (x, y), 10, 2)  # Obramowanie
 
         # Rysuj Mr. X zawsze dla grającego, lub jeśli jest ujawniony dla policji
-        should_show_mr_x = isinstance(self.mr_x_player, HumanPlayer) or self.is_mr_x_revealed()
+        should_show_mr_x = True#isinstance(self.mr_x_player, HumanPlayer) or self.is_mr_x_revealed()
         if should_show_mr_x:
             x, y = skaluj(self.punkty[self.mr_x.position]['x'], self.punkty[self.mr_x.position]['y'], self.min_x,
                           self.max_x, self.min_y, self.max_y, WIDTH - 200, HEIGHT)
@@ -2244,6 +2355,7 @@ class Game:
             'monte_carlo': 'Monte Carlo',
             'astar_greedy': 'A* Greedy',
             'front_encirclement': 'Front Encirclement',
+            'distance_maximization': 'Distance Maximalization'
         }
         return names.get(algorithm, algorithm)
 
@@ -2419,13 +2531,14 @@ mr_x_algorithms = [
     RadioButton("Decoy Movement", 600, 155, "mr_x_algo", "decoy"),
     RadioButton("DFS", 600, 190, "mr_x_algo", "dfs"),
     RadioButton("Monte Carlo", 600, 225, "mr_x_algo", "monte_carlo"),
+    RadioButton("Distance Maximalization", 600, 260, "mr_x_algo", "distance_maximalization"),
 ]
 
 police_algorithms = [
-    RadioButton("A* Greedy", 600, 300, "police_algo", "astar_greedy"),
-    RadioButton("Monte Carlo", 600, 335, "police_algo", "monte_carlo"),
-    RadioButton("Mini-Max", 600, 370, "police_algo", "monte_carlo"),
-    RadioButton("Front Encirclement", 600, 405, "police_algo", "front_encirclement"),
+    RadioButton("A* Greedy", 600, 375, "police_algo", "astar_greedy"),
+    RadioButton("Monte Carlo", 600, 410, "police_algo", "monte_carlo"),
+    RadioButton("Mini-Max", 600, 445, "police_algo", "monte_carlo"),
+    RadioButton("Front Encirclement", 600, 480, "police_algo", "front_encirclement"),
 ]
 
 radio_groups = {
@@ -2460,7 +2573,7 @@ def main_menu():
         screen.blit(mr_x_title, (600, 125))
 
         police_title = small_font.render("Algorytm Policji:", True, BLUE)
-        screen.blit(police_title, (600, 280))
+        screen.blit(police_title, (600, 345))
 
         for radio in mr_x_algorithms:
             radio.draw(screen)
