@@ -893,13 +893,235 @@ class MrXAI:
 
         return random.choice(options) if options else None
 
+    # def _monte_carlo_move(self, game_state):
+    #     """Algorytm Monte Carlo dla Mr. X
+    #     TODO: Implementacja algorytmu Monte Carlo
+    #     """
+    #     # Placeholder dla implementacji Monte Carlo Mr. X
+    #     options = game_state.get_available_moves(game_state.mr_x)
+    #     return random.choice(options) if options else None
+
     def _monte_carlo_move(self, game_state):
-        """Algorytm Monte Carlo dla Mr. X
-        TODO: Implementacja algorytmu Monte Carlo
-        """
-        # Placeholder dla implementacji Monte Carlo Mr. X
+
+        import random
+        from copy import deepcopy
+        
         options = game_state.get_available_moves(game_state.mr_x)
-        return random.choice(options) if options else None
+        
+        if not options:
+            return None
+        
+        if len(options) == 1:
+            return options[0]
+        
+        SIMULATIONS_PER_MOVE = 60    
+        SIMULATION_DEPTH = 6         
+        SURVIVAL_DISCOUNT = 0.95    
+        
+        # cahce
+        if not hasattr(self, '_mc_graph'):
+            from collections import defaultdict
+            self._mc_graph = defaultdict(list)
+            for a, b, typ in game_state.polaczenia:
+                self._mc_graph[a].append((b, typ))
+                self._mc_graph[b].append((a, typ))
+        
+        if not hasattr(self, '_mc_distances'):
+            self._mc_distances = {}
+        
+        def bfs_distance_map(start):
+            """Cached BFS for fast distance lookups"""
+            if start in self._mc_distances:
+                return self._mc_distances[start]
+            
+            distances = {start: 0}
+            queue = [start]
+            head = 0
+            
+            while head < len(queue):
+                node = queue[head]
+                head += 1
+                
+                for neighbor, _ in self._mc_graph[node]:
+                    if neighbor not in distances:
+                        distances[neighbor] = distances[node] + 1
+                        queue.append(neighbor)
+            
+            self._mc_distances[start] = distances
+            return distances
+        
+        def get_distance(pos1, pos2):
+            return bfs_distance_map(pos1).get(pos2, 999)
+        
+        def get_moves_for_position(pos, tickets):
+            #dostępne kroki na podstawie biletów które ma policja
+            neighbors = self._mc_graph.get(pos, [])
+            valid = [(n, t) for n, t in neighbors if tickets.get(t, 0) > 0]
+            return valid
+        
+        def simulate_once(initial_mr_x_move):
+            """
+            Simulate one complete game starting with Mr. X making initial_mr_x_move.
+            
+            Returns: score (positive = Mr. X winning, negative = caught)
+            """
+            dest_node, transport = initial_mr_x_move
+            
+            #sprawdzenie legalnych ruchów
+            if game_state.mr_x.tickets.get(transport, 0) <= 0:
+                return -1000.0  #kara za nielegalny ruch
+            
+            # Mr. X state
+            mr_x_pos = dest_node
+            mr_x_tickets = deepcopy(game_state.mr_x.tickets)
+            if mr_x_tickets.get(transport, 0) != float('inf'):
+                mr_x_tickets[transport] -= 1
+            
+            # Police state
+            police_positions = [p.position for p in game_state.police]
+            police_tickets = [deepcopy(p.tickets) for p in game_state.police]
+            
+            # Check immediate capture
+            if mr_x_pos in police_positions:
+                return -1000.0
+            
+            # Simulation
+            value = 0.0
+            discount = 1.0
+            
+            for step in range(SIMULATION_DEPTH):
+                #wszytskie kroki policji
+                new_police_positions = []
+                
+                for i in range(len(police_positions)):
+                    pos = police_positions[i]
+                    tickets = police_tickets[i]
+                    moves = get_moves_for_position(pos, tickets)
+                    
+                    if not moves:
+                        new_police_positions.append(pos)  # Stay in place
+                        continue
+                    
+                    # Police strategy: 90% chase Mr. X, 10% random
+                    if random.random() < 0.9:
+                        # Chase: move closer to Mr. X
+                        best_move = min(moves, key=lambda m: get_distance(m[0], mr_x_pos))
+                        dest, trans = best_move
+                    else:
+                        # Random
+                        dest, trans = random.choice(moves)
+                    
+                    new_police_positions.append(dest)
+                    
+                    # Update tickets
+                    if tickets.get(trans, 0) > 0:
+                        tickets[trans] -= 1
+                
+                police_positions = new_police_positions
+                
+                # Check if caught after police moves
+                if mr_x_pos in police_positions:
+                    value -= 1000.0 * discount
+                    return value  # Game over - caught
+                
+                # mrX
+                mr_moves = get_moves_for_position(mr_x_pos, mr_x_tickets)
+                
+                if not mr_moves:
+                    value -= 1000.0 * discount
+                    return value  # No moves - will be caught
+                
+                # Mr. X strategy: 80% smart (maximize distance), 20% random
+                if random.random() < 0.8:
+                    # Smart: maximize minimum distance to police
+                    move_scores = []
+                    for neighbor, trans in mr_moves:
+                        min_dist = min(get_distance(neighbor, p) for p in police_positions)
+                        
+                        # Bonus for connectivity (more options)
+                        connectivity = len(self._mc_graph.get(neighbor, []))
+                        
+                        score = min_dist * 10 + connectivity
+                        move_scores.append((score, neighbor, trans))
+                    
+                    # Pick best
+                    move_scores.sort(reverse=True)
+                    mr_x_pos, transport = move_scores[0][1], move_scores[0][2]
+                else:
+                    # Random
+                    mr_x_pos, transport = random.choice(mr_moves)
+                
+                # Update Mr. X tickets
+                if mr_x_tickets.get(transport, 0) != float('inf'):
+                    mr_x_tickets[transport] -= 1
+                
+                # Check if caught
+                if mr_x_pos in police_positions:
+                    value -= 1000.0 * discount
+                    return value
+                
+                # === SCORE THIS TURN ===
+                # Reward for being far from police
+                min_distance = min(get_distance(mr_x_pos, p) for p in police_positions)
+                avg_distance = sum(get_distance(mr_x_pos, p) for p in police_positions) / len(police_positions)
+                
+                turn_score = min_distance * 3 + avg_distance * 0.5
+                value += turn_score * discount
+                
+                discount *= SURVIVAL_DISCOUNT
+            
+            # Survived entire simulation!
+            # Bonus for survival + final distance
+            final_min_dist = min(get_distance(mr_x_pos, p) for p in police_positions)
+            value += 100.0 + final_min_dist * 5
+            
+            return value
+        
+        # sprawdzenie kroków mrX
+        # print(f"\n=== Turn {game_state.turn_number}: Monte Carlo Evaluation ===")
+        # print(f"    Simulating {len(options)} moves × {SIMULATIONS_PER_MOVE} games each")
+        
+        move_scores = {}
+        
+        for idx, move in enumerate(options):
+            total_score = 0.0
+            wins = 0  # Count survivals
+            
+            for sim in range(SIMULATIONS_PER_MOVE):
+                score = simulate_once(move)
+                total_score += score
+                
+                if score > 0:
+                    wins += 1
+            
+            avg_score = total_score / SIMULATIONS_PER_MOVE
+            win_rate = wins / SIMULATIONS_PER_MOVE
+            
+            move_scores[move] = {
+                'avg_score': avg_score,
+                'win_rate': win_rate
+            }
+            
+            dest, transport = move
+            print(f"  {idx+1}/{len(options)}: {dest:3d} via {transport:12s} | "
+                f"Avg: {avg_score:7.1f} | WinRate: {win_rate*100:5.1f}%")
+        
+        # wybór najlepszego kroku - największa średnia score
+        # (Could also use win_rate as tiebreaker)
+        best_move = max(move_scores.items(), key=lambda x: x[1]['avg_score'])[0]
+        
+        dest, transport = best_move
+        stats = move_scores[best_move]
+        
+        # print(f">>> SELECTED: {dest:3d} via {transport:12s} "
+        #     f"(Avg: {stats['avg_score']:.1f}, WinRate: {stats['win_rate']*100:.1f}%)\n")
+        
+        # Cache cleanup
+        if len(self._mc_distances) > 500:
+            self._mc_distances = dict(list(self._mc_distances.items())[-300:])
+        
+        return best_move
+
 
 
 class PoliceAI:
@@ -2163,7 +2385,8 @@ class Game:
             pygame.draw.circle(screen, (200, 100, 200), (x, y), 10, 2)  # Obramowanie
 
         # Rysuj Mr. X zawsze dla grającego, lub jeśli jest ujawniony dla policji
-        should_show_mr_x = isinstance(self.mr_x_player, HumanPlayer) or self.is_mr_x_revealed()
+        #FOR DEBUGGING - DON'T CHANGE THAT, PLEEEEEEEASE
+        should_show_mr_x = True #isinstance(self.mr_x_player, HumanPlayer) or self.is_mr_x_revealed()
         if should_show_mr_x:
             x, y = skaluj(self.punkty[self.mr_x.position]['x'], self.punkty[self.mr_x.position]['y'], self.min_x,
                           self.max_x, self.min_y, self.max_y, WIDTH - 200, HEIGHT)
