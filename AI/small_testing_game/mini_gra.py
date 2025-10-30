@@ -116,7 +116,7 @@ class HumanPlayer:
 class MrXAI:
     def __init__(self, role, algorithm="random"):
         self.role = role
-        self.algorithm = algorithm  # "random", "decoy", "dfs", "monte_carlo"
+        self.algorithm = algorithm  # "random", "decoy", "dfs", "monte_carlo", "distance_maximalization"
 
     def get_move(self, game_state):
         if self.algorithm == "random":
@@ -127,6 +127,8 @@ class MrXAI:
             return self._dfs_move(game_state)
         elif self.algorithm == "monte_carlo":
             return self._monte_carlo_move(game_state)
+        elif self.algorithm == "distance_maximization":
+            return self._distance_maximization_move(game_state)
         else:
             return self._random_move(game_state)
 
@@ -293,6 +295,68 @@ class MrXAI:
                 return mv
 
         return sim_moves[-1]
+
+    def _distance_maximization_move(self, game_state):
+        import random
+        from collections import deque, defaultdict
+
+        posX = game_state.mr_x.position
+        tickets = game_state.mr_x.tickets
+        police_list = getattr(game_state, 'police', [])
+        graph_edges = getattr(game_state, 'polaczenia', [])
+        options = game_state.get_available_moves(game_state.mr_x)
+        if not options:
+            return None
+
+        graph = defaultdict(list)
+        for a, b, typ in graph_edges:
+            graph[a].append((b, typ))
+            graph[b].append((a, typ))
+
+        def bfs(start):
+            dist = {start: 0}
+            q = deque([start])
+            while q:
+                u = q.popleft()
+                for v, _ in graph[u]:
+                    if v not in dist:
+                        dist[v] = dist[u] + 1
+                        q.append(v)
+            return dist
+
+        police_dists = [bfs(p.position) for p in police_list]
+        police_weights = []
+        for p in police_list:
+            total = 0
+            for val in getattr(p, 'tickets', {}).values():
+                total += 50 if val == float('inf') else int(val)
+            police_weights.append(total)
+
+        valid = [(d, t) for d, t in options if tickets.get(t, 0) > 0]
+        if not valid:
+            valid = options[:]
+            if not valid:
+                return None
+
+        INF = float('inf')
+        best_score = float('-inf')
+        best_moves = []
+
+        for dest, transport in valid:
+            min_eff = INF
+            for pd, w in zip(police_dists, police_weights):
+                d = pd.get(dest, INF)
+                eff = d / (1 + w)
+                if eff < min_eff:
+                    min_eff = eff
+            score = min_eff
+            if score > best_score:
+                best_score = score
+                best_moves = [(dest, transport)]
+            elif score == best_score:
+                best_moves.append((dest, transport))
+
+        return random.choice(best_moves) if best_moves else None
 
     def _dfs_move(self, game_state):
         TARGET_LENGTH = 6
@@ -2210,7 +2274,7 @@ class Game:
             pygame.draw.circle(screen, (200, 100, 200), (x, y), 10, 2)  # Obramowanie
 
         # Rysuj Mr. X zawsze dla grającego, lub jeśli jest ujawniony dla policji
-        should_show_mr_x = isinstance(self.mr_x_player, HumanPlayer) or self.is_mr_x_revealed()
+        should_show_mr_x = True#isinstance(self.mr_x_player, HumanPlayer) or self.is_mr_x_revealed()
         if should_show_mr_x:
             x, y = skaluj(self.punkty[self.mr_x.position]['x'], self.punkty[self.mr_x.position]['y'], self.min_x,
                           self.max_x, self.min_y, self.max_y, WIDTH - 200, HEIGHT)
@@ -2291,6 +2355,7 @@ class Game:
             'monte_carlo': 'Monte Carlo',
             'astar_greedy': 'A* Greedy',
             'front_encirclement': 'Front Encirclement',
+            'distance_maximization': 'Distance Maximalization'
         }
         return names.get(algorithm, algorithm)
 
@@ -2466,13 +2531,14 @@ mr_x_algorithms = [
     RadioButton("Decoy Movement", 600, 155, "mr_x_algo", "decoy"),
     RadioButton("DFS", 600, 190, "mr_x_algo", "dfs"),
     RadioButton("Monte Carlo", 600, 225, "mr_x_algo", "monte_carlo"),
+    RadioButton("Distance Maximalization", 600, 260, "mr_x_algo", "distance_maximalization"),
 ]
 
 police_algorithms = [
-    RadioButton("A* Greedy", 600, 300, "police_algo", "astar_greedy"),
-    RadioButton("Monte Carlo", 600, 335, "police_algo", "monte_carlo"),
-    RadioButton("Mini-Max", 600, 370, "police_algo", "monte_carlo"),
-    RadioButton("Front Encirclement", 600, 405, "police_algo", "front_encirclement"),
+    RadioButton("A* Greedy", 600, 375, "police_algo", "astar_greedy"),
+    RadioButton("Monte Carlo", 600, 410, "police_algo", "monte_carlo"),
+    RadioButton("Mini-Max", 600, 445, "police_algo", "monte_carlo"),
+    RadioButton("Front Encirclement", 600, 480, "police_algo", "front_encirclement"),
 ]
 
 radio_groups = {
@@ -2507,7 +2573,7 @@ def main_menu():
         screen.blit(mr_x_title, (600, 125))
 
         police_title = small_font.render("Algorytm Policji:", True, BLUE)
-        screen.blit(police_title, (600, 280))
+        screen.blit(police_title, (600, 345))
 
         for radio in mr_x_algorithms:
             radio.draw(screen)
