@@ -290,8 +290,8 @@ namespace ScotlandYard {
                     col_accent, 6, p_App);
 
                 // knob to move
-                int knobX = fillX - s.knobW / 2;
-                SDL_Rect knob = { knobX, s.track.y - 4, s.knobW, s.track.h + 8 };
+                int knobX = fillX - s.i_KnobWidth / 2;
+                SDL_Rect knob = { knobX, s.track.y - 4, s.i_KnobWidth, s.track.h + 8 };
                 DrawRoundedRectScreen(
                     (float)knob.x, (float)knob.y,
                     (float)(knob.x + knob.w), (float)(knob.y + knob.h),

@@ -11,10 +11,12 @@
 #include <map>
 #include <SDL2/SDL.h>
 #include "Player.h"
+#include "PlayerController.h"
 #include "../../Graphs/graph_manage.h"
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <memory>
 
 namespace ScotlandYard {
 namespace Core {
@@ -106,6 +108,7 @@ private:
     std::mutex m_mtx_Players;  // Protects m_vec_Players
 
     std::vector<Core::Player> m_vec_Players;
+    std::vector<std::unique_ptr<Core::IPlayerController>> m_vec_PlayerControllers;
     std::atomic_bool m_b_RequestMenuChange{false};
     struct PlayerToken {
         glm::vec3 color;
@@ -196,6 +199,12 @@ private:
     void HandleColorPicking(int i_MouseX, int i_MouseY);
     void HandlePlayerClick(int i_PlayerIndex);
     void HandleArrowClick(int i_PlayerIndex, int i_DestinationNode);
+
+    // AI Player Controller helpers
+    void InitializePlayerControllers();
+    void UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime);
+    void ProcessAIPendingMoves();
+    std::vector<Core::PossibleMove> GetPossibleMovesForPlayer(int i_PlayerIndex);
 
     // Render functions
     void RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc);

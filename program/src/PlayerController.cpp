@@ -1,0 +1,100 @@
+#include "PlayerController.h"
+#include "Player.h"
+#include "Application.h"
+#include <iostream>
+#include <random>
+
+namespace ScotlandYard {
+namespace Core {
+
+void HumanPlayerController::RequestMove(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    Application* p_App
+) {
+
+}
+
+AIPlayerController::AIPlayerController(float f_MinTurnTime)
+    : m_f_MinTurnTime(f_MinTurnTime)
+    , m_f_ElapsedTime(0.0f)
+    , m_b_MoveRequested(false)
+    , m_MoveDecision()
+{
+}
+
+void AIPlayerController::RequestMove(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    Application* p_App
+) {
+    if (vec_PossibleMoves.empty()) {
+        m_MoveDecision.b_HasDecision = false;
+        m_b_MoveRequested = false;
+        return;
+    }
+    m_MoveDecision = CalculateBestMove(p_Player, vec_PossibleMoves);
+
+    m_f_ElapsedTime = 0.0f;
+    m_b_MoveRequested = true;
+}
+
+bool AIPlayerController::HasPendingMove() const {
+    return m_b_MoveRequested && m_MoveDecision.b_HasDecision && (m_f_ElapsedTime >= m_f_MinTurnTime);
+}
+
+MoveDecision AIPlayerController::GetMove() {
+    if (!HasPendingMove()) {
+        return MoveDecision{};
+    }
+
+    MoveDecision decision = m_MoveDecision;
+    m_MoveDecision = MoveDecision{};
+    m_b_MoveRequested = false;
+    m_f_ElapsedTime = 0.0f;
+
+    return decision;
+}
+
+void AIPlayerController::Update(float f_DeltaTime) {
+    if (m_b_MoveRequested) {
+        m_f_ElapsedTime += f_DeltaTime;
+    }
+}
+
+void AIPlayerController::Reset() {
+    m_MoveDecision = MoveDecision{};
+    m_b_MoveRequested = false;
+    m_f_ElapsedTime = 0.0f;
+}
+
+MoveDecision AIPlayerController::CalculateBestMove(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves
+) {
+    // algorythm here/ connection
+
+    MoveDecision decision;
+
+    if (vec_PossibleMoves.empty()) {
+        decision.b_HasDecision = false;
+        return decision;
+    }
+
+    //Random move selection, we can use this after the timer runs out?
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, static_cast<int>(vec_PossibleMoves.size()) - 1);
+
+    int i_RandomIndex = dis(gen);
+    const PossibleMove& selectedMove = vec_PossibleMoves[i_RandomIndex];
+
+    decision.b_HasDecision = true;
+    decision.i_DestinationNode = selectedMove.i_DestinationNode;
+    decision.i_TransportType = selectedMove.i_TransportType;
+
+    return decision;
+}
+
+} // namespace Core
+} // namespace ScotlandYard

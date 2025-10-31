@@ -62,13 +62,13 @@ static constexpr int k_TransportTypeWater = 4;
 namespace UI {
 
 // Arrow Geometry
-static constexpr float k_ArrowLength = 0.08f;
-static constexpr float k_ArrowWidth = 0.04f;
+static constexpr float k_ArrowLength = 0.20f;
+static constexpr float k_ArrowWidth = 0.12f;
 
 // Transport Orbital Radii (distance from station center for direction arrows)
 static constexpr float k_TaxiWaterOrbitalRadius = 0.15f;
-static constexpr float k_BusOrbitalRadius = 0.27f;
-static constexpr float k_MetroOrbitalRadius = 0.34f;
+static constexpr float k_BusOrbitalRadius = 0.41f;
+static constexpr float k_MetroOrbitalRadius = 0.72f;
 
 } // namespace UI
 

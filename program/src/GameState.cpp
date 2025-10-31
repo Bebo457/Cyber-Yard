@@ -505,6 +505,9 @@ void GameState::OnEnter() {
         }
     }
 
+    // Initialize player controllers (human/AI)
+    InitializePlayerControllers();
+
     // Reset HUD / ticket marks so previous game's marks don't persist
     {
         std::vector<ScotlandYard::UI::TicketSlot> emptySlots(ScotlandYard::UI::k_TicketSlotCount);
@@ -937,6 +940,10 @@ void GameState::Update(float f_DeltaTime) {
     }
 
     UpdateCameraPhysics(f_DeltaTime);
+
+    // Update AI players and process their moves
+    UpdateAIPlayers(nullptr, f_DeltaTime);
+    ProcessAIPendingMoves();
 }
 
 void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc) {
@@ -1967,6 +1974,87 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
     glBindVertexArray(0);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+// AI Player Controller Integration
+void GameState::InitializePlayerControllers() {
+    m_vec_PlayerControllers.clear();
+
+    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+        //all players are human-controlled
+        m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
+    }
+}
+
+void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
+    // turn timer here?
+    for (auto& p_Controller : m_vec_PlayerControllers) {
+        if (p_Controller && p_Controller->IsAIControlled()) {
+            p_Controller->Update(f_DeltaTime);
+        }
+    }
+
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+        if (i >= m_vec_PlayerControllers.size()) continue;
+
+        auto& p_Controller = m_vec_PlayerControllers[i];
+        if (!p_Controller || !p_Controller->IsAIControlled()) continue;
+
+        //request move
+        const auto& player = m_vec_Players[i];
+        if (player.IsActive() &&
+            !p_Controller->HasPendingMove() &&
+            i < m_vec_MovedThisRound.size() &&
+            !m_vec_MovedThisRound[i]) {
+
+            //posible movbe list
+            std::vector<Core::PossibleMove> vec_PossibleMoves = GetPossibleMovesForPlayer(i);
+            if (!vec_PossibleMoves.empty()) {
+                p_Controller->RequestMove(&player, vec_PossibleMoves, p_App);
+            }
+        }
+    }
+}
+
+void GameState::ProcessAIPendingMoves() {
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+
+    for (size_t i = 0; i < m_vec_PlayerControllers.size(); ++i) {
+        auto& p_Controller = m_vec_PlayerControllers[i];
+        if (!p_Controller || !p_Controller->IsAIControlled()) continue;
+
+        if (p_Controller->HasPendingMove()) {
+            Core::MoveDecision decision = p_Controller->GetMove();
+
+            if (decision.b_HasDecision) {
+                //HandleArrowClick to make a move
+                m_mtx_Players.unlock();
+                HandleArrowClick(static_cast<int>(i), decision.i_DestinationNode);
+                m_mtx_Players.lock();
+            }
+        }
+    }
+}
+
+std::vector<Core::PossibleMove> GameState::GetPossibleMovesForPlayer(int i_PlayerIndex) {
+    std::vector<Core::PossibleMove> vec_Result;
+    if (i_PlayerIndex < 0 || i_PlayerIndex >= static_cast<int>(m_vec_Players.size())) {
+        return vec_Result;
+    }
+
+    const auto& player = m_vec_Players[i_PlayerIndex];
+    int i_CurrentNode = player.GetOccupiedNode();
+
+    auto connections = m_graph.GetConnections(i_CurrentNode);
+    for (const auto& conn : connections) {
+        Core::PossibleMove move;
+        move.i_DestinationNode = conn.i_NodeId;
+        move.i_TransportType = conn.i_TransportType;
+        vec_Result.push_back(move);
+    }
+
+    return vec_Result;
 }
 
 } // namespace States
