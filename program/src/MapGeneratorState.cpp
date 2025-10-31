@@ -1,4 +1,4 @@
-﻿#include "MapGeneratorState.h"
+#include "MapGeneratorState.h"
 #include "Application.h"
 #include "StateManager.h"
 #include "HUDOverlay.h"
@@ -27,47 +27,47 @@ namespace ScotlandYard {
             const ScotlandYard::UI::Color col_accent{ 1.00f, 0.89f, 0.00f, 1.0f };
         } 
 
-        int MapGeneratorState::valToX(const Slider& s) const {
-            float t = (s.value - s.minv) / (s.maxv - s.minv);
+        int MapGeneratorState::ValueToXPosition(const Slider& s) const {
+            float t = (s.f_Value - s.f_MinValue) / (s.f_MaxValue - s.f_MinValue);
             t = std::max(0.0f, std::min(1.0f, t));
             return s.track.x + (int)std::round(t * s.track.w);
         }
 
-        float MapGeneratorState::xToVal(const Slider& s, int mx) const {
+        float MapGeneratorState::XPositionToValue(const Slider& s, int mx) const {
             float t = (float)(mx - s.track.x) / (float)s.track.w;
             t = std::max(0.0f, std::min(1.0f, t));
-            float v = s.minv + t * (s.maxv - s.minv);
-            if (s.step > 0.0f) {
-                v = std::round(v / s.step) * s.step;
+            float v = s.f_MinValue + t * (s.f_MaxValue - s.f_MinValue);
+            if (s.f_Step > 0.0f) {
+                v = std::round(v / s.f_Step) * s.f_Step;
             }
-            return std::max(s.minv, std::min(s.maxv, v));
+            return std::max(s.f_MinValue, std::min(s.f_MaxValue, v));
         }
 
 
         void MapGeneratorState::OnEnter() {
-            m_InfoText.clear();
-            m_Fields.clear();
-            m_Sliders.clear();
+            m_s_InfoText.clear();
+            m_vec_Fields.clear();
+            m_vec_Sliders.clear();
 
             // text input for Seed
-            m_Fields.push_back({ "Seed", "12345", {}, false, true, 16 });
+            m_vec_Fields.push_back({ "Seed", "12345", {}, false, true, 16 });
 
             // Sliders
-            m_Sliders.push_back({ "Nodes",         250.0f,  50.0f, 1000.0f, 10.0f });
-            m_Sliders.push_back({ "Graph density",   0.35f,  0.05f,   1.00f, 0.01f });
-            m_Sliders.push_back({ "Zones",           8.0f,    2.0f,   20.0f, 1.0f });
+            m_vec_Sliders.push_back({ "Nodes",         250.0f,  50.0f, 1000.0f, 10.0f });
+            m_vec_Sliders.push_back({ "Graph density",   0.35f,  0.05f,   1.00f, 0.01f });
+            m_vec_Sliders.push_back({ "Zones",           8.0f,    2.0f,   20.0f, 1.0f });
 
             // sliders for city route generating (bus dependance etc)
-            m_Sliders.push_back({ "Taxi",            0.70f,   0.0f,    1.0f, 0.01f });
-            m_Sliders.push_back({ "Bus",             0.50f,   0.0f,    1.0f, 0.01f });
-            m_Sliders.push_back({ "Tube",            0.25f,   0.0f,    1.0f, 0.01f });
+            m_vec_Sliders.push_back({ "Taxi",            0.70f,   0.0f,    1.0f, 0.01f });
+            m_vec_Sliders.push_back({ "Bus",             0.50f,   0.0f,    1.0f, 0.01f });
+            m_vec_Sliders.push_back({ "Tube",            0.25f,   0.0f,    1.0f, 0.01f });
 
-            m_Focused = -1;
-            m_HasPreview = false;
+            m_i_FocusedFieldIndex = -1;
+            m_b_HasPreview = false;
             SDL_StartTextInput();
         }
 
-        void MapGeneratorState::layoutUI(int W, int H, Core::Application* p_App) {
+        void MapGeneratorState::LayoutUI(int W, int H, Core::Application* p_App) {
             // Parameters
             int outer = std::max(12, (int)(H * 0.04f));
             int pad = 24;
@@ -86,7 +86,7 @@ namespace ScotlandYard {
             int cardH = std::min(maxCardH, (int)(H * 0.88f));
             int cardX = (W - cardW) / 2;
             int cardY = (H - cardH) / 2;
-            int n = (int)m_Fields.size();
+            int n = (int)m_vec_Fields.size();
             int totalFieldsH = n * fieldH + std::max(0, n - 1) * gap;
 
             auto neededH = [&](int fH, int g, int pH) {
@@ -138,7 +138,7 @@ namespace ScotlandYard {
             prevW = std::min(prevW, cardW - 2 * pad);
             int prevX = cardX + (cardW - prevW) / 2;
             int prevY = y - prevH;
-            m_PreviewRect = SDL_Rect{ prevX, prevY, prevW, prevH };
+            m_rect_PreviewArea = SDL_Rect{ prevX, prevY, prevW, prevH };
 
             DrawRoundedRectScreen((float)prevX, (float)prevY,
                 (float)(prevX + prevW), (float)(prevY + prevH),
@@ -150,15 +150,15 @@ namespace ScotlandYard {
             const int seedW = shortW;
             const int seedX = cardX + (cardW - seedW) / 2;
 
-            if (!m_Fields.empty()) {
+            if (!m_vec_Fields.empty()) {
                 int seedY = y - fieldH;
                 y = seedY - gap;
-                m_Fields[0].rect = SDL_Rect{ seedX, seedY, seedW, fieldH };
+                m_vec_Fields[0].rect = SDL_Rect{ seedX, seedY, seedW, fieldH };
             }
 
             // Sliders
             int yAfterSeed = y;
-            layoutSliders(yAfterSeed, cardX, cardW, pad, gap);
+            LayoutSliders(yAfterSeed, cardX, cardW, pad, gap);
 
 
             // Buttons
@@ -170,7 +170,7 @@ namespace ScotlandYard {
             m_BtnBack = SDL_Rect{ btnX0 + btnW + btnGap, btnY, btnW, btnH };
         }
 
-        void MapGeneratorState::layoutSliders(int startY, int cardX, int cardW, int pad, int gap) {
+        void MapGeneratorState::LayoutSliders(int startY, int cardX, int cardW, int pad, int gap) {
             const int rowH = 44;
             const int shortW = std::min(cardW - 2 * pad, 520);
             int x = cardX + (cardW - shortW) / 2;
@@ -178,7 +178,7 @@ namespace ScotlandYard {
 
             // 3 main sliders
             for (int i = 0; i < 3; ++i) {
-                auto& s = m_Sliders[i];
+                auto& s = m_vec_Sliders[i];
                 y -= rowH;
                 s.track = SDL_Rect{ x, y + 16, shortW, 12 };
                 y -= gap;
@@ -190,7 +190,7 @@ namespace ScotlandYard {
             int smallW = (shortW - 2 * gapX) / 3;
             for (int i = 3; i < 6; ++i) {
                 int col = i - 3;
-                auto& s = m_Sliders[i];
+                auto& s = m_vec_Sliders[i];
                 s.track = SDL_Rect{ x + col * (smallW + gapX), y + 16, smallW, 12 };
             }
         }
@@ -207,17 +207,17 @@ namespace ScotlandYard {
             DrawRoundedRectScreen(0, 0, (float)W, (float)H, col_bg, 0, p_App);
 
             // layout
-            layoutUI(W, H, p_App);
+            LayoutUI(W, H, p_App);
 
             // preview (placeholder)
-            DrawTextCenteredPx("Preview", (float)m_PreviewRect.x, (float)m_PreviewRect.y - 26,
-                (float)(m_PreviewRect.x + m_PreviewRect.w), (float)m_PreviewRect.y - 2, col_mut, p_App, -2.0f);
-            DrawRoundedRectScreen((float)m_PreviewRect.x, (float)m_PreviewRect.y,
-                (float)(m_PreviewRect.x + m_PreviewRect.w), (float)(m_PreviewRect.y + m_PreviewRect.h),
+            DrawTextCenteredPx("Preview", (float)m_rect_PreviewArea.x, (float)m_rect_PreviewArea.y - 26,
+                (float)(m_rect_PreviewArea.x + m_rect_PreviewArea.w), (float)m_rect_PreviewArea.y - 2, col_mut, p_App, -2.0f);
+            DrawRoundedRectScreen((float)m_rect_PreviewArea.x, (float)m_rect_PreviewArea.y,
+                (float)(m_rect_PreviewArea.x + m_rect_PreviewArea.w), (float)(m_rect_PreviewArea.y + m_rect_PreviewArea.h),
                 col_fld, 10, p_App);
-            if (m_HasPreview && m_PreviewTex) {
+            if (m_b_HasPreview && m_GLuint_PreviewTexture) {
                 glEnable(GL_TEXTURE_2D);
-                glBindTexture(GL_TEXTURE_2D, m_PreviewTex);
+                glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
                 glDisable(GL_TEXTURE_2D);
             }
             else {
@@ -225,21 +225,21 @@ namespace ScotlandYard {
             }
 
             // fields
-            for (size_t i = 0; i < m_Fields.size(); ++i) {
-                auto& f = m_Fields[i];
-                const bool F = f.focused;
+            for (size_t i = 0; i < m_vec_Fields.size(); ++i) {
+                auto& f = m_vec_Fields[i];
+                const bool F = f.b_Focused;
                 auto bg = F ? col_card : col_fld;
                 DrawRoundedRectScreen((float)f.rect.x, (float)f.rect.y,
                     (float)(f.rect.x + f.rect.w), (float)(f.rect.y + f.rect.h),
                     bg, 8, p_App);
 
-                std::string shown = f.value;
-                if (f.focused && (SDL_GetTicks() / 500) % 2 == 0) shown.push_back('|');
+                std::string shown = f.s_Value;
+                if (f.b_Focused && (SDL_GetTicks() / 500) % 2 == 0) shown.push_back('|');
                 float lblX0 = (float)f.rect.x + 10.0f;
                 float lblY0 = (float)f.rect.y + (float)f.rect.h - 18.0f;
                 float lblX1 = lblX0 + (float)f.rect.w - 20.0f;
                 float lblY1 = lblY0 + 16.0f;
-                DrawTextCenteredPx(f.label.c_str(), lblX0, lblY0, lblX1, lblY1, col_txt, p_App, 0.0f);
+                DrawTextCenteredPx(f.s_Label.c_str(), lblX0, lblY0, lblX1, lblY1, col_txt, p_App, 0.0f);
 
                 float valX0 = (float)f.rect.x + 12.0f;
                 float valY0 = (float)f.rect.y + 6.0f;
@@ -249,8 +249,8 @@ namespace ScotlandYard {
             }
 
             // Info
-            /*const char* msg = m_InfoText.empty() ? "Ready." : m_InfoText.c_str();
-            auto color = (m_InfoText.rfind("ERROR", 0) == 0) ? col_txt : col_mut;
+            /*const char* msg = m_s_InfoText.empty() ? "Ready." : m_s_InfoText.c_str();
+            auto color = (m_s_InfoText.rfind("ERROR", 0) == 0) ? col_txt : col_mut;
 
             const int margin = 20;
             const int infoW = 240;
@@ -267,11 +267,11 @@ namespace ScotlandYard {
 
 
             // Sliders render
-            for (size_t i = 0; i < m_Sliders.size(); ++i) {
-                const auto& s = m_Sliders[i];
+            for (size_t i = 0; i < m_vec_Sliders.size(); ++i) {
+                const auto& s = m_vec_Sliders[i];
 
                 // top label
-                DrawTextCenteredPx(s.label.c_str(),
+                DrawTextCenteredPx(s.s_Label.c_str(),
                     (float)s.track.x, (float)(s.track.y + s.track.h + 2),
                     (float)(s.track.x + s.track.w), (float)(s.track.y + s.track.h + 20),
                     col_mut, p_App, -2.0f);
@@ -283,7 +283,7 @@ namespace ScotlandYard {
                     col_fld, 6, p_App);
 
                 // to value
-                int fillX = valToX(s);
+                int fillX = ValueToXPosition(s);
                 DrawRoundedRectScreen(
                     (float)s.track.x, (float)s.track.y,
                     (float)fillX, (float)(s.track.y + s.track.h),
@@ -299,8 +299,8 @@ namespace ScotlandYard {
 
                 // value under
                 char buf[64];
-                if (s.step >= 1.0f) std::snprintf(buf, sizeof(buf), "%.0f", s.value);
-                else                std::snprintf(buf, sizeof(buf), "%.2f", s.value);
+                if (s.f_Step >= 1.0f) std::snprintf(buf, sizeof(buf), "%.0f", s.f_Value);
+                else                std::snprintf(buf, sizeof(buf), "%.2f", s.f_Value);
 
                 DrawTextCenteredPx(buf,
                     (float)s.track.x, (float)(s.track.y - 18),
@@ -318,39 +318,39 @@ namespace ScotlandYard {
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
         }
 
-        void MapGeneratorState::focusField(int idx) {
-            for (auto& f : m_Fields) f.focused = false;
-            m_Focused = (idx >= 0 && idx < (int)m_Fields.size()) ? idx : -1;
-            if (m_Focused >= 0) m_Fields[m_Focused].focused = true;
+        void MapGeneratorState::FocusField(int idx) {
+            for (auto& f : m_vec_Fields) f.b_Focused = false;
+            m_i_FocusedFieldIndex = (idx >= 0 && idx < (int)m_vec_Fields.size()) ? idx : -1;
+            if (m_i_FocusedFieldIndex >= 0) m_vec_Fields[m_i_FocusedFieldIndex].b_Focused = true;
         }
 
-        void MapGeneratorState::blurAll() { focusField(-1); }
+        void MapGeneratorState::BlurAllFields() { FocusField(-1); }
 
-        void MapGeneratorState::appendTextToFocused(const char* utf8) {
-            if (m_Focused < 0) return;
-            auto& f = m_Fields[m_Focused];
-            if ((int)f.value.size() >= f.maxLen) return;
+        void MapGeneratorState::AppendTextToFocusedField(const char* utf8) {
+            if (m_i_FocusedFieldIndex < 0) return;
+            auto& f = m_vec_Fields[m_i_FocusedFieldIndex];
+            if ((int)f.s_Value.size() >= f.i_MaxLength) return;
 
             // Filter
             for (const char* p = utf8; *p; ++p) {
                 char c = *p;
-                if (f.numeric) {
-                    if ((c >= '0' && c <= '9') || c == '.' || c == '-') f.value.push_back(c);
+                if (f.b_Numeric) {
+                    if ((c >= '0' && c <= '9') || c == '.' || c == '-') f.s_Value.push_back(c);
                 }
                 else {
                     // block
-                    if ((unsigned char)c >= 32 && (unsigned char)c < 127) f.value.push_back(c);
+                    if ((unsigned char)c >= 32 && (unsigned char)c < 127) f.s_Value.push_back(c);
                 }
             }
         }
 
-        void MapGeneratorState::backspaceFocused() {
-            if (m_Focused < 0) return;
-            auto& f = m_Fields[m_Focused];
-            if (!f.value.empty()) f.value.pop_back();
+        void MapGeneratorState::BackspaceInFocusedField() {
+            if (m_i_FocusedFieldIndex < 0) return;
+            auto& f = m_vec_Fields[m_i_FocusedFieldIndex];
+            if (!f.s_Value.empty()) f.s_Value.pop_back();
         }
 
-        void MapGeneratorState::makeDummyPreview(int W, int H) {
+        void MapGeneratorState::MakeDummyPreview(int W, int H) {
             // Checkerboard
             std::vector<unsigned char> img(W * H * 3, 0);
             for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) {
@@ -359,27 +359,27 @@ namespace ScotlandYard {
                 img[(y * W + x) * 3 + 1] = a ? 200 : 20;
                 img[(y * W + x) * 3 + 2] = a ? 70 : 30;
             }
-            if (!m_PreviewTex) glGenTextures(1, &m_PreviewTex);
-            glBindTexture(GL_TEXTURE_2D, m_PreviewTex);
+            if (!m_GLuint_PreviewTexture) glGenTextures(1, &m_GLuint_PreviewTexture);
+            glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, W, H, 0, GL_RGB, GL_UNSIGNED_BYTE, img.data());
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            m_HasPreview = true;
+            m_b_HasPreview = true;
         }
 
-        void MapGeneratorState::tryGenerate() {
+        void MapGeneratorState::TryGenerateMap() {
             // Getting values from sliders/field
             auto valOf = [&](const char* name)->std::string {
-                for (auto& f : m_Fields)
-                    if (f.label == name)
-                        return f.value;
+                for (auto& f : m_vec_Fields)
+                    if (f.s_Label == name)
+                        return f.s_Value;
                 return "";
                 };
 
             auto getS = [&](const char* name)->float {
-                for (auto& s : m_Sliders)
-                    if (s.label == name)
-                        return s.value;
+                for (auto& s : m_vec_Sliders)
+                    if (s.s_Label == name)
+                        return s.f_Value;
                 return 0.0f;
                 };
 
@@ -395,13 +395,13 @@ namespace ScotlandYard {
             // For info field (not visible)
             // Validation
             if (dens <= 0.0 || dens > 1.0) {
-                m_InfoText = "ERROR: Graph density must be in (0,1].";
-                m_HasPreview = false;
+                m_s_InfoText = "ERROR: Graph density must be in (0,1].";
+                m_b_HasPreview = false;
                 return;
             }
             if (nodes > 5000) {
-                m_InfoText = "ERROR: Nodes too large for preview (<=5000).";
-                m_HasPreview = false;
+                m_s_InfoText = "ERROR: Nodes too large for preview (<=5000).";
+                m_b_HasPreview = false;
                 return;
             }
 
@@ -410,12 +410,12 @@ namespace ScotlandYard {
                 "Generating… seed=%s, nodes=%d, dens=%.2f, taxi=%.2f bus=%.2f tube=%.2f",
                 seedStr.c_str(), nodes, dens, pTaxi, pBus, pTube);
 
-            m_InfoText = buf;
-            makeDummyPreview(
-                std::max(32, m_PreviewRect.w - 8),
-                std::max(32, m_PreviewRect.h - 8)
+            m_s_InfoText = buf;
+            MakeDummyPreview(
+                std::max(32, m_rect_PreviewArea.w - 8),
+                std::max(32, m_rect_PreviewArea.h - 8)
             );
-            m_InfoText = "Generated preview (placeholder). Hook up your generator to produce real image/mesh.";
+            m_s_InfoText = "Generated preview (placeholder). Hook up your generator to produce real image/mesh.";
         }
 
 
@@ -427,52 +427,52 @@ namespace ScotlandYard {
                     return;
                 }
                 if (ev.key.keysym.sym == SDLK_TAB) {
-                    int n = (int)m_Fields.size();
-                    if (n > 0) focusField((m_Focused + 1) % n);
+                    int n = (int)m_vec_Fields.size();
+                    if (n > 0) FocusField((m_i_FocusedFieldIndex + 1) % n);
                     return;
                 }
                 if (ev.key.keysym.sym == SDLK_BACKSPACE) {
-                    backspaceFocused();
+                    BackspaceInFocusedField();
                     return;
                 }
                 if (ev.key.keysym.sym == SDLK_RETURN) {
                     // Enter = Generate
-                    tryGenerate();
+                    TryGenerateMap();
                     return;
                 }
                 break;
 
             case SDL_TEXTINPUT:
-                appendTextToFocused(ev.text.text);
+                AppendTextToFocusedField(ev.text.text);
                 break;
 
             case SDL_MOUSEBUTTONDOWN:
                 if (ev.button.button == SDL_BUTTON_LEFT) {
                     int mx = ev.button.x, my = p_App->GetHeight() - ev.button.y;
                     bool focused = false;
-                    for (size_t i = 0; i < m_Fields.size(); ++i) {
-                        auto& r = m_Fields[i].rect;
+                    for (size_t i = 0; i < m_vec_Fields.size(); ++i) {
+                        auto& r = m_vec_Fields[i].rect;
                         if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
-                            focusField((int)i);
+                            FocusField((int)i);
                             focused = true;
                             break;
                         }
                     }
-                    if (!focused) blurAll();
+                    if (!focused) BlurAllFields();
 
-                    for (auto& s : m_Sliders) {
+                    for (auto& s : m_vec_Sliders) {
                         SDL_Rect hit = { s.track.x - 6, s.track.y - 6, s.track.w + 12, s.track.h + 12 };
                         if (mx >= hit.x && mx <= hit.x + hit.w &&
                             my >= hit.y && my <= hit.y + hit.h) {
-                            s.dragging = true;
-                            s.value = xToVal(s, mx);
+                            s.b_Dragging = true;
+                            s.f_Value = XPositionToValue(s, mx);
                         }
                     }
 
                     // Generate
                     if (mx >= m_BtnGenerate.x && mx <= m_BtnGenerate.x + m_BtnGenerate.w &&
                         my >= m_BtnGenerate.y && my <= m_BtnGenerate.y + m_BtnGenerate.h) {
-                        tryGenerate();
+                        TryGenerateMap();
                     }
                     // Back
                     if (mx >= m_BtnBack.x && mx <= m_BtnBack.x + m_BtnBack.w &&
@@ -485,14 +485,14 @@ namespace ScotlandYard {
             case SDL_MOUSEMOTION:
                 if (ev.motion.state & SDL_BUTTON_LMASK) {
                     int mx = ev.motion.x, my = p_App->GetHeight() - ev.motion.y;
-                    for (auto& s : m_Sliders) if (s.dragging)
-                        s.value = xToVal(s, mx);
+                    for (auto& s : m_vec_Sliders) if (s.b_Dragging)
+                        s.f_Value = XPositionToValue(s, mx);
                 }
                 break;
 
             case SDL_MOUSEBUTTONUP:
                 if (ev.button.button == SDL_BUTTON_LEFT) {
-                    for (auto& s : m_Sliders) s.dragging = false;
+                    for (auto& s : m_vec_Sliders) s.b_Dragging = false;
                 }
                 break;
 

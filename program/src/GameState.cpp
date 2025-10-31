@@ -60,6 +60,7 @@ GameState::~GameState() {}
 
 void GameState::OnEnter() {
     m_b_GameActive = true;
+    m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
 
     // Dane wierzchołków planszy (pozycja, kolor, UV)
     float planeVertices[] = {
@@ -78,8 +79,8 @@ void GameState::OnEnter() {
     // Pozycje kółek z pliku CSV
     auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
         for (auto& station : vec_StationData) {
-        station.vec2_Position.x *= globalScale;
-        station.vec2_Position.y *= globalScale;
+        station.vec2_Position.x *= m_f_GlobalScale;
+        station.vec2_Position.y *= m_f_GlobalScale;
     }
 
     if (vec_StationData.empty()) {
@@ -939,28 +940,27 @@ void GameState::Update(float f_DeltaTime) {
 }
 
 void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc) {
-    glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(vec2_Position.x, 0.05f * globalScale, vec2_Position.y));
-    model = glm::scale(model, glm::vec3(2.0f));
-    model = model * globalScaleMat;
+    glm::mat4 mat4_Model = glm::mat4(1.0f);
+    mat4_Model = glm::translate(mat4_Model, glm::vec3(vec2_Position.x, 0.05f * m_f_GlobalScale, vec2_Position.y));
+    mat4_Model = glm::scale(mat4_Model, glm::vec3(2.0f));
+    mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
-    // MisterX colour (black)
-    glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
-    glUniform3fv(i_ColorLoc, 1, glm::value_ptr(color));
+    glm::vec3 vec3_Color = glm::vec3(0.0f, 0.0f, 0.0f);
+    glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_Color));
 
     // Body (cylinder)
-    glm::mat4 cylModel = glm::scale(model, glm::vec3(1.0f));
-    glm::mat4 MVP = mat4_Projection * mat4_View * cylModel;
-    glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+    glm::mat4 mat4_CylinderModel = glm::scale(mat4_Model, glm::vec3(1.0f));
+    glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_CylinderModel;
+    glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
 
     glBindVertexArray(m_VAO_Cylinder);
     glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
     glBindVertexArray(0);
 
     // Top (hemisphere)
-    glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
-    MVP = mat4_Projection * mat4_View * hemiModel;
-    glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+    glm::mat4 mat4_HemiModel = glm::translate(mat4_Model, glm::vec3(0.0f, 0.1f, 0.0f));
+    mat4_MVP = mat4_Projection * mat4_View * mat4_HemiModel;
+    glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
 
     glBindVertexArray(m_VAO_Hemisphere);
     glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
@@ -976,30 +976,31 @@ void GameState::Render(Core::Application* p_App) {
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glm::mat4 view, projection;
+    glm::mat4 mat4_View, mat4_Projection;
     if (m_b_Camera3D) {
         m_vec3_CameraPosition = m_vec3_Saved3DCameraPosition;
-        glm::vec3 target = m_vec3_CameraPosition + m_vec3_CameraFront;
-        view = glm::lookAt(m_vec3_CameraPosition, target, m_vec3_CameraUp);
-        projection = glm::perspective(glm::radians(45.0f), float(m_i_Width)/m_i_Height, 0.1f,100.0f);
+        glm::vec3 vec3_Target = m_vec3_CameraPosition + m_vec3_CameraFront;
+        mat4_View = glm::lookAt(m_vec3_CameraPosition, vec3_Target, m_vec3_CameraUp);
+        mat4_Projection = glm::perspective(glm::radians(45.0f), float(m_i_Width)/m_i_Height, 0.1f,100.0f);
     } else {
         m_vec3_CameraVelocity = glm::vec3(0.0f);
-        glm::vec3 camPos = glm::vec3(11.0f * globalScale, 5.0f * globalScale, 8.0f * globalScale); // x=centerX, y=height, z=centerZ
-        glm::vec3 camTarget = glm::vec3(11.0f * globalScale, 0.0f, 8.0f * globalScale); // look at center of plane
-        glm::vec3 camUp = glm::vec3(0, 0, -1); // points towards -Z for top-down
-        view = glm::lookAt(camPos, camTarget, camUp);
-        float aspect = float(m_i_Width)/m_i_Height;
-        float halfH=10.0f * globalScale, halfW=halfH*aspect;
-        projection = glm::ortho(-halfW,halfW,-halfH,halfH,0.1f,10.0f);
+        glm::vec3 vec3_CameraPos = glm::vec3(11.0f * m_f_GlobalScale, 5.0f * m_f_GlobalScale, 8.0f * m_f_GlobalScale);
+        glm::vec3 vec3_CameraTarget = glm::vec3(11.0f * m_f_GlobalScale, 0.0f, 8.0f * m_f_GlobalScale);
+        glm::vec3 vec3_CameraUp = glm::vec3(0, 0, -1);
+        mat4_View = glm::lookAt(vec3_CameraPos, vec3_CameraTarget, vec3_CameraUp);
+        float f_Aspect = float(m_i_Width)/m_i_Height;
+        float f_HalfHeight = 10.0f * m_f_GlobalScale;
+        float f_HalfWidth = f_HalfHeight * f_Aspect;
+        mat4_Projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 10.0f);
     }
 
-    RenderBoard(p_App, view, projection);
-    RenderStations(view, projection);
-    RenderPlayers(view, projection);
-    RenderArrows(view, projection);
+    RenderBoard(p_App, mat4_View, mat4_Projection);
+    RenderStations(mat4_View, mat4_Projection);
+    RenderPlayers(mat4_View, mat4_Projection);
+    RenderArrows(mat4_View, mat4_Projection);
     RenderHUD(p_App);
     RenderDebugOverlay(p_App);
-    RenderPicking(p_App, view, projection);
+    RenderPicking(p_App, mat4_View, mat4_Projection);
     RenderEndGameModal(p_App);
 
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
@@ -1035,16 +1036,16 @@ void GameState::HandleResize(Core::Application* p_App) {
     }
 }
 
-void GameState::RenderBoard(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection) {
+void GameState::RenderBoard(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
     glUseProgram(m_ShaderProgram_Plane);
 
-    glm::mat4 model = glm::mat4(1.0f);
-    model = globalScaleMat * model;
-    model = glm::rotate(model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));    
+    glm::mat4 mat4_Model = glm::mat4(1.0f);
+    mat4_Model = m_mat4_GlobalScaleMatrix * mat4_Model;
+    mat4_Model = glm::rotate(mat4_Model, glm::radians(m_f_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    glm::mat4 MVP = projection * view * model;
+    glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
     GLuint mvpLocPlane = glGetUniformLocation(m_ShaderProgram_Plane, "MVP");
-    glUniformMatrix4fv(mvpLocPlane, 1, GL_FALSE, glm::value_ptr(MVP));
+    glUniformMatrix4fv(mvpLocPlane, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_TextureID);
@@ -1056,61 +1057,61 @@ void GameState::RenderBoard(Core::Application* p_App, const glm::mat4& view, con
     glBindVertexArray(0);
 }
 
-void GameState::RenderStations(const glm::mat4& view, const glm::mat4& projection) {
+void GameState::RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
     glUseProgram(m_ShaderProgram_Circle);
 
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
 
-    float baseScale = 7.0f;
-    float ringStep = 1.0f;
-    float yStep = 0.02f;
-    float topCircleScale = 6.4f;
+    float f_BaseScale = 7.0f;
+    float f_RingStep = 1.0f;
+    float f_YStep = 0.02f;
+    float f_TopCircleScale = 6.4f;
 
-    std::vector<std::string> order = { "metro", "bus", "taxi", "water" };
+    std::vector<std::string> vec_TransportOrder = { "metro", "bus", "taxi", "water" };
 
     for (const auto& station : m_vec_CircleStations) {
-        glm::mat4 modelBase = glm::translate(glm::mat4(1.0f),
+        glm::mat4 mat4_ModelBase = glm::translate(glm::mat4(1.0f),
                                              glm::vec3(station.position.x, 0.0f, station.position.y));
 
-        std::vector<std::string> typesPresent;
-        for (const auto& t : order) {
-            if (std::find(station.transportTypes.begin(), station.transportTypes.end(), t) != station.transportTypes.end()) {
-                typesPresent.push_back(t);
+        std::vector<std::string> vec_TypesPresent;
+        for (const auto& s_Type : vec_TransportOrder) {
+            if (std::find(station.transportTypes.begin(), station.transportTypes.end(), s_Type) != station.transportTypes.end()) {
+                vec_TypesPresent.push_back(s_Type);
             }
         }
 
-        int count = static_cast<int>(typesPresent.size());
-        float yStart = 0.001f;
+        int i_Count = static_cast<int>(vec_TypesPresent.size());
+        float f_YStart = 0.001f;
 
-        for (int i = 0; i < count; ++i) {
-            const std::string& type = typesPresent[i];
-            glm::vec3 color;
-            if (type == "metro") color = {1.0f, 0.0f, 0.0f};
-            else if (type == "bus") color = {0.0f, 1.0f, 0.0f};
-            else if (type == "taxi") color = {1.0f, 1.0f, 0.0f};
-            else color = {0.0f, 0.4f, 1.0f};
+        for (int i = 0; i < i_Count; ++i) {
+            const std::string& s_TransportType = vec_TypesPresent[i];
+            glm::vec3 vec3_Color;
+            if (s_TransportType == "metro") vec3_Color = {1.0f, 0.0f, 0.0f};
+            else if (s_TransportType == "bus") vec3_Color = {0.0f, 1.0f, 0.0f};
+            else if (s_TransportType == "taxi") vec3_Color = {1.0f, 1.0f, 0.0f};
+            else vec3_Color = {0.0f, 0.4f, 1.0f};
 
-            float scale = baseScale + (count - i) * ringStep;
-            float yOffset = yStart + i * yStep;
-            glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yOffset * globalScale, 0.0f));
-            model = glm::scale(model, glm::vec3(scale, 0.2f, scale)) * globalScaleMat;
+            float f_Scale = f_BaseScale + (i_Count - i) * f_RingStep;
+            float f_YOffset = f_YStart + i * f_YStep;
+            glm::mat4 mat4_Model = glm::translate(mat4_ModelBase, glm::vec3(0.0f, f_YOffset * m_f_GlobalScale, 0.0f));
+            mat4_Model = glm::scale(mat4_Model, glm::vec3(f_Scale, 0.2f, f_Scale)) * m_mat4_GlobalScaleMatrix;
 
-            glm::mat4 MVP = projection * view * model;
-            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
-            glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+            glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+            glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
 
             glBindVertexArray(m_VAO_Circle);
             glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
             glBindVertexArray(0);
         }
 
-        float yTop = yStart + count * yStep;
-        glm::mat4 model = glm::translate(modelBase, glm::vec3(0.0f, yTop * globalScale, 0.0f));
-        model = glm::scale(model, glm::vec3(topCircleScale, 0.2f, topCircleScale)) * globalScaleMat;
+        float f_YTop = f_YStart + i_Count * f_YStep;
+        glm::mat4 mat4_Model = glm::translate(mat4_ModelBase, glm::vec3(0.0f, f_YTop * m_f_GlobalScale, 0.0f));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(f_TopCircleScale, 0.2f, f_TopCircleScale)) * m_mat4_GlobalScaleMatrix;
 
-        glm::mat4 MVP = projection * view * model;
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
         glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(1.0f)));
 
         glBindVertexArray(m_VAO_Circle);
@@ -1119,7 +1120,7 @@ void GameState::RenderStations(const glm::mat4& view, const glm::mat4& projectio
     }
 }
 
-void GameState::RenderPlayers(const glm::mat4& view, const glm::mat4& projection) {
+void GameState::RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
     glUseProgram(m_ShaderProgram_Circle);
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
@@ -1127,26 +1128,26 @@ void GameState::RenderPlayers(const glm::mat4& view, const glm::mat4& projection
     for (const auto& player : m_vec_Players) {
         if (player.GetType() != Core::PlayerType::Detective) continue;
 
-        int nodeId = player.GetOccupiedNode();
+        int i_NodeId = player.GetOccupiedNode();
         auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
-                               [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
+                               [i_NodeId](const StationCircle& sc){ return sc.stationID == i_NodeId; });
         if (it == m_vec_CircleStations.end()) continue;
 
-        glm::vec2 pos = it->position;
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, 0.05f * globalScale, pos.y));
-        model = glm::scale(model, glm::vec3(2.0f));
-        model = model * globalScaleMat;
+        glm::vec2 vec2_Position = it->position;
+        glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f), glm::vec3(vec2_Position.x, 0.05f * m_f_GlobalScale, vec2_Position.y));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(2.0f));
+        mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
-        glm::vec3 color = glm::vec3(0.0f, 0.0f, 1.0f);
-        glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+        glm::vec3 vec3_Color = glm::vec3(0.0f, 0.0f, 1.0f);
+        glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
 
         glBindVertexArray(m_VAO_Cylinder);
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * model));
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View * mat4_Model));
         glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
         glBindVertexArray(0);
 
-        glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * hemiModel));
+        glm::mat4 mat4_HemiModel = glm::translate(mat4_Model, glm::vec3(0.0f, 0.1f, 0.0f));
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View * mat4_HemiModel));
 
         glBindVertexArray(m_VAO_Hemisphere);
         glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
@@ -1158,51 +1159,50 @@ void GameState::RenderPlayers(const glm::mat4& view, const glm::mat4& projection
     for (const auto& player : m_vec_Players) {
         if (player.GetType() != Core::PlayerType::MisterX) continue;
 
-
         bool b_ShouldRenderMrX = false;
         if (m_b_DebuggingMode && m_b_ShowMrXInDebug) b_ShouldRenderMrX = true;
         if (player.IsActive()) b_ShouldRenderMrX = true;
         if (!b_ShouldRenderMrX) continue;
 
-        int nodeId = player.GetOccupiedNode();
+        int i_NodeId = player.GetOccupiedNode();
         auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
-                               [nodeId](const StationCircle& sc){ return sc.stationID == nodeId; });
+                               [i_NodeId](const StationCircle& sc){ return sc.stationID == i_NodeId; });
         if (it == m_vec_CircleStations.end()) continue;
 
-        RenderMrXToken(it->position, projection, view, mvpLoc, colorLoc);
+        RenderMrXToken(it->position, mat4_Projection, mat4_View, mvpLoc, colorLoc);
     }
 }
 
-void GameState::RenderArrows(const glm::mat4& view, const glm::mat4& projection) {
+void GameState::RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
     glUseProgram(m_ShaderProgram_Circle);
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
 
     for (const auto& arrow : m_vec_CurrentArrows) {
-        glm::vec3 color;
+        glm::vec3 vec3_Color;
         switch (arrow.i_TransportType) {
-            case Core::k_TransportTypeTaxi: color = glm::vec3(1.0f, 1.0f, 0.0f); break;
-            case Core::k_TransportTypeBus: color = glm::vec3(0.0f, 1.0f, 0.0f); break;
-            case Core::k_TransportTypeMetro: color = glm::vec3(1.0f, 0.0f, 0.0f); break;
-            case Core::k_TransportTypeWater: color = glm::vec3(0.0f, 0.4f, 1.0f); break;
-            default: color = glm::vec3(1.0f); break;
+            case Core::k_TransportTypeTaxi: vec3_Color = glm::vec3(1.0f, 1.0f, 0.0f); break;
+            case Core::k_TransportTypeBus: vec3_Color = glm::vec3(0.0f, 1.0f, 0.0f); break;
+            case Core::k_TransportTypeMetro: vec3_Color = glm::vec3(1.0f, 0.0f, 0.0f); break;
+            case Core::k_TransportTypeWater: vec3_Color = glm::vec3(0.0f, 0.4f, 1.0f); break;
+            default: vec3_Color = glm::vec3(1.0f); break;
         }
 
-        glm::mat4 baseModel = glm::translate(glm::mat4(1.0f), glm::vec3(arrow.vec2_Position.x, 0.1f * globalScale, arrow.vec2_Position.y));
-        baseModel = glm::rotate(baseModel, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 mat4_BaseModel = glm::translate(glm::mat4(1.0f), glm::vec3(arrow.vec2_Position.x, 0.1f * m_f_GlobalScale, arrow.vec2_Position.y));
+        mat4_BaseModel = glm::rotate(mat4_BaseModel, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
 
-        // --- Draw black outline slightly larger ---
-        glm::mat4 outlineModel = baseModel * glm::scale(globalScaleMat, glm::vec3(1.5f)); // slightly bigger
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * outlineModel));
-        glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, 0.0f))); // black
+        // Draw black outline slightly larger
+        glm::mat4 mat4_OutlineModel = mat4_BaseModel * glm::scale(m_mat4_GlobalScaleMatrix, glm::vec3(1.5f));
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View * mat4_OutlineModel));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, 0.0f)));
         glBindVertexArray(m_VAO_Arrow);
         glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
 
-        // --- Draw colored arrow on top ---
-        glm::mat4 coloredModel = baseModel * globalScaleMat;
-        coloredModel = glm::translate(coloredModel, glm::vec3(0.0f, 0.01f, 0.0f)); // slight offset to prevent z-fighting
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(projection * view * coloredModel));
-        glUniform3fv(colorLoc, 1, glm::value_ptr(color));
+        // Draw colored arrow on top
+        glm::mat4 mat4_ColoredModel = mat4_BaseModel * m_mat4_GlobalScaleMatrix;
+        mat4_ColoredModel = glm::translate(mat4_ColoredModel, glm::vec3(0.0f, 0.01f, 0.0f));
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View * mat4_ColoredModel));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
         glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
 
         glBindVertexArray(0);
@@ -1244,13 +1244,13 @@ void GameState::RenderDebugOverlay(Core::Application* p_App) {
     if (b_DepthWas) glEnable(GL_DEPTH_TEST);
 }
 
-void GameState::RenderPicking(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection) {
+void GameState::RenderPicking(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
     if (!m_b_ShowPickingBuffer.load()) return;
 
     m_map_PickingIDToClickable.clear();
     m_ui_NextPickingID = 0;
 
-    RenderPickingPass(projection, view);
+    RenderPickingPass(mat4_Projection, mat4_View);
     ApplyDilationPass();
 
     int i_WindowWidth = p_App->GetWidth();
@@ -1621,13 +1621,13 @@ void GameState::UpdateArrowsForSelectedPlayer() {
         glm::vec2 vec2_Direction = glm::normalize(vec2_DestPos - vec2_CurrentPos);
 
         float f_OrbitalRadius = UI::k_TaxiWaterOrbitalRadius;
-        f_OrbitalRadius = f_OrbitalRadius * globalScale;
+        f_OrbitalRadius = f_OrbitalRadius * m_f_GlobalScale;
         if (conn.i_TransportType == Core::k_TransportTypeBus) {
             f_OrbitalRadius = UI::k_BusOrbitalRadius;
-            f_OrbitalRadius = f_OrbitalRadius * globalScale;
+            f_OrbitalRadius = f_OrbitalRadius * m_f_GlobalScale;
         } else if (conn.i_TransportType == Core::k_TransportTypeMetro) {
             f_OrbitalRadius = UI::k_MetroOrbitalRadius;
-            f_OrbitalRadius = f_OrbitalRadius * globalScale;
+            f_OrbitalRadius = f_OrbitalRadius * m_f_GlobalScale;
         }
 
         glm::vec2 vec2_ArrowPos = vec2_CurrentPos + vec2_Direction * f_OrbitalRadius;
@@ -1927,21 +1927,21 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
             uint32_t ui_ID = RegisterClickable(e_Type, static_cast<int>(i), 0);
             glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
 
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(it->position.x, 0.05f * globalScale, it->position.y));
-            model = glm::scale(model, glm::vec3(2.0f));
-            model = model * globalScaleMat;
+            glm::mat4 mat4_Model = glm::mat4(1.0f);
+            mat4_Model = glm::translate(mat4_Model, glm::vec3(it->position.x, 0.05f * m_f_GlobalScale, it->position.y));
+            mat4_Model = glm::scale(mat4_Model, glm::vec3(2.0f));
+            mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
             glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
 
-            glm::mat4 MVP = mat4_Projection * mat4_View * model;
-            glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+            glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+            glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
             glBindVertexArray(m_VAO_Cylinder);
             glDrawArrays(GL_TRIANGLES, 0, m_i_CylinderVertexCount);
 
-            glm::mat4 hemiModel = glm::translate(model, glm::vec3(0.0f, 0.1f, 0.0f));
-            MVP = mat4_Projection * mat4_View * hemiModel;
-            glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+            glm::mat4 mat4_HemiModel = glm::translate(mat4_Model, glm::vec3(0.0f, 0.1f, 0.0f));
+            mat4_MVP = mat4_Projection * mat4_View * mat4_HemiModel;
+            glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
             glBindVertexArray(m_VAO_Hemisphere);
             glDrawArrays(GL_TRIANGLES, 0, m_i_HemisphereVertexCount);
         }
@@ -1951,13 +1951,13 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
         uint32_t ui_ID = RegisterClickable(ClickableType::Arrow, m_i_SelectedPlayerIndex, arrow.i_DestinationNode);
         glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
 
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(arrow.vec2_Position.x , 0.1f * globalScale, arrow.vec2_Position.y));
-        model = glm::rotate(model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
-        model = model * globalScaleMat;
+        glm::mat4 mat4_Model = glm::mat4(1.0f);
+        mat4_Model = glm::translate(mat4_Model, glm::vec3(arrow.vec2_Position.x, 0.1f * m_f_GlobalScale, arrow.vec2_Position.y));
+        mat4_Model = glm::rotate(mat4_Model, arrow.f_Rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+        mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
-        glm::mat4 MVP = mat4_Projection * mat4_View * model;
-        glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(MVP));
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+        glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
         glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
 
         glBindVertexArray(m_VAO_Arrow);

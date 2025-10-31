@@ -93,8 +93,8 @@ private:
     static constexpr float k_MaxCameraAngle = -0.2915f;  // ~-16.7 degrees
 
     // Global scale for the board and objects
-    float ScotlandYard::States::GameState::globalScale = 0.1f;
-    glm::mat4 globalScaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(globalScale));
+    float m_f_GlobalScale = 0.1f;
+    glm::mat4 m_mat4_GlobalScaleMatrix{1.0f};
 
     void LoadTextures(Core::Application* p_App);
 
@@ -197,16 +197,16 @@ private:
     void HandlePlayerClick(int i_PlayerIndex);
     void HandleArrowClick(int i_PlayerIndex, int i_DestinationNode);
 
-    // Render funcions
+    // Render functions
     void RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc);
     void HandleResize(Core::Application* p_App);
-    void RenderBoard(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection);
-    void RenderStations(const glm::mat4& view, const glm::mat4& projection);
-    void RenderPlayers(const glm::mat4& view, const glm::mat4& projection);
-    void RenderArrows(const glm::mat4& view, const glm::mat4& projection);
+    void RenderBoard(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+    void RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+    void RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+    void RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderHUD(Core::Application* p_App);
     void RenderDebugOverlay(Core::Application* p_App);
-    void RenderPicking(Core::Application* p_App, const glm::mat4& view, const glm::mat4& projection);
+    void RenderPicking(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderEndGameModal(Core::Application* p_App);
 
     void CheckEndOfGame(Winner winner = Winner::None);

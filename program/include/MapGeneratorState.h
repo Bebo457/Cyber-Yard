@@ -25,27 +25,27 @@ namespace ScotlandYard {
 
         private:
             struct Field {
-                std::string label;
-                std::string value;
+                std::string s_Label;
+                std::string s_Value;
                 SDL_Rect    rect{};
-                bool        focused = false;
-                bool        numeric = false;
-                int         maxLen = 16;
+                bool        b_Focused = false;
+                bool        b_Numeric = false;
+                int         i_MaxLength = 16;
             };
 
             struct Slider {
-                std::string label;
-                float value;
-                float minv, maxv;
-                float step;
+                std::string s_Label;
+                float f_Value;
+                float f_MinValue, f_MaxValue;
+                float f_Step;
                 SDL_Rect track{};
-                bool dragging = false;
-                int  knobW = 14;
+                bool b_Dragging = false;
+                int  i_KnobWidth = 14;
             };
 
-            std::vector<Field> m_Fields;
-            std::vector<Slider> m_Sliders;
-            int        m_Focused = -1;
+            std::vector<Field> m_vec_Fields;
+            std::vector<Slider> m_vec_Sliders;
+            int        m_i_FocusedFieldIndex = -1;
 
 
             // Buttons
@@ -53,24 +53,24 @@ namespace ScotlandYard {
             SDL_Rect   m_BtnBack{};
 
             // Info label
-            std::string m_InfoText;
+            std::string m_s_InfoText;
 
             // Optional preview
-            GLuint     m_PreviewTex = 0;
-            SDL_Rect   m_PreviewRect{};
-            bool       m_HasPreview = false;
+            GLuint     m_GLuint_PreviewTexture = 0;
+            SDL_Rect   m_rect_PreviewArea{};
+            bool       m_b_HasPreview = false;
 
         private:
-            void layoutUI(int W, int H, Core::Application* p_App);
-            void layoutSliders(int startY, int cardX, int cardW, int pad, int gap);
-            float xToVal(const Slider& s, int mx) const;
-            int   valToX(const Slider& s) const;
-            void focusField(int idx);
-            void blurAll();
-            void appendTextToFocused(const char* utf8);
-            void backspaceFocused();
-            void tryGenerate();                 // TODO: podpiac realny generator 
-            void makeDummyPreview(int W, int H);
+            void LayoutUI(int i_Width, int i_Height, Core::Application* p_App);
+            void LayoutSliders(int i_StartY, int i_CardX, int i_CardWidth, int i_Padding, int i_Gap);
+            float XPositionToValue(const Slider& slider, int i_MouseX) const;
+            int   ValueToXPosition(const Slider& slider) const;
+            void FocusField(int i_Index);
+            void BlurAllFields();
+            void AppendTextToFocusedField(const char* p_Utf8Text);
+            void BackspaceInFocusedField();
+            void TryGenerateMap(); // TODO: podpiac realny generator
+            void MakeDummyPreview(int i_Width, int i_Height);
         };
 
     }
