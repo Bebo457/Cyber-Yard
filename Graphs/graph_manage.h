@@ -7,17 +7,29 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <string>
+#include <cassert>
 //NOTE FOR NEXT DEVELOPER:
 //code is created based on read_connections.cpp and Graph.cpp AND london_map.csv, other .csv wasnt created during my work on that code, 
 //so it should be adjusted to work with them (talking about nodes_with_station.csv and polaczenia.csv, which i got from git pull second before commiting my code)
 
 struct Node; // forward declaration for Edge
 
+// Simple 2D vector for normalized geometry storage [0..1]
+struct Vec2
+{
+    float x;
+    float y;
+};
+
 class Edge
 {
 public:
     int type; // transport type
     Node* endpoints[2]; // endpoints[0] and endpoints[1]
+
+    // Geometry encoding for visualization/pathing on the board
+    enum class GeometryType { None = 0, Polyline = 1, Bezier = 2 };
 
     // Construct without auto-registering; ownership is managed by Node::connectTo
     Edge(int type_ = 0, Node* a = nullptr, Node* b = nullptr)
@@ -37,6 +49,32 @@ public:
         if (me == endpoints[0]) return endpoints[1];
         if (me == endpoints[1]) return endpoints[0];
         return nullptr;
+    }
+
+    // --- Geometry API ---
+private:
+    GeometryType m_geomType = GeometryType::None;
+    std::vector<Vec2> m_polylineNorm; // normalized [0..1] points; first/last ideally coincide with endpoints
+
+public:
+    GeometryType getGeometryType() const { return m_geomType; }
+    bool hasGeometry() const { return !m_polylineNorm.empty(); }
+
+    // Set normalized polyline; requires at least 2 points
+    // Does not auto-insert endpoints; caller can enforce if needed
+    bool setPolylineNormalized(const std::vector<Vec2>& pts)
+    {
+        if (pts.size() < 2) return false;
+        m_polylineNorm = pts;
+        m_geomType = GeometryType::Polyline;
+        return true;
+    }
+
+    const std::vector<Vec2>& getPolylineNormalized() const { return m_polylineNorm; }
+    void clearGeometry()
+    {
+        m_polylineNorm.clear();
+        m_geomType = GeometryType::None;
     }
 };
 
@@ -170,6 +208,25 @@ private:
         return 0; // unknown
     }
 
+    // Find an existing edge between nodes a and b with a given transport type
+    // Returns the Edge* if found, otherwise nullptr. Searches only from node 'a'.
+    Edge* findEdgeOneWay(int a, int b, int type)
+    {
+        if (!IsValidNode(a) || !IsValidNode(b)) return nullptr;
+        Node* na = &m_pNodes[a];
+        int sc = na->GetSlotCount();
+        for (int i = 0; i < sc; ++i) {
+            Edge* e = na->getEdge(i);
+            if (!e) continue;
+            if (e->type != type) continue;
+            Node* other = na->otherNode(i);
+            if (other && other->id == b) {
+                return e;
+            }
+        }
+        return nullptr;
+    }
+
 
 
 public:
@@ -257,6 +314,115 @@ public:
         }
 
         file.close();
+    }
+
+    // Attach a normalized polyline to an existing logical edge (by endpoints and type)
+    // Returns true if an existing edge was found and updated.
+    bool SetEdgePolylineNormalized(int src, int dst, int transportType, const std::vector<Vec2>& pointsNorm)
+    {
+        if (!IsValidNode(src) || !IsValidNode(dst) || transportType <= 0) return false;
+        // Try src->dst
+        Edge* e = findEdgeOneWay(src, dst, transportType);
+        if (!e) {
+            // Try the opposite direction if graph was built from the other endpoint
+            e = findEdgeOneWay(dst, src, transportType);
+        }
+        if (!e) return false;
+        return e->setPolylineNormalized(pointsNorm);
+    }
+
+    // CSV loader for edge geometry
+    // Format: source,dest,type,format,points
+    // - type: taxi|bus|metro|water (case-insensitive ok if file pre-trimmed)
+    // - format: polyline (others ignored for now)
+    // - points: x;y|x;y|... (normalized [0..1])
+    bool LoadEdgeGeometryCSV(const std::string& filename, bool b_Verbose = false)
+    {
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            std::cerr << "Error: Cannot open edge geometry file '" << filename << "'.\n";
+            return false;
+        }
+
+        auto parsePoints = [&](const std::string& s) -> std::vector<Vec2>
+        {
+            std::vector<Vec2> out;
+            std::stringstream ss(s);
+            std::string token;
+            while (std::getline(ss, token, '|')) {
+                std::string t = trim(token);
+                if (t.empty()) continue;
+                size_t sep = t.find_first_of(";:"); // accept ';' or ':' as separator
+                if (sep == std::string::npos) continue;
+                std::string xs = trim(t.substr(0, sep));
+                std::string ys = trim(t.substr(sep + 1));
+                try {
+                    float x = std::stof(xs);
+                    float y = std::stof(ys);
+                    out.push_back({x, y});
+                } catch (...) {
+                    // skip malformed point
+                }
+            }
+            return out;
+        };
+
+        std::string line;
+        // skip optional header
+        if (std::getline(file, line)) {
+            // Heuristic: if first line contains non-numeric tokens like 'source', treat as header and continue
+            std::string lower = line;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return std::tolower(c); });
+            if (lower.find("source") == std::string::npos || lower.find("dest") == std::string::npos) {
+                // It might have been a data line; process it below by resetting stream to start
+                file.clear();
+                file.seekg(0, std::ios::beg);
+            }
+        }
+
+        int applied = 0;
+        while (std::getline(file, line)) {
+            if (line.empty()) continue;
+            std::stringstream ss(line);
+            std::string srcStr, dstStr, typeStr, fmtStr, ptsStr;
+
+            std::getline(ss, srcStr, ',');
+            std::getline(ss, dstStr, ',');
+            std::getline(ss, typeStr, ',');
+            std::getline(ss, fmtStr, ',');
+            std::getline(ss, ptsStr, '\n');
+
+            try {
+                int src = std::stoi(trim(srcStr));
+                int dst = std::stoi(trim(dstStr));
+                std::string typeClean = trim(typeStr);
+                std::transform(typeClean.begin(), typeClean.end(), typeClean.begin(), [](unsigned char c){ return std::tolower(c); });
+                int t = transportTypeFromString(typeClean);
+                std::string fmt = trim(fmtStr);
+                if (t <= 0) continue;
+                // Only polyline supported for now
+                std::transform(fmt.begin(), fmt.end(), fmt.begin(), [](unsigned char c){ return std::tolower(c); });
+                if (fmt != "polyline") continue;
+
+                std::vector<Vec2> pts = parsePoints(ptsStr);
+                if (pts.size() < 2) continue;
+
+                if (SetEdgePolylineNormalized(src, dst, t, pts)) {
+                    applied++;
+                    if (b_Verbose) {
+                        std::cout << "Geometry applied: " << src << "->" << dst << " type " << t 
+                                  << " with " << pts.size() << " pts" << "\n";
+                    }
+                }
+            } catch (...) {
+                // skip malformed line
+            }
+        }
+
+        if (b_Verbose) {
+            std::cout << "Loaded edge geometries: " << applied << " entries applied from '" << filename << "'\n";
+        }
+        return applied > 0;
     }
 
     // Loads graphs data from files
