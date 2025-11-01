@@ -1798,6 +1798,16 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
                 else if (i_TransportType == Core::k_TransportTypeWater) mark = UI::TicketMark::Water;
                 UI::SetSlotMark(m_i_Round.load(), mark, true);
                 ref_Player.SetActive(false);
+
+                // After Mr. X moves, activate all detectives
+                for (auto& p : m_vec_Players) {
+                    if (p.GetType() == Core::PlayerType::Detective) {
+                        p.SetActive(true);
+                    }
+                }
+            } else {
+                // Detective moved - deactivate them
+                ref_Player.SetActive(false);
             }
         }
 
@@ -1982,8 +1992,10 @@ void GameState::InitializePlayerControllers() {
     m_vec_PlayerControllers.clear();
 
     for (size_t i = 0; i < m_vec_Players.size(); ++i) {
-        //all players human, change depending on settings
-        m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
+        //random moves AI,  0.8 second delay
+        m_vec_PlayerControllers.push_back(
+            std::make_unique<Core::AIPlayerController>(0.8f)
+        );
     }
 }
 
@@ -2004,12 +2016,15 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
         if (!p_Controller || !p_Controller->IsAIControlled()) continue;
 
         const auto& player = m_vec_Players[i];
+
+        auto* p_AIController = dynamic_cast<Core::AIPlayerController*>(p_Controller.get());
         if (player.IsActive() &&
-            !p_Controller->HasPendingMove() &&
+            p_AIController &&
+            !p_AIController->IsMoveRequested() &&
             i < m_vec_MovedThisRound.size() &&
             !m_vec_MovedThisRound[i]) {
 
-            //possible move list
+            // Get possible move list
             std::vector<Core::PossibleMove> vec_PossibleMoves = GetPossibleMovesForPlayer(i);
 
             if (!vec_PossibleMoves.empty()) {
@@ -2061,7 +2076,6 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
                         }
                     }
                 }
-
                 p_Controller->RequestMove(&player, vec_PossibleMoves, gameState, p_App);
             }
         }
@@ -2069,7 +2083,7 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
 }
 
 void GameState::ProcessAIPendingMoves() {
-    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    std::unique_lock<std::mutex> lock(m_mtx_Players);
 
     for (size_t i = 0; i < m_vec_PlayerControllers.size(); ++i) {
         auto& p_Controller = m_vec_PlayerControllers[i];
@@ -2079,10 +2093,14 @@ void GameState::ProcessAIPendingMoves() {
             Core::MoveDecision decision = p_Controller->GetMove();
 
             if (decision.b_HasDecision) {
-                //HandleArrowClick to make a move
-                m_mtx_Players.unlock();
+                // Select the AI player (required for HandleArrowClick), this function needs to be generalized
+                m_i_SelectedPlayerIndex = static_cast<int>(i);
+
+                lock.unlock();
+                UpdateArrowsForSelectedPlayer();
                 HandleArrowClick(static_cast<int>(i), decision.i_DestinationNode);
-                m_mtx_Players.lock();
+
+                lock.lock();
             }
         }
     }

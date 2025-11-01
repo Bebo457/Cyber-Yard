@@ -112,6 +112,7 @@ public:
     void Update(float f_DeltaTime) override;
     void Reset() override;
 
+    bool IsMoveRequested() const { return m_b_MoveRequested; }
     void SetMinTurnTime(float f_Seconds) { m_f_MinTurnTime = f_Seconds; }
     float GetMinTurnTime() const { return m_f_MinTurnTime; }
 
