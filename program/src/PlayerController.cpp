@@ -10,9 +10,11 @@ namespace Core {
 void HumanPlayerController::RequestMove(
     const Player* p_Player,
     const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState,
     Application* p_App
 ) {
-
+    // Human players use the GUI (color picking/arrow clicking system)
+    // No action needed here - moves are handled by GameState::HandleArrowClick
 }
 
 AIPlayerController::AIPlayerController(float f_MinTurnTime)
@@ -26,6 +28,7 @@ AIPlayerController::AIPlayerController(float f_MinTurnTime)
 void AIPlayerController::RequestMove(
     const Player* p_Player,
     const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState,
     Application* p_App
 ) {
     if (vec_PossibleMoves.empty()) {
@@ -33,8 +36,10 @@ void AIPlayerController::RequestMove(
         m_b_MoveRequested = false;
         return;
     }
-    m_MoveDecision = CalculateBestMove(p_Player, vec_PossibleMoves);
 
+    m_MoveDecision = CalculateBestMove(p_Player, vec_PossibleMoves, gameState);
+
+    // Reset timer
     m_f_ElapsedTime = 0.0f;
     m_b_MoveRequested = true;
 }
@@ -70,10 +75,9 @@ void AIPlayerController::Reset() {
 
 MoveDecision AIPlayerController::CalculateBestMove(
     const Player* p_Player,
-    const std::vector<PossibleMove>& vec_PossibleMoves
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState
 ) {
-    // algorythm here/ connection
-
     MoveDecision decision;
 
     if (vec_PossibleMoves.empty()) {
@@ -81,7 +85,8 @@ MoveDecision AIPlayerController::CalculateBestMove(
         return decision;
     }
 
-    //Random move selection, we can use this after the timer runs out?
+    }
+
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(0, static_cast<int>(vec_PossibleMoves.size()) - 1);

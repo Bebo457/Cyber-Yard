@@ -1,6 +1,7 @@
 #include "GameState.h"
 #include "Application.h"
 #include "StateManager.h"
+#include "GameConstants.h"
 #include <GL/glew.h>
 
 #include <random>
@@ -1976,42 +1977,92 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-// AI Player Controller Integration
+// Player Controller
 void GameState::InitializePlayerControllers() {
     m_vec_PlayerControllers.clear();
 
     for (size_t i = 0; i < m_vec_Players.size(); ++i) {
-        //all players are human-controlled
+        //all players human, change depending on settings
         m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
     }
 }
 
 void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
-    // turn timer here?
     for (auto& p_Controller : m_vec_PlayerControllers) {
         if (p_Controller && p_Controller->IsAIControlled()) {
             p_Controller->Update(f_DeltaTime);
         }
     }
 
+    // check if move
     std::lock_guard<std::mutex> lock(m_mtx_Players);
+
     for (size_t i = 0; i < m_vec_Players.size(); ++i) {
         if (i >= m_vec_PlayerControllers.size()) continue;
 
         auto& p_Controller = m_vec_PlayerControllers[i];
         if (!p_Controller || !p_Controller->IsAIControlled()) continue;
 
-        //request move
         const auto& player = m_vec_Players[i];
         if (player.IsActive() &&
             !p_Controller->HasPendingMove() &&
             i < m_vec_MovedThisRound.size() &&
             !m_vec_MovedThisRound[i]) {
 
-            //posible movbe list
+            //possible move list
             std::vector<Core::PossibleMove> vec_PossibleMoves = GetPossibleMovesForPlayer(i);
+
             if (!vec_PossibleMoves.empty()) {
-                p_Controller->RequestMove(&player, vec_PossibleMoves, p_App);
+                Core::GameStateData gameState;
+                gameState.i_CurrentPlayerIndex = static_cast<int>(i);
+                gameState.i_CurrentRound = m_i_Round.load();
+                gameState.b_IsRevealRound = Core::IsRevealRound(gameState.i_CurrentRound);
+                gameState.p_Graph = &m_graph;
+
+                int i_MrXIndex = -1;
+                int i_MrXPosition = -1;
+                for (size_t j = 0; j < m_vec_Players.size(); ++j) {
+                    const auto& p = m_vec_Players[j];
+                    Core::PlayerInfo info;
+
+                    info.i_Position = p.GetOccupiedNode();
+                    info.b_IsMisterX = (p.GetType() == Core::PlayerType::MisterX);
+                    info.i_TaxiTickets = p.GetTaxiTickets();
+                    info.i_BusTickets = p.GetBusTickets();
+                    info.i_MetroTickets = p.GetMetroTickets();
+                    info.i_WaterTickets = p.GetWaterTickets();
+                    info.i_BlackTickets = p.GetBlackTickets();
+                    info.i_DoubleMoveTickets = p.GetDoubleMoveTickets();
+
+                    if (info.b_IsMisterX) {
+                        i_MrXIndex = static_cast<int>(j);
+                        i_MrXPosition = info.i_Position;
+                        info.b_IsVisible = gameState.b_IsRevealRound || p.IsVisible();
+                    } else {
+                        info.b_IsVisible = true;
+                    }
+
+                    gameState.vec_AllPlayers.push_back(info);
+                }
+
+                // Mr X last known position
+                if (i_MrXIndex != -1) {
+                    if (gameState.b_IsRevealRound) {
+                        gameState.i_MrXLastKnownPosition = i_MrXPosition;
+                        gameState.i_MrXLastKnownRound = gameState.i_CurrentRound;
+                    } else {
+                        gameState.i_MrXLastKnownPosition = -1;
+                        gameState.i_MrXLastKnownRound = -1;
+                        for (int r = 0; r < Core::k_RevealRoundsCount; ++r) {
+                            if (Core::k_RevealRounds[r] < gameState.i_CurrentRound) {
+                                gameState.i_MrXLastKnownRound = Core::k_RevealRounds[r];
+                                gameState.i_MrXLastKnownPosition = -1;
+                            }
+                        }
+                    }
+                }
+
+                p_Controller->RequestMove(&player, vec_PossibleMoves, gameState, p_App);
             }
         }
     }

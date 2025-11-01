@@ -5,11 +5,40 @@
 #include <vector>
 #include <chrono>
 
+
+class GraphManager;
+
 namespace ScotlandYard {
 namespace Core {
 
 class Player;
 class Application;
+
+struct PlayerInfo {
+    int i_Position;
+    bool b_IsVisible;
+    bool b_IsMisterX;
+
+    int i_TaxiTickets;
+    int i_BusTickets;
+    int i_MetroTickets;
+    int i_WaterTickets;
+    int i_BlackTickets;
+    int i_DoubleMoveTickets;
+};
+
+struct GameStateData {
+    int i_CurrentPlayerIndex;
+    std::vector<PlayerInfo> vec_AllPlayers;
+
+    int i_MrXLastKnownPosition;
+    int i_MrXLastKnownRound;
+
+    int i_CurrentRound;
+    bool b_IsRevealRound;
+
+    const GraphManager* p_Graph;
+};
 
 struct PossibleMove {
     int i_DestinationNode;
@@ -30,6 +59,7 @@ public:
     virtual void RequestMove(
         const Player* p_Player,
         const std::vector<PossibleMove>& vec_PossibleMoves,
+        const GameStateData& gameState,
         Application* p_App
     ) = 0;
 
@@ -51,6 +81,7 @@ public:
     void RequestMove(
         const Player* p_Player,
         const std::vector<PossibleMove>& vec_PossibleMoves,
+        const GameStateData& gameState,
         Application* p_App
     ) override;
 
@@ -71,6 +102,7 @@ public:
     void RequestMove(
         const Player* p_Player,
         const std::vector<PossibleMove>& vec_PossibleMoves,
+        const GameStateData& gameState,
         Application* p_App
     ) override;
 
@@ -87,7 +119,8 @@ private:
     // TODO: Connect algorithms here
     MoveDecision CalculateBestMove(
         const Player* p_Player,
-        const std::vector<PossibleMove>& vec_PossibleMoves
+        const std::vector<PossibleMove>& vec_PossibleMoves,
+        const GameStateData& gameState
     );
 
     float m_f_MinTurnTime;
