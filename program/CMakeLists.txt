@@ -52,6 +52,8 @@ set(SOURCES
     src/PlayerController.cpp
     src/MapDataLoader.cpp
     src/MapGeneratorState.cpp
+    src/GameSettings.cpp
+    src/GameSetupState.cpp
 )
 
 set(HEADERS
@@ -69,6 +71,8 @@ set(HEADERS
     include/GameConstants.h
     include/MapDataLoader.h
     include/MapGeneratorState.h
+    include/GameSettings.h
+    include/GameSetupState.h
 )
 
 # EXE =================================================
