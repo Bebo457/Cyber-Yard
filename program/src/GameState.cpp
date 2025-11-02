@@ -2,6 +2,7 @@
 #include "Application.h"
 #include "StateManager.h"
 #include "GameConstants.h"
+#include "GameSettings.h"
 #include <GL/glew.h>
 
 #include <random>
@@ -2170,13 +2171,43 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
 
 // Player Controller
 void GameState::InitializePlayerControllers() {
+    using namespace ScotlandYard::Core;
+    const auto& S = Settings();
+
     m_vec_PlayerControllers.clear();
+    m_vec_PlayerControllers.reserve(m_vec_Players.size());
+
+    auto makeAI = [&](AIAlgorithm algo) {
+        auto u = std::make_unique<Core::AIPlayerController>(S.f_AITurnDelay);
+        u->SetAlgorithm(algo);
+        return u;
+        };
 
     for (size_t i = 0; i < m_vec_Players.size(); ++i) {
-        //random moves AI,  0.8 second delay
-        m_vec_PlayerControllers.push_back(
-            std::make_unique<Core::AIPlayerController>(0.8f)
-        );
+        const bool isMrX = (m_vec_Players[i].GetType() == Core::PlayerType::MisterX);
+        switch (S.e_Mode) {
+        case GameMode::PvP: {
+            m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
+            break;
+        }
+        case GameMode::PvBot: {
+            if (S.e_PvBotHuman == HumanSide::MrX) {
+                if (isMrX) m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
+                else       m_vec_PlayerControllers.push_back(makeAI(S.e_AIDetectives));
+            }
+            else { // Human = Detectives
+                if (isMrX) m_vec_PlayerControllers.push_back(makeAI(S.e_AIMisterX));
+                else       m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
+            }
+            break;
+        }
+
+        case GameMode::BotvBot: {
+            auto algo = isMrX ? S.e_AIMisterX : S.e_AIDetectives;
+            m_vec_PlayerControllers.push_back(makeAI(algo));
+            break;
+        }
+        }
     }
 }
 

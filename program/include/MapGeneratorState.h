@@ -1,5 +1,6 @@
 #pragma once
 #include "IGameState.h"
+#include "MapGenerator.h"
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <string>
@@ -60,6 +61,14 @@ namespace ScotlandYard {
             SDL_Rect   m_rect_PreviewArea{};
             bool       m_b_HasPreview = false;
 
+            // Generator data
+            std::vector<MapGen::Point> m_vec_GridPoints;
+            std::vector<MapGen::Point> m_vec_RiverPath;
+            std::vector<MapGen::Park> m_vec_Parks;
+            std::vector<MapGen::GraphNode> m_vec_GraphNodes;
+            MapGen::GenerationParams m_GenerationParams;
+            int m_i_CurrentCorner = 0;
+
         private:
             void LayoutUI(int i_Width, int i_Height, Core::Application* p_App);
             void LayoutSliders(int i_StartY, int i_CardX, int i_CardWidth, int i_Padding, int i_Gap);
@@ -69,8 +78,10 @@ namespace ScotlandYard {
             void BlurAllFields();
             void AppendTextToFocusedField(const char* p_Utf8Text);
             void BackspaceInFocusedField();
-            void TryGenerateMap(); // TODO: podpiac realny generator
+            void TryGenerateMap();
             void MakeDummyPreview(int i_Width, int i_Height);
+            void GenerateAndRenderMap();
+            void ExportMapToFile();
         };
 
     }

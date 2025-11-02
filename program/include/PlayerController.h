@@ -1,6 +1,8 @@
 #ifndef SCOTLANDYARD_CORE_PLAYERCONTROLLER_H
 #define SCOTLANDYARD_CORE_PLAYERCONTROLLER_H
 
+#include "GameSettings.h"
+
 #include <memory>
 #include <vector>
 #include <chrono>
@@ -111,6 +113,7 @@ public:
 
     void Update(float f_DeltaTime) override;
     void Reset() override;
+    void SetAlgorithm(Core::AIAlgorithm e) { m_e_Algorithm = e; }
 
     bool IsMoveRequested() const { return m_b_MoveRequested; }
     void SetMinTurnTime(float f_Seconds) { m_f_MinTurnTime = f_Seconds; }
@@ -127,6 +130,7 @@ private:
     float m_f_MinTurnTime;
     float m_f_ElapsedTime;
     bool m_b_MoveRequested;
+    Core::AIAlgorithm m_e_Algorithm = Core::AIAlgorithm::Random;
     MoveDecision m_MoveDecision;
 };
 
