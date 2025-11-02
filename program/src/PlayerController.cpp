@@ -1,6 +1,7 @@
 #include "PlayerController.h"
 #include "Player.h"
 #include "Application.h"
+#include "GameSettings.h"
 #include <iostream>
 #include <random>
 
@@ -85,19 +86,30 @@ MoveDecision AIPlayerController::CalculateBestMove(
         return decision;
     }
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, static_cast<int>(vec_PossibleMoves.size()) - 1);
-
-    int i_RandomIndex = dis(gen);
-    const PossibleMove& selectedMove = vec_PossibleMoves[i_RandomIndex];
-
-    decision.b_HasDecision = true;
-    decision.i_DestinationNode = selectedMove.i_DestinationNode;
-    decision.i_TransportType = selectedMove.i_TransportType;
-
+    switch (m_e_Algorithm) {
+        case Core::AIAlgorithm::Random: {
+            std::random_device rd; std::mt19937 gen(rd());
+            std::uniform_int_distribution<> dis(0, (int)vec_PossibleMoves.size() - 1);
+            const auto& sel = vec_PossibleMoves[dis(gen)];
+            decision = { true, sel.i_DestinationNode, sel.i_TransportType };
+            break;
+        }
+        case Core::AIAlgorithm::GreedyShortestPath:
+            // TODO implementing algorithm here, rn fallback to Random
+            [[fallthrough]];
+        case Core::AIAlgorithm::NeuralNet:
+            // TODO implementing algorithm here, rn fallback to Random
+            {
+                std::random_device rd; std::mt19937 gen(rd());
+                std::uniform_int_distribution<> dis(0, (int)vec_PossibleMoves.size() - 1);
+                const auto& sel = vec_PossibleMoves[dis(gen)];
+                decision = { true, sel.i_DestinationNode, sel.i_TransportType };
+            }
+            break;
+    }
     return decision;
 }
+
 
 } // namespace Core
 } // namespace ScotlandYard
