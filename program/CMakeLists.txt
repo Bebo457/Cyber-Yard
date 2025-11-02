@@ -51,6 +51,10 @@ set(SOURCES
     src/Player.cpp
     src/PlayerController.cpp
     src/MapDataLoader.cpp
+    src/MapGenerator.cpp
+    src/MapGeneratorPNG.cpp
+    src/MapGeneratorGraph.cpp
+    src/MapGeneratorJSON.cpp
     src/MapGeneratorState.cpp
     src/GameSettings.cpp
     src/GameSetupState.cpp
