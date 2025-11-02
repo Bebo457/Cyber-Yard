@@ -1,0 +1,48 @@
+# Edge geometry authoring guide
+#
+# Format per line:
+#   source,dest,type,format,points
+#
+# Where:
+# - type: taxi | bus | metro | water (case-insensitive)
+# - format:
+#     • polyline            -> simple broken line through your midpoints
+#     • chaikin[:i=..,a=..] -> rounded “corner-cutting”; does NOT pass through midpoints
+#         defaults: i=2, a=0.25    allowed: i in [1..5], a in (0.0, 0.5)
+# - points: midpoints in GRID units (same scale as nodes_original.csv), as
+#     x;y|x;y|...   (integers or decimals; spaces are OK)
+#
+# Endpoints (start/end) are inferred from the source/dest node positions:
+# - You may omit them (RECOMMENDED for straight segments → leave points empty).
+# - For shaped edges, you can include start/end explicitly (equal to node coords)
+#   just to orient yourself; insert midpoints between them to shape the curve.
+#
+# Notes:
+# - Comments start with '#'.
+# - Whitespace is trimmed. Normalized [0..1] input is not accepted (grid-only)
+#
+# Examples:
+#   22,23,taxi,polyline,                 # straight (no midpoints)
+#   22,23,taxi,polyline,10;3             # one bend via (10,3)
+#   41,52,bus,chaikin,17;3|16;3.5|15;4   # rounded corner (defaults i=2,a=0.25)
+#   41,52,bus,chaikin:i=3,a=0.35,17;3|16;3.5|15;4  # stronger rounding
+
+source,dest,type,format,points
+
+#Taxi
+22,23,taxi,polyline
+1, 9, taxi, polyline
+65,82,taxi,polyline
+124,130,taxi,Chaikin:i=3,a=0.18,6;9|7;10|8;10
+
+#Metro:
+1,46,metro,polyline
+13,89,metro,polyline,12;1|18;1|19;2|19;6
+
+
+#Buses
+34,63,bus,polyline,8;3|8.5;3.5|8.5;4.5|8;5
+65,82,bus,polyline
+
+#Water
+157,194,water,Chaikin,14;12|13;13|13;16|9;16|8;15

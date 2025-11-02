@@ -7,11 +7,13 @@
 #include <random>
 #include <algorithm>
 #include "../../Graphs/graph_manage.h"
+#include <unordered_map>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../external/stb_image.h"
 
 #include "HUDOverlay.h"
+#include <unordered_map>
 
 namespace ScotlandYard {
 namespace States {
@@ -423,6 +425,27 @@ void GameState::OnEnter() {
 
     glBindVertexArray(0);
 
+    // Quad for thick line segments (edge rendering)
+    {
+        float quadLine[] = {
+            0.0f, 0.0f, -0.5f,
+            1.0f, 0.0f, -0.5f,
+            1.0f, 0.0f,  0.5f,
+            0.0f, 0.0f, -0.5f,
+            1.0f, 0.0f,  0.5f,
+            0.0f, 0.0f,  0.5f
+        };
+        m_i_LineVertexCount = 6;
+        glGenVertexArrays(1, &m_VAO_Line);
+        glGenBuffers(1, &m_VBO_Line);
+        glBindVertexArray(m_VAO_Line);
+        glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Line);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadLine), quadLine, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
     UI::SetCameraToggleCallback([this]() {
         m_b_Camera3D = !m_b_Camera3D;
         });
@@ -527,6 +550,8 @@ void GameState::OnEnter() {
 
     // --- Console interaction in background thread: allow moving a player to a connected node ---
     m_graph.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
+    // Load optional edge geometry (normalized polylines)
+    m_graph.LoadEdgeGeometryCSV(Core::GetMapPath(Core::k_EdgeGeometryRelativePath), true);
 
     // Launch console input loop as a dedicated joinable thread so we don't occupy a ThreadPool worker
     m_b_ConsoleThreadRunning.store(true);
@@ -791,6 +816,14 @@ void GameState::OnExit() {
         glDeleteBuffers(1, &m_VBO_Hemisphere);
         m_VBO_Hemisphere = 0;
     }
+    if (m_VAO_Line) {
+        glDeleteVertexArrays(1, &m_VAO_Line);
+        m_VAO_Line = 0;
+    }
+    if (m_VBO_Line) {
+        glDeleteBuffers(1, &m_VBO_Line);
+        m_VBO_Line = 0;
+    }
     if (m_ShaderProgram_Plane) {
         glDeleteProgram(m_ShaderProgram_Plane);
         m_ShaderProgram_Plane = 0;
@@ -842,6 +875,14 @@ void GameState::OnExit() {
     if (m_VBO_FullscreenQuad) {
         glDeleteBuffers(1, &m_VBO_FullscreenQuad);
         m_VBO_FullscreenQuad = 0;
+    }
+    if (m_VAO_Line) {
+        glDeleteVertexArrays(1, &m_VAO_Line);
+        m_VAO_Line = 0;
+    }
+    if (m_VBO_Line) {
+        glDeleteBuffers(1, &m_VBO_Line);
+        m_VBO_Line = 0;
     }
     // Note: do not delete m_TextureID here -- textures are managed by Application's cache.
     // ResetToInitial() will set m_TextureID to 0 so LoadTextures() can re-acquire or reload it.
@@ -1003,6 +1044,7 @@ void GameState::Render(Core::Application* p_App) {
     }
 
     RenderBoard(p_App, mat4_View, mat4_Projection);
+    RenderEdges(mat4_View, mat4_Projection);
     RenderStations(mat4_View, mat4_Projection);
     RenderPlayers(mat4_View, mat4_Projection);
     RenderArrows(mat4_View, mat4_Projection);
@@ -1215,6 +1257,145 @@ void GameState::RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_P
 
         glBindVertexArray(0);
     }
+}
+
+void GameState::RenderEdges(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+    // Visualize edge geometry as thick 3D lines with transport colors
+    GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean b_DepthMaskWas = GL_TRUE;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &b_DepthMaskWas);
+    if (b_DepthWas) glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    glUseProgram(m_ShaderProgram_Circle);
+    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
+    GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
+
+    // Build lookup: stationID -> position (already scaled by m_f_GlobalScale)
+    std::unordered_map<int, glm::vec2> map_NodePos;
+    map_NodePos.reserve(m_vec_CircleStations.size());
+    for (const auto& sc : m_vec_CircleStations) map_NodePos[sc.stationID] = sc.position;
+
+    auto colorForType = [](int t) -> glm::vec3 {
+        if (t == Core::k_TransportTypeTaxi)  return { Core::k_EdgeColorTaxi[0],  Core::k_EdgeColorTaxi[1],  Core::k_EdgeColorTaxi[2] };
+        if (t == Core::k_TransportTypeBus)   return { Core::k_EdgeColorBus[0],   Core::k_EdgeColorBus[1],   Core::k_EdgeColorBus[2] };
+        if (t == Core::k_TransportTypeMetro) return { Core::k_EdgeColorMetro[0], Core::k_EdgeColorMetro[1], Core::k_EdgeColorMetro[2] };
+        if (t == Core::k_TransportTypeWater) return { Core::k_EdgeColorWater[0], Core::k_EdgeColorWater[1], Core::k_EdgeColorWater[2] };
+        return {1.0f, 1.0f, 1.0f};
+    };
+
+    auto thicknessForType = [](int t) -> float {
+        if (t == Core::k_TransportTypeTaxi)  return Core::k_EdgeThicknessTaxi;
+        if (t == Core::k_TransportTypeBus)   return Core::k_EdgeThicknessBus;
+        if (t == Core::k_TransportTypeMetro) return Core::k_EdgeThicknessMetro;
+        if (t == Core::k_TransportTypeWater) return Core::k_EdgeThicknessWater;
+        return Core::k_EdgeThicknessTaxi;
+    };
+
+    auto zOffsetForType = [&](int t) -> float {
+        // lower values render closer to the board; we lift a bit per type to enforce draw order
+        if (t == Core::k_TransportTypeMetro) return 0.006f * m_f_GlobalScale; // lowest
+        if (t == Core::k_TransportTypeBus)   return 0.010f * m_f_GlobalScale; // middle
+        if (t == Core::k_TransportTypeWater) return 0.012f * m_f_GlobalScale; // between bus and taxi
+        if (t == Core::k_TransportTypeTaxi)  return 0.014f * m_f_GlobalScale; // top
+        return 0.012f * m_f_GlobalScale;
+    };
+
+    struct DrawEdge { int i_Type; std::vector<glm::vec2> vec_Points; };
+    std::vector<DrawEdge> vec_EdgesMetro, vec_EdgesBus, vec_EdgesWater, vec_EdgesTaxi;
+
+    for (int i = 1; i <= Core::k_MaxNodes; ++i) {
+        Node* n = m_graph.GetNode(i);
+        if (!n) continue;
+        int sc = n->GetSlotCount();
+        for (int s = 0; s < sc; ++s) {
+            Edge* e = n->getEdge(s);
+            if (!e) continue;
+            if (e->getGeometryType() != Edge::GeometryType::Polyline) continue;
+            if (e->endpoints[0] != n) continue; // ensure draw once
+
+            int srcId = e->endpoints[0] ? e->endpoints[0]->id : -1;
+            int dstId = e->endpoints[1] ? e->endpoints[1]->id : -1;
+            const auto& ptsNorm = e->getPolylineNormalized();
+            if (ptsNorm.size() < 2) continue;
+
+            std::vector<glm::vec2> ptsWorld;
+            ptsWorld.reserve(ptsNorm.size());
+            for (const auto& p : ptsNorm) {
+                float gx = p.x * Core::k_MapGridMaxX;
+                float gy = p.y * Core::k_MapGridMaxY;
+                ptsWorld.emplace_back(gx * m_f_GlobalScale, gy * m_f_GlobalScale);
+            }
+            auto itSrc = map_NodePos.find(srcId);
+            if (itSrc != map_NodePos.end()) ptsWorld.front() = itSrc->second;
+            auto itDst = map_NodePos.find(dstId);
+            if (itDst != map_NodePos.end()) ptsWorld.back() = itDst->second;
+
+            DrawEdge s_DrawEdge{e->type, std::move(ptsWorld)};
+            if (e->type == Core::k_TransportTypeMetro) vec_EdgesMetro.push_back(std::move(s_DrawEdge));
+            else if (e->type == Core::k_TransportTypeBus) vec_EdgesBus.push_back(std::move(s_DrawEdge));
+            else if (e->type == Core::k_TransportTypeTaxi) vec_EdgesTaxi.push_back(std::move(s_DrawEdge));
+            else if (e->type == Core::k_TransportTypeWater) vec_EdgesWater.push_back(std::move(s_DrawEdge));
+        }
+    }
+
+    auto fn_DrawPolyline = [&](const DrawEdge& s_Edge, bool b_Dashed) {
+        glm::vec3 vec3_Color = colorForType(s_Edge.i_Type);
+        float f_BaseThickness = thicknessForType(s_Edge.i_Type);
+        float f_YOffset = zOffsetForType(s_Edge.i_Type);
+
+        for (size_t k = 1; k < s_Edge.vec_Points.size(); ++k) {
+            glm::vec2 vec2_P0 = s_Edge.vec_Points[k-1];
+            glm::vec2 vec2_P1 = s_Edge.vec_Points[k];
+            glm::vec2 vec2_D = vec2_P1 - vec2_P0;
+            float f_LenScaled = glm::length(vec2_D);
+            if (f_LenScaled <= 1e-6f) continue;
+            float f_AngleY = atan2(-vec2_D.y, vec2_D.x);
+            glm::vec2 vec2_Dir = vec2_D / f_LenScaled;
+
+            auto fn_DrawOne = [&](const glm::vec2& vec2_SegStart, float f_SegLenScaled) {
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(vec2_SegStart.x, f_YOffset, vec2_SegStart.y));
+                model = glm::rotate(model, f_AngleY, glm::vec3(0,1,0));
+                model = glm::scale(model, glm::vec3(f_SegLenScaled / m_f_GlobalScale, 1.0f, f_BaseThickness));
+                model = model * m_mat4_GlobalScaleMatrix;
+                glm::mat4 mvp = mat4_Projection * mat4_View * model;
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
+                glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
+                glBindVertexArray(m_VAO_Line);
+                glDrawArrays(GL_TRIANGLES, 0, m_i_LineVertexCount);
+            };
+
+            if (!b_Dashed) {
+                fn_DrawOne(vec2_P0, f_LenScaled);
+            } else {
+                float f_DashLenScaled = Core::k_MetroDashLen;
+                float f_GapLenScaled  = Core::k_MetroGapLen;
+                if (s_Edge.i_Type == Core::k_TransportTypeWater) {
+                    f_DashLenScaled = Core::k_WaterDashLen;
+                    f_GapLenScaled  = Core::k_WaterGapLen;
+                }
+                float f_T = 0.0f;
+                while (f_T < f_LenScaled - 1e-6f) {
+                    float f_SegLen = std::min(f_DashLenScaled, std::max(0.0f, f_LenScaled - f_T));
+                    glm::vec2 vec2_SegStart = vec2_P0 + vec2_Dir * f_T;
+                    fn_DrawOne(vec2_SegStart, f_SegLen);
+                    f_T += f_DashLenScaled + f_GapLenScaled;
+                }
+            }
+        }
+    };
+
+    for (const auto& e : vec_EdgesMetro) fn_DrawPolyline(e, true);
+    for (const auto& e : vec_EdgesBus)   fn_DrawPolyline(e, false);
+    for (const auto& e : vec_EdgesWater) fn_DrawPolyline(e, true);  // dashed water
+    for (const auto& e : vec_EdgesTaxi)  fn_DrawPolyline(e, false);
+
+    glBindVertexArray(0);
+
+    // Restore depth state
+    if (b_DepthWas) glEnable(GL_DEPTH_TEST);
+    glDepthMask(b_DepthMaskWas);
 }
 
 void GameState::RenderHUD(Core::Application* p_App) {

@@ -9,9 +9,7 @@
 #include <cctype>
 #include <string>
 #include <cassert>
-//NOTE FOR NEXT DEVELOPER:
-//code is created based on read_connections.cpp and Graph.cpp AND london_map.csv, other .csv wasnt created during my work on that code, 
-//so it should be adjusted to work with them (talking about nodes_with_station.csv and polaczenia.csv, which i got from git pull second before commiting my code)
+#include <cmath>
 
 struct Node; // forward declaration for Edge
 
@@ -316,8 +314,6 @@ public:
         file.close();
     }
 
-    // Attach a normalized polyline to an existing logical edge (by endpoints and type)
-    // Returns true if an existing edge was found and updated.
     bool SetEdgePolylineNormalized(int src, int dst, int transportType, const std::vector<Vec2>& pointsNorm)
     {
         if (!IsValidNode(src) || !IsValidNode(dst) || transportType <= 0) return false;
@@ -331,11 +327,7 @@ public:
         return e->setPolylineNormalized(pointsNorm);
     }
 
-    // CSV loader for edge geometry
-    // Format: source,dest,type,format,points
-    // - type: taxi|bus|metro|water (case-insensitive ok if file pre-trimmed)
-    // - format: polyline (others ignored for now)
-    // - points: x;y|x;y|... (normalized [0..1])
+
     bool LoadEdgeGeometryCSV(const std::string& filename, bool b_Verbose = false)
     {
         std::ifstream file(filename);
@@ -400,18 +392,150 @@ public:
                 int t = transportTypeFromString(typeClean);
                 std::string fmt = trim(fmtStr);
                 if (t <= 0) continue;
-                // Only polyline supported for now
                 std::transform(fmt.begin(), fmt.end(), fmt.begin(), [](unsigned char c){ return std::tolower(c); });
-                if (fmt != "polyline") continue;
+                bool b_DoChaikin = false;
+                int iterationsParam = 2;    // defaults
+                float alphaParam = 0.25f;    // defaults
+                if (fmt == "polyline") {
+                    b_DoChaikin = false;
+                } else if (fmt.rfind("chaikin", 0) == 0) {
+                    b_DoChaikin = true;
+                    // Optional parameters after ':' e.g. chaikin:i=3,a=0.3
+                    size_t colon = fmt.find(':');
+                    if (colon != std::string::npos && colon + 1 < fmt.size()) {
+                        std::string params = fmt.substr(colon + 1);
+                        // split by ',' or ';'
+                        std::stringstream ssParams(params);
+                        std::string kv;
+                        while (std::getline(ssParams, kv, ',')) {
+                            if (kv.find('=') == std::string::npos) {
+                                std::stringstream ssAlt(params);
+                                while (std::getline(ssAlt, kv, ';')) {
+                                    size_t eq = kv.find('=');
+                                    if (eq == std::string::npos) continue;
+                                    std::string key = trim(kv.substr(0, eq));
+                                    std::string val = trim(kv.substr(eq + 1));
+                                    if (key == "i" || key == "iter" || key == "iterations") {
+                                        try {
+                                            iterationsParam = std::stoi(val);
+                                        } catch (...) {}
+                                    } else if (key == "a" || key == "alpha") {
+                                        try {
+                                            alphaParam = std::stof(val);
+                                        } catch (...) {}
+                                    }
+                                }
+                                kv.clear();
+                                break;
+                            } else {
+                                size_t eq = kv.find('=');
+                                std::string key = trim(kv.substr(0, eq));
+                                std::string val = trim(kv.substr(eq + 1));
+                                if (key == "i" || key == "iter" || key == "iterations") {
+                                    try {
+                                        iterationsParam = std::stoi(val);
+                                    } catch (...) {}
+                                } else if (key == "a" || key == "alpha") {
+                                    try {
+                                        alphaParam = std::stof(val);
+                                    } catch (...) {}
+                                }
+                            }
+                        }
+                    }
+                    if (iterationsParam < 1) iterationsParam = 1;
+                    if (iterationsParam > 5) iterationsParam = 5;
+                    if (!(alphaParam > 0.0f && alphaParam < 0.5f)) alphaParam = 0.25f;
+                } else {
+                    continue; // unsupported format
+                }
 
-                std::vector<Vec2> pts = parsePoints(ptsStr);
-                if (pts.size() < 2) continue;
+                std::vector<Vec2> ptsMid = parsePoints(ptsStr);
 
-                if (SetEdgePolylineNormalized(src, dst, t, pts)) {
+                float gridMaxX = static_cast<float>(getBoundsX(m_nodeCount));
+                float gridMaxY = static_cast<float>(getBoundsY(m_nodeCount));
+                Vec2 startNorm{0.0f, 0.0f}, endNorm{0.0f, 0.0f};
+                if (IsValidNode(src)) {
+                    startNorm.x = (gridMaxX > 0.0f) ? (m_pNodes[src].x / gridMaxX) : 0.0f;
+                    startNorm.y = (gridMaxY > 0.0f) ? (m_pNodes[src].y / gridMaxY) : 0.0f;
+                }
+                if (IsValidNode(dst)) {
+                    endNorm.x = (gridMaxX > 0.0f) ? (m_pNodes[dst].x / gridMaxX) : 0.0f;
+                    endNorm.y = (gridMaxY > 0.0f) ? (m_pNodes[dst].y / gridMaxY) : 0.0f;
+                }
+
+                auto approxEq = [](const Vec2& a, const Vec2& b, float eps = 1e-4f){
+                    return std::fabs(a.x - b.x) <= eps && std::fabs(a.y - b.y) <= eps;
+                };
+
+                bool b_AllWithinUnit = !ptsMid.empty();
+                for (const auto& p : ptsMid) {
+                    if (!(p.x >= 0.0f && p.x <= 1.0f && p.y >= 0.0f && p.y <= 1.0f)) { b_AllWithinUnit = false; break; }
+                }
+                if (b_AllWithinUnit) {
+                    if (b_Verbose) {
+                        std::cerr << "Edge geometry for " << src << "->" << dst << " appears to be normalized in [0..1]. "
+                                  << "Only grid units are allowed. Entry skipped.\n";
+                    }
+                    continue;
+                }
+
+                std::vector<Vec2> ptsMidNorm;
+                ptsMidNorm.reserve(ptsMid.size());
+                for (const auto& p : ptsMid) {
+                    Vec2 q;
+                    q.x = (gridMaxX > 0.0f) ? (p.x / gridMaxX) : 0.0f;
+                    q.y = (gridMaxY > 0.0f) ? (p.y / gridMaxY) : 0.0f;
+                    ptsMidNorm.push_back(q);
+                }
+
+                std::vector<Vec2> ptsBase;
+                ptsBase.reserve(ptsMid.size() + 2);
+                ptsBase.push_back(startNorm);
+                if (!ptsMidNorm.empty()) {
+                    size_t beginIdx = 0;
+                    if (approxEq(ptsMidNorm.front(), startNorm)) beginIdx = 1;
+                    size_t endCount = ptsMidNorm.size();
+                    if (endCount > beginIdx && approxEq(ptsMidNorm.back(), endNorm)) {
+                        endCount -= 1; 
+                    }
+                    for (size_t i = beginIdx; i < endCount; ++i) ptsBase.push_back(ptsMidNorm[i]);
+                }
+                ptsBase.push_back(endNorm);
+
+                // Optional smoothing via Chaikin corner-cutting (cuts corners, does not pass through interior points)
+                auto chaikinSmooth = [&](const std::vector<Vec2>& inPts, int iterations, float alpha) -> std::vector<Vec2> {
+                    if (inPts.size() < 2) return inPts;
+                    std::vector<Vec2> cur = inPts;
+                    for (int it = 0; it < iterations; ++it) {
+                        if (cur.size() < 2) break;
+                        std::vector<Vec2> nxt;
+                        nxt.reserve(cur.size() * 2);
+                        nxt.push_back(cur.front());
+                        for (size_t i = 0; i + 1 < cur.size(); ++i) {
+                            const Vec2& A = cur[i];
+                            const Vec2& B = cur[i+1];
+                            Vec2 Q{ (1.0f - alpha) * A.x + alpha * B.x, (1.0f - alpha) * A.y + alpha * B.y };
+                            Vec2 R{ alpha * A.x + (1.0f - alpha) * B.x, alpha * A.y + (1.0f - alpha) * B.y };
+                            nxt.push_back(Q);
+                            nxt.push_back(R);
+                        }
+                        nxt.push_back(cur.back());
+                        cur.swap(nxt);
+                    }
+                    return cur;
+                };
+
+                std::vector<Vec2> ptsFinal = ptsBase;
+                if (b_DoChaikin) {
+                    ptsFinal = chaikinSmooth(ptsBase, iterationsParam, alphaParam);
+                }
+
+                if (SetEdgePolylineNormalized(src, dst, t, ptsFinal)) {
                     applied++;
                     if (b_Verbose) {
                         std::cout << "Geometry applied: " << src << "->" << dst << " type " << t 
-                                  << " with " << pts.size() << " pts" << "\n";
+                                  << " with " << ptsFinal.size() << " pts" << "\n";
                     }
                 }
             } catch (...) {
@@ -435,7 +559,8 @@ public:
 
     int getBoundsX(int nNodes){
         int maxX = 1;
-        for (int i = 0; i < nNodes; ++i ){
+        // IDs start at 1; iterate inclusively to cover all nodes
+        for (int i = 1; i <= nNodes; ++i ){
             if (m_pNodes[i].x > maxX) maxX = m_pNodes[i].x;
         }
         return maxX;
@@ -443,7 +568,8 @@ public:
 
     int getBoundsY(int nNodes){
         int maxY = 1;
-        for (int i = 0; i < nNodes; ++i ){
+        // IDs start at 1; iterate inclusively to cover all nodes
+        for (int i = 1; i <= nNodes; ++i ){
             if (m_pNodes[i].y > maxY) maxY = m_pNodes[i].y;
         }
         return maxY;

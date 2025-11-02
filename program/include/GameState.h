@@ -183,6 +183,9 @@ private:
     GLuint m_ShaderProgram_Dilation;
     GLuint m_VAO_FullscreenQuad;
     GLuint m_VBO_FullscreenQuad;
+    GLuint m_VAO_Line = 0;
+    GLuint m_VBO_Line = 0;
+    int m_i_LineVertexCount = 0;
 
     int m_i_SelectedPlayerIndex;
     std::vector<DirectionArrow> m_vec_CurrentArrows;
@@ -213,6 +216,7 @@ private:
     void RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+    void RenderEdges(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderHUD(Core::Application* p_App);
     void RenderDebugOverlay(Core::Application* p_App);
     void RenderPicking(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
