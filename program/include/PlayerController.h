@@ -22,7 +22,6 @@ struct PlayerInfo {
     int i_TaxiTickets;
     int i_BusTickets;
     int i_MetroTickets;
-    int i_WaterTickets;
     int i_BlackTickets;
     int i_DoubleMoveTickets;
 };
@@ -36,6 +35,7 @@ struct GameStateData {
 
     int i_CurrentRound;
     bool b_IsRevealRound;
+    bool b_IsNextRevealRound;
 
     const GraphManager* p_Graph;
 };

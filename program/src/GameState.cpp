@@ -2032,6 +2032,7 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
                 gameState.i_CurrentPlayerIndex = static_cast<int>(i);
                 gameState.i_CurrentRound = m_i_Round.load();
                 gameState.b_IsRevealRound = Core::IsRevealRound(gameState.i_CurrentRound);
+                gameState.b_IsNextRevealRound = Core::IsRevealRound(gameState.i_CurrentRound + 1);
                 gameState.p_Graph = &m_graph;
 
                 int i_MrXIndex = -1;
@@ -2045,7 +2046,6 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
                     info.i_TaxiTickets = p.GetTaxiTickets();
                     info.i_BusTickets = p.GetBusTickets();
                     info.i_MetroTickets = p.GetMetroTickets();
-                    info.i_WaterTickets = p.GetWaterTickets();
                     info.i_BlackTickets = p.GetBlackTickets();
                     info.i_DoubleMoveTickets = p.GetDoubleMoveTickets();
 
