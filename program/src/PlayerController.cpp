@@ -4,6 +4,7 @@
 #include "GameSettings.h"
 #include <iostream>
 #include <random>
+#include "../../Graphs/graph_manage.h"
 
 namespace ScotlandYard {
 namespace Core {

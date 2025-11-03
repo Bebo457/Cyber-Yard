@@ -583,6 +583,14 @@ public:
         return &m_pNodes[id];
     }
 
+    // const overload so callers with a const GraphManager can access node info wstawione przez AI
+    const Node* GetNode(int id) const {
+        if (id < 1 || id > m_nodeCount) {
+            return nullptr;
+        }
+        return &m_pNodes[id];
+    }
+
     //get all node's neighborth (regardless of transport type)
     std::vector<Node*> GetNeighbors(int nodeId) {
         Node* node = GetNode(nodeId);
@@ -607,9 +615,9 @@ public:
     struct Connection { int i_NodeId; int i_TransportType; };
 
     // Return all connections from nodeId with transport types and destination ids
-    std::vector<Connection> GetConnections(int nodeId) {
+    std::vector<Connection> GetConnections(int nodeId) const { // dodane przez nas AI const
         std::vector<Connection> out;
-        Node* node = GetNode(nodeId);
+        const Node* node = GetNode(nodeId); //dodane przez nas AI const
         if (!node) return out;
         int sc = node->GetSlotCount();
         for (int i = 0; i < sc; ++i) {
