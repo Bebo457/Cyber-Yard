@@ -45,9 +45,12 @@ private:
 
     // Game round state - protected by m_mtx_GameState for thread safety
     std::atomic<int> m_i_Round{1};
+    std::atomic<int> m_i_MrXTurn{0};
     std::vector<bool> m_vec_MovedThisRound;
     std::atomic<int> m_i_PlayersRemainingThisRound{0};
     std::mutex m_mtx_GameState;
+
+    std::atomic_bool m_b_MrXSecondMovePending{false};
 
     GLuint m_VAO_Plane;
     GLuint m_VBO_Plane;
@@ -226,6 +229,16 @@ private:
 
     bool CheckCapture() const;
     void ResetToInitial();
+
+    // Helper: builds a compact suffix with remaining tickets for all players
+    // Format example:
+    //  " | Tickets: MrX(taxi:10, bus:8, metro:4, water:0, black:5, 2x:2) D0(taxi:10, bus:8, metro:4, water:0) D1(...)"
+    std::string BuildTicketsLogSuffix();
+
+    // Helper: builds a compact suffix with remaining tickets for a specific player
+    // Format example for detective: " | Tickets: taxi:10, bus:8, metro:4, water:0"
+    // For MrX adds extras: ", black:5, 2x:2"
+    std::string BuildPlayerTicketsSuffix(int i_PlayerIndex);
 };
 
 } // namespace States
