@@ -33,9 +33,9 @@ import matplotlib.pyplot as plt
 from mini_gra import Game, MrXAI, PoliceAI
 
 # Default algorithm pools. These can be overridden from the CLI if needed.
-DEFAULT_MRX_ALGOS = ["random", "decoy", "dfs", "monte_carlo"]
+DEFAULT_MRX_ALGOS = ["random", "decoy", "dfs", "monte_carlo", "distance_maximalization"]
 DEFAULT_POLICE_ALGOS = ["random", "astar_greedy", "monte_carlo", "minimax", "front_encirclement"]
-DEFAULT_GAMES_PER_PAIR = 5
+DEFAULT_GAMES_PER_PAIR = 100
 DEFAULT_MAX_TURNS = 22
 DEFAULT_WORKERS = max(os.cpu_count() or 1, 1)
 

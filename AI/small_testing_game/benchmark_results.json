@@ -1,14 +1,15 @@
 {
   "config": {
-    "games_per_pair": 5,
+    "games_per_pair": 100,
     "max_turns": 22,
     "seed": 1337,
-    "workers": 22,
+    "workers": 4,
     "mr_x_algorithms": [
       "random",
       "decoy",
       "dfs",
-      "monte_carlo"
+      "monte_carlo",
+      "distance_maximalization"
     ],
     "police_algorithms": [
       "random",
@@ -19,404 +20,496 @@
     ]
   },
   "run_stats": {
-    "total_games": 100,
-    "elapsed_seconds": 106.87294363975525
+    "total_games": 2500,
+    "elapsed_seconds": 22374.173518896103
   },
   "pairings": [
     {
       "mr_x_algo": "decoy",
       "police_algo": "astar_greedy",
-      "games": 5,
-      "police_wins": 4,
-      "mr_x_wins": 1,
+      "games": 100,
+      "police_wins": 47,
+      "mr_x_wins": 53,
       "unknown": 0,
-      "average_turns": 15.4,
+      "average_turns": 18.5,
       "reasons": {
-        "capture": 4,
-        "timeout": 1
+        "capture": 47,
+        "timeout": 53
       }
     },
     {
       "mr_x_algo": "decoy",
       "police_algo": "front_encirclement",
-      "games": 5,
-      "police_wins": 4,
-      "mr_x_wins": 1,
+      "games": 100,
+      "police_wins": 66,
+      "mr_x_wins": 34,
       "unknown": 0,
-      "average_turns": 11.2,
+      "average_turns": 15.89,
       "reasons": {
-        "capture": 4,
-        "timeout": 1
+        "capture": 66,
+        "timeout": 34
       }
     },
     {
       "mr_x_algo": "decoy",
       "police_algo": "minimax",
-      "games": 5,
-      "police_wins": 0,
-      "mr_x_wins": 5,
+      "games": 100,
+      "police_wins": 56,
+      "mr_x_wins": 44,
       "unknown": 0,
-      "average_turns": 23.0,
+      "average_turns": 17.42,
       "reasons": {
-        "timeout": 5
+        "capture": 56,
+        "timeout": 44
       }
     },
     {
       "mr_x_algo": "decoy",
       "police_algo": "monte_carlo",
-      "games": 5,
-      "police_wins": 4,
-      "mr_x_wins": 1,
+      "games": 100,
+      "police_wins": 65,
+      "mr_x_wins": 35,
       "unknown": 0,
-      "average_turns": 15.8,
+      "average_turns": 16.84,
       "reasons": {
-        "capture": 4,
-        "timeout": 1
+        "capture": 65,
+        "timeout": 35
       }
     },
     {
       "mr_x_algo": "decoy",
       "police_algo": "random",
-      "games": 5,
-      "police_wins": 0,
-      "mr_x_wins": 5,
-      "unknown": 0,
-      "average_turns": 23.0,
-      "reasons": {
-        "timeout": 5
-      }
-    },
-    {
-      "mr_x_algo": "dfs",
-      "police_algo": "astar_greedy",
-      "games": 5,
-      "police_wins": 3,
-      "mr_x_wins": 2,
-      "unknown": 0,
-      "average_turns": 20.0,
-      "reasons": {
-        "capture": 3,
-        "timeout": 2
-      }
-    },
-    {
-      "mr_x_algo": "dfs",
-      "police_algo": "front_encirclement",
-      "games": 5,
-      "police_wins": 4,
-      "mr_x_wins": 1,
-      "unknown": 0,
-      "average_turns": 15.8,
-      "reasons": {
-        "capture": 4,
-        "timeout": 1
-      }
-    },
-    {
-      "mr_x_algo": "dfs",
-      "police_algo": "minimax",
-      "games": 5,
-      "police_wins": 0,
-      "mr_x_wins": 5,
-      "unknown": 0,
-      "average_turns": 23.0,
-      "reasons": {
-        "timeout": 5
-      }
-    },
-    {
-      "mr_x_algo": "dfs",
-      "police_algo": "monte_carlo",
-      "games": 5,
-      "police_wins": 3,
-      "mr_x_wins": 2,
-      "unknown": 0,
-      "average_turns": 15.8,
-      "reasons": {
-        "capture": 3,
-        "timeout": 2
-      }
-    },
-    {
-      "mr_x_algo": "dfs",
-      "police_algo": "random",
-      "games": 5,
-      "police_wins": 0,
-      "mr_x_wins": 5,
-      "unknown": 0,
-      "average_turns": 23.0,
-      "reasons": {
-        "timeout": 5
-      }
-    },
-    {
-      "mr_x_algo": "monte_carlo",
-      "police_algo": "astar_greedy",
-      "games": 5,
-      "police_wins": 0,
-      "mr_x_wins": 5,
-      "unknown": 0,
-      "average_turns": 23.0,
-      "reasons": {
-        "timeout": 5
-      }
-    },
-    {
-      "mr_x_algo": "monte_carlo",
-      "police_algo": "front_encirclement",
-      "games": 5,
-      "police_wins": 3,
-      "mr_x_wins": 2,
-      "unknown": 0,
-      "average_turns": 16.2,
-      "reasons": {
-        "capture": 3,
-        "timeout": 2
-      }
-    },
-    {
-      "mr_x_algo": "monte_carlo",
-      "police_algo": "minimax",
-      "games": 5,
-      "police_wins": 0,
-      "mr_x_wins": 5,
-      "unknown": 0,
-      "average_turns": 23.0,
-      "reasons": {
-        "timeout": 5
-      }
-    },
-    {
-      "mr_x_algo": "monte_carlo",
-      "police_algo": "monte_carlo",
-      "games": 5,
+      "games": 100,
       "police_wins": 2,
-      "mr_x_wins": 3,
+      "mr_x_wins": 98,
       "unknown": 0,
-      "average_turns": 18.6,
+      "average_turns": 22.79,
       "reasons": {
-        "timeout": 3,
+        "timeout": 98,
         "capture": 2
       }
     },
     {
+      "mr_x_algo": "dfs",
+      "police_algo": "astar_greedy",
+      "games": 100,
+      "police_wins": 42,
+      "mr_x_wins": 58,
+      "unknown": 0,
+      "average_turns": 18.9,
+      "reasons": {
+        "capture": 42,
+        "timeout": 58
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "front_encirclement",
+      "games": 100,
+      "police_wins": 48,
+      "mr_x_wins": 52,
+      "unknown": 0,
+      "average_turns": 17.73,
+      "reasons": {
+        "capture": 48,
+        "timeout": 52
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "minimax",
+      "games": 100,
+      "police_wins": 38,
+      "mr_x_wins": 62,
+      "unknown": 0,
+      "average_turns": 18.4,
+      "reasons": {
+        "capture": 38,
+        "timeout": 62
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "monte_carlo",
+      "games": 100,
+      "police_wins": 60,
+      "mr_x_wins": 40,
+      "unknown": 0,
+      "average_turns": 15.83,
+      "reasons": {
+        "capture": 60,
+        "timeout": 40
+      }
+    },
+    {
+      "mr_x_algo": "dfs",
+      "police_algo": "random",
+      "games": 100,
+      "police_wins": 1,
+      "mr_x_wins": 99,
+      "unknown": 0,
+      "average_turns": 22.79,
+      "reasons": {
+        "timeout": 99,
+        "capture": 1
+      }
+    },
+    {
+      "mr_x_algo": "distance_maximalization",
+      "police_algo": "astar_greedy",
+      "games": 100,
+      "police_wins": 100,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 7.27,
+      "reasons": {
+        "capture": 100
+      }
+    },
+    {
+      "mr_x_algo": "distance_maximalization",
+      "police_algo": "front_encirclement",
+      "games": 100,
+      "police_wins": 100,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 6.48,
+      "reasons": {
+        "capture": 100
+      }
+    },
+    {
+      "mr_x_algo": "distance_maximalization",
+      "police_algo": "minimax",
+      "games": 100,
+      "police_wins": 99,
+      "mr_x_wins": 1,
+      "unknown": 0,
+      "average_turns": 7.22,
+      "reasons": {
+        "capture": 99,
+        "timeout": 1
+      }
+    },
+    {
+      "mr_x_algo": "distance_maximalization",
+      "police_algo": "monte_carlo",
+      "games": 100,
+      "police_wins": 100,
+      "mr_x_wins": 0,
+      "unknown": 0,
+      "average_turns": 6.69,
+      "reasons": {
+        "capture": 100
+      }
+    },
+    {
+      "mr_x_algo": "distance_maximalization",
+      "police_algo": "random",
+      "games": 100,
+      "police_wins": 51,
+      "mr_x_wins": 49,
+      "unknown": 0,
+      "average_turns": 16.37,
+      "reasons": {
+        "timeout": 49,
+        "capture": 51
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "astar_greedy",
+      "games": 100,
+      "police_wins": 14,
+      "mr_x_wins": 86,
+      "unknown": 0,
+      "average_turns": 21.77,
+      "reasons": {
+        "timeout": 86,
+        "capture": 14
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "front_encirclement",
+      "games": 100,
+      "police_wins": 30,
+      "mr_x_wins": 70,
+      "unknown": 0,
+      "average_turns": 19.94,
+      "reasons": {
+        "capture": 30,
+        "timeout": 70
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "minimax",
+      "games": 100,
+      "police_wins": 14,
+      "mr_x_wins": 86,
+      "unknown": 0,
+      "average_turns": 22.19,
+      "reasons": {
+        "timeout": 86,
+        "capture": 14
+      }
+    },
+    {
+      "mr_x_algo": "monte_carlo",
+      "police_algo": "monte_carlo",
+      "games": 100,
+      "police_wins": 34,
+      "mr_x_wins": 66,
+      "unknown": 0,
+      "average_turns": 19.6,
+      "reasons": {
+        "capture": 34,
+        "timeout": 66
+      }
+    },
+    {
       "mr_x_algo": "monte_carlo",
       "police_algo": "random",
-      "games": 5,
+      "games": 100,
       "police_wins": 0,
-      "mr_x_wins": 5,
+      "mr_x_wins": 100,
       "unknown": 0,
       "average_turns": 23.0,
       "reasons": {
-        "timeout": 5
+        "timeout": 100
       }
     },
     {
       "mr_x_algo": "random",
       "police_algo": "astar_greedy",
-      "games": 5,
-      "police_wins": 5,
-      "mr_x_wins": 0,
+      "games": 100,
+      "police_wins": 99,
+      "mr_x_wins": 1,
       "unknown": 0,
-      "average_turns": 8.0,
+      "average_turns": 7.12,
       "reasons": {
-        "capture": 5
+        "capture": 99,
+        "timeout": 1
       }
     },
     {
       "mr_x_algo": "random",
       "police_algo": "front_encirclement",
-      "games": 5,
-      "police_wins": 5,
+      "games": 100,
+      "police_wins": 100,
       "mr_x_wins": 0,
       "unknown": 0,
-      "average_turns": 4.8,
+      "average_turns": 5.78,
       "reasons": {
-        "capture": 5
+        "capture": 100
       }
     },
     {
       "mr_x_algo": "random",
       "police_algo": "minimax",
-      "games": 5,
-      "police_wins": 2,
-      "mr_x_wins": 3,
+      "games": 100,
+      "police_wins": 99,
+      "mr_x_wins": 1,
       "unknown": 0,
-      "average_turns": 14.8,
+      "average_turns": 7.44,
       "reasons": {
-        "timeout": 3,
-        "capture": 2
+        "capture": 99,
+        "timeout": 1
       }
     },
     {
       "mr_x_algo": "random",
       "police_algo": "monte_carlo",
-      "games": 5,
-      "police_wins": 5,
+      "games": 100,
+      "police_wins": 100,
       "mr_x_wins": 0,
       "unknown": 0,
-      "average_turns": 9.8,
+      "average_turns": 6.05,
       "reasons": {
-        "capture": 5
+        "capture": 100
       }
     },
     {
       "mr_x_algo": "random",
       "police_algo": "random",
-      "games": 5,
-      "police_wins": 2,
-      "mr_x_wins": 3,
+      "games": 100,
+      "police_wins": 48,
+      "mr_x_wins": 52,
       "unknown": 0,
-      "average_turns": 20.8,
+      "average_turns": 15.83,
       "reasons": {
-        "capture": 2,
-        "timeout": 3
+        "capture": 48,
+        "timeout": 52
       }
     }
   ],
   "police_ranking": [
     {
-      "algorithm": "front_encirclement",
-      "games": 20,
-      "wins": 16,
-      "win_rate": 0.8,
-      "average_turns": 12.0,
-      "capture_rate": 0.8,
-      "unknown_rate": 0.0
-    },
-    {
       "algorithm": "monte_carlo",
-      "games": 20,
-      "wins": 14,
-      "win_rate": 0.7,
-      "average_turns": 15.0,
-      "capture_rate": 0.7,
+      "games": 500,
+      "wins": 359,
+      "win_rate": 0.718,
+      "average_turns": 13.002,
+      "capture_rate": 0.718,
       "unknown_rate": 0.0
     },
     {
-      "algorithm": "astar_greedy",
-      "games": 20,
-      "wins": 12,
-      "win_rate": 0.6,
-      "average_turns": 16.6,
-      "capture_rate": 0.6,
-      "unknown_rate": 0.0
-    },
-    {
-      "algorithm": "random",
-      "games": 20,
-      "wins": 2,
-      "win_rate": 0.1,
-      "average_turns": 22.45,
-      "capture_rate": 0.1,
+      "algorithm": "front_encirclement",
+      "games": 500,
+      "wins": 344,
+      "win_rate": 0.688,
+      "average_turns": 13.164,
+      "capture_rate": 0.688,
       "unknown_rate": 0.0
     },
     {
       "algorithm": "minimax",
-      "games": 20,
-      "wins": 2,
-      "win_rate": 0.1,
-      "average_turns": 20.95,
-      "capture_rate": 0.1,
+      "games": 500,
+      "wins": 306,
+      "win_rate": 0.612,
+      "average_turns": 14.534,
+      "capture_rate": 0.612,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "astar_greedy",
+      "games": 500,
+      "wins": 302,
+      "win_rate": 0.604,
+      "average_turns": 14.712,
+      "capture_rate": 0.604,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "random",
+      "games": 500,
+      "wins": 102,
+      "win_rate": 0.204,
+      "average_turns": 20.156,
+      "capture_rate": 0.204,
       "unknown_rate": 0.0
     }
   ],
   "mr_x_ranking": [
     {
       "algorithm": "monte_carlo",
-      "games": 25,
-      "wins": 20,
-      "win_rate": 0.8,
-      "average_turns": 20.76,
-      "timeout_rate": 0.8,
+      "games": 500,
+      "wins": 408,
+      "win_rate": 0.816,
+      "average_turns": 21.3,
+      "timeout_rate": 0.816,
       "unknown_rate": 0.0
     },
     {
       "algorithm": "dfs",
-      "games": 25,
-      "wins": 15,
-      "win_rate": 0.6,
-      "average_turns": 19.52,
-      "timeout_rate": 0.6,
+      "games": 500,
+      "wins": 311,
+      "win_rate": 0.622,
+      "average_turns": 18.73,
+      "timeout_rate": 0.622,
       "unknown_rate": 0.0
     },
     {
       "algorithm": "decoy",
-      "games": 25,
-      "wins": 13,
-      "win_rate": 0.52,
-      "average_turns": 17.68,
-      "timeout_rate": 0.52,
+      "games": 500,
+      "wins": 264,
+      "win_rate": 0.528,
+      "average_turns": 18.288,
+      "timeout_rate": 0.528,
       "unknown_rate": 0.0
     },
     {
       "algorithm": "random",
-      "games": 25,
-      "wins": 6,
-      "win_rate": 0.24,
-      "average_turns": 11.64,
-      "timeout_rate": 0.24,
+      "games": 500,
+      "wins": 54,
+      "win_rate": 0.108,
+      "average_turns": 8.444,
+      "timeout_rate": 0.108,
+      "unknown_rate": 0.0
+    },
+    {
+      "algorithm": "distance_maximalization",
+      "games": 500,
+      "wins": 50,
+      "win_rate": 0.1,
+      "average_turns": 8.806,
+      "timeout_rate": 0.1,
       "unknown_rate": 0.0
     }
   ],
   "average_turns_matrix": [
     [
-      20.8,
-      8.0,
-      9.8,
-      14.8,
-      4.8
+      15.83,
+      7.12,
+      6.05,
+      7.44,
+      5.78
+    ],
+    [
+      22.79,
+      18.5,
+      16.84,
+      17.42,
+      15.89
+    ],
+    [
+      22.79,
+      18.9,
+      15.83,
+      18.4,
+      17.73
     ],
     [
       23.0,
-      15.4,
-      15.8,
-      23.0,
-      11.2
+      21.77,
+      19.6,
+      22.19,
+      19.94
     ],
     [
-      23.0,
-      20.0,
-      15.8,
-      23.0,
-      15.8
-    ],
-    [
-      23.0,
-      23.0,
-      18.6,
-      23.0,
-      16.2
+      16.37,
+      7.27,
+      6.69,
+      7.22,
+      6.48
     ]
   ],
   "police_win_rate_matrix": [
     [
-      0.4,
+      0.48,
+      0.99,
       1.0,
-      1.0,
-      0.4,
+      0.99,
       1.0
     ],
     [
-      0.0,
-      0.8,
-      0.8,
-      0.0,
-      0.8
+      0.02,
+      0.47,
+      0.65,
+      0.56,
+      0.66
+    ],
+    [
+      0.01,
+      0.42,
+      0.6,
+      0.38,
+      0.48
     ],
     [
       0.0,
-      0.6,
-      0.6,
-      0.0,
-      0.8
+      0.14,
+      0.34,
+      0.14,
+      0.3
     ],
     [
-      0.0,
-      0.0,
-      0.4,
-      0.0,
-      0.6
+      0.51,
+      1.0,
+      1.0,
+      0.99,
+      1.0
     ]
   ]
 }
