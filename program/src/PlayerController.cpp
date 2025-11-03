@@ -5,6 +5,16 @@
 #include <iostream>
 #include <random>
 #include "../../Graphs/graph_manage.h"
+#include <queue>
+#include <set>
+#include <map>
+#include <algorithm>            
+#include <vector>      
+#include <numeric>             
+#include <utility>           
+#include <cmath> 
+#include <tuple>
+#include <limits>
 
 namespace ScotlandYard {
 namespace Core {
