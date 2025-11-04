@@ -7,6 +7,7 @@
 
 #include <random>
 #include <algorithm>
+#include <iostream>
 #include "GraphManager.h"
 #include <unordered_map>
 #include <sstream>

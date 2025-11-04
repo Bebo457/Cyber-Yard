@@ -58,6 +58,7 @@ set(SOURCES
     src/MapGeneratorState.cpp
     src/GameSettings.cpp
     src/GameSetupState.cpp
+    src/GraphManager.cpp
 )
 
 set(HEADERS
@@ -77,9 +78,11 @@ set(HEADERS
     include/MapGeneratorState.h
     include/GameSettings.h
     include/GameSetupState.h
+    include/GraphManager.h
 )
 
 # EXE =================================================
+set(VCPKG_APPLOCAL_DEPS OFF)
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
@@ -120,6 +123,24 @@ if(WIN32)
             "${SDL2_DIR}/../bin/SDL2.dll"
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
         )
+    endif()
+
+    # Copy vcpkg DLLs to output directory (if using vcpkg)
+    if(DEFINED ENV{VCPKG_ROOT})
+        set(VCPKG_BIN_DIR "$ENV{VCPKG_ROOT}/installed/x64-windows/bin")
+    elseif(EXISTS "C:/vcpkg/installed/x64-windows/bin")
+        set(VCPKG_BIN_DIR "C:/vcpkg/installed/x64-windows/bin")
+    endif()
+
+    if(DEFINED VCPKG_BIN_DIR AND EXISTS "${VCPKG_BIN_DIR}")
+        file(GLOB VCPKG_DLLS "${VCPKG_BIN_DIR}/*.dll")
+        foreach(DLL_FILE ${VCPKG_DLLS})
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DLL_FILE}"
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            )
+        endforeach()
     endif()
 
     # Copy assets (fonts, textures, icons, maps) to binary directory
