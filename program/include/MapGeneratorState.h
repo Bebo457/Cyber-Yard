@@ -17,7 +17,7 @@ namespace ScotlandYard {
             ~MapGeneratorState() override = default;
 
             void OnEnter() override;
-            void OnExit() override {}
+            void OnExit() override;
             void OnPause() override {}
             void OnResume() override {}
             void Update(float) override {}
@@ -60,6 +60,8 @@ namespace ScotlandYard {
             GLuint     m_GLuint_PreviewTexture = 0;
             SDL_Rect   m_rect_PreviewArea{};
             bool       m_b_HasPreview = false;
+            int m_i_PreviewWidth = 0;
+            int m_i_PreviewHeight = 0;    
 
             // Generator data
             std::vector<MapGen::Point> m_vec_GridPoints;
@@ -68,6 +70,11 @@ namespace ScotlandYard {
             std::vector<MapGen::GraphNode> m_vec_GraphNodes;
             MapGen::GenerationParams m_GenerationParams;
             int m_i_CurrentCorner = 0;
+
+            GLuint m_VAO_PreviewQuad;
+            GLuint m_VBO_PreviewQuad;
+            GLuint m_ShaderProgram_Preview;
+
 
         private:
             void LayoutUI(int i_Width, int i_Height, Core::Application* p_App);
@@ -82,6 +89,9 @@ namespace ScotlandYard {
             void MakeDummyPreview(int i_Width, int i_Height);
             void GenerateAndRenderMap();
             void ExportMapToFile();
+            void UpdatePreviewTexture();
+            void RenderPreviewTexture(Core::Application* p_App);
+            void CreatePreviewQuad();
         };
 
     }

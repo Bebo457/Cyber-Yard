@@ -3,6 +3,8 @@
 #include "StateManager.h"
 #include "HUDOverlay.h"
 
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/glm.hpp>
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
@@ -46,6 +48,10 @@ namespace ScotlandYard {
 
 
         void MapGeneratorState::OnEnter() {
+            // CLEAR existing elements before adding new ones
+            m_vec_Fields.clear();
+            m_vec_Sliders.clear();
+            
             // Initialize fields for parameters
             m_vec_Fields.push_back({"Map Width", "1200", {}, false, true, 5});
             m_vec_Fields.push_back({"Map Height", "900", {}, false, true, 5});
@@ -67,6 +73,13 @@ namespace ScotlandYard {
             
             m_s_InfoText = "Configure map generation parameters";
 
+            m_i_FocusedFieldIndex = -1;
+            m_b_HasPreview = false;
+            SDL_StartTextInput();
+
+            CreatePreviewQuad();
+    
+            m_s_InfoText = "Configure map generation parameters";
             m_i_FocusedFieldIndex = -1;
             m_b_HasPreview = false;
             SDL_StartTextInput();
@@ -217,18 +230,14 @@ namespace ScotlandYard {
             // layout
             LayoutUI(W, H, p_App);
 
-            // preview (placeholder)
+            // preview background
             DrawTextCenteredPx("Preview", (float)m_rect_PreviewArea.x, (float)m_rect_PreviewArea.y - 26,
                 (float)(m_rect_PreviewArea.x + m_rect_PreviewArea.w), (float)m_rect_PreviewArea.y - 2, col_mut, p_App, -2.0f);
             DrawRoundedRectScreen((float)m_rect_PreviewArea.x, (float)m_rect_PreviewArea.y,
                 (float)(m_rect_PreviewArea.x + m_rect_PreviewArea.w), (float)(m_rect_PreviewArea.y + m_rect_PreviewArea.h),
                 col_fld, 10, p_App);
-            if (m_b_HasPreview && m_GLuint_PreviewTexture) {
-                // TODO: render texture
-                glEnable(GL_TEXTURE_2D);
-                glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
-                glDisable(GL_TEXTURE_2D);
-            }
+            // preview texture
+            RenderPreviewTexture(p_App);
 
             // fields
             for (size_t i = 0; i < m_vec_Fields.size(); ++i) {
@@ -299,7 +308,6 @@ namespace ScotlandYard {
             // Buttons
             DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App);
             DrawMenuLikeButton(m_BtnBack, "BACK", p_App);
-
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
         }
 
@@ -427,9 +435,9 @@ namespace ScotlandYard {
                 std::cout << "Exporting files..." << std::endl;
                 ExportMapToFile();
                 
-                // Create preview
-                std::cout << "Creating preview..." << std::endl;
-                MakeDummyPreview(m_GenerationParams.i_MapWidth, m_GenerationParams.i_MapHeight);
+                // Load the generated image as preview
+                std::cout << "Loading preview..." << std::endl;
+                UpdatePreviewTexture();
                 
                 std::cout << "Generation complete!" << std::endl;
             }
@@ -545,6 +553,208 @@ namespace ScotlandYard {
 
             default: break;
             }
+        }
+        void MapGeneratorState::UpdatePreviewTexture() {
+            std::string s_PreviewPath = "generated_map.bmp";
+            
+            // Delete old texture if exists
+            if (m_GLuint_PreviewTexture) {
+                glDeleteTextures(1, &m_GLuint_PreviewTexture);
+                m_GLuint_PreviewTexture = 0;
+            }
+            
+            // Load BMP file
+            SDL_Surface* p_Surface = SDL_LoadBMP(s_PreviewPath.c_str());
+            
+            if (!p_Surface) {
+                std::cerr << "[MapGeneratorState] Failed to load " << s_PreviewPath << ": " 
+                        << SDL_GetError() << std::endl;
+                m_b_HasPreview = false;
+                return;
+            }
+            
+            // Create OpenGL texture
+            glGenTextures(1, &m_GLuint_PreviewTexture);
+            glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
+            
+            GLenum format = (p_Surface->format->BytesPerPixel == 4) ? GL_RGBA : GL_RGB;
+            
+            glTexImage2D(GL_TEXTURE_2D, 0, format, 
+                        p_Surface->w, p_Surface->h, 0, 
+                        format, GL_UNSIGNED_BYTE, p_Surface->pixels);
+            
+            // Texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            
+            glBindTexture(GL_TEXTURE_2D, 0);
+            
+            m_i_PreviewWidth = p_Surface->w;
+            m_i_PreviewHeight = p_Surface->h;
+            m_b_HasPreview = true;
+            
+            SDL_FreeSurface(p_Surface);   
+        }
+
+        void MapGeneratorState::RenderPreviewTexture(Core::Application* p_App) {
+            if (!m_b_HasPreview || !m_GLuint_PreviewTexture) {
+                return;
+            }
+            
+            // Save and setup render state
+            GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
+            if (b_DepthWas) glDisable(GL_DEPTH_TEST);
+            
+            GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+            if (!b_BlendWas) glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            
+            glUseProgram(m_ShaderProgram_Preview);
+            
+            // Orthographic projection in screen pixel coordinates
+            int i_WindowWidth = p_App->GetWidth();
+            int i_WindowHeight = p_App->GetHeight();
+            
+            glm::mat4 projection = glm::ortho(
+                0.0f, (float)i_WindowWidth,
+                0.0f, (float)i_WindowHeight,
+                -1.0f, 1.0f
+            );
+            
+            // Model matrix: position and scale quad to preview area
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(
+                (float)m_rect_PreviewArea.x, 
+                (float)m_rect_PreviewArea.y, 
+                0.0f
+            ));
+            model = glm::scale(model, glm::vec3(
+                (float)m_rect_PreviewArea.w, 
+                (float)m_rect_PreviewArea.h, 
+                1.0f
+            ));
+            
+            glm::mat4 mvp = projection * model;
+            
+            // Set uniforms
+            GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Preview, "MVP");
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
+            
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
+            
+            GLuint texLoc = glGetUniformLocation(m_ShaderProgram_Preview, "ourTexture");
+            glUniform1i(texLoc, 0);
+            
+            // Draw quad
+            glBindVertexArray(m_VAO_PreviewQuad);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            
+            glBindTexture(GL_TEXTURE_2D, 0);
+            
+            // Restore state
+            if (!b_BlendWas) glDisable(GL_BLEND);
+            if (b_DepthWas) glEnable(GL_DEPTH_TEST);
+        }
+
+        void MapGeneratorState::CreatePreviewQuad() {
+            // Quad geometry with UV coordinates
+            float quadVertices[] = {
+                // Position (x, y)    // UV (u, v)
+                0.0f, 0.0f,          0.0f, 1.0f,
+                1.0f, 0.0f,          1.0f, 1.0f,
+                1.0f, 1.0f,          1.0f, 0.0f,
+                
+                0.0f, 0.0f,          0.0f, 1.0f,
+                1.0f, 1.0f,          1.0f, 0.0f,
+                0.0f, 1.0f,          0.0f, 0.0f
+            };
+            
+            glGenVertexArrays(1, &m_VAO_PreviewQuad);
+            glGenBuffers(1, &m_VBO_PreviewQuad);
+            
+            glBindVertexArray(m_VAO_PreviewQuad);
+            glBindBuffer(GL_ARRAY_BUFFER, m_VBO_PreviewQuad);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+            
+            // Attribute 0: Position
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            
+            // Attribute 1: UV
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            
+            glBindVertexArray(0);
+            
+            // Compile shaders
+            const char* vertexShaderSrc = R"(
+                #version 330 core
+                layout(location = 0) in vec2 aPos;
+                layout(location = 1) in vec2 aTexCoord;
+                
+                uniform mat4 MVP;
+                
+                out vec2 TexCoord;
+                
+                void main() {
+                    TexCoord = aTexCoord;
+                    gl_Position = MVP * vec4(aPos, 0.0, 1.0);
+                }
+            )";
+            
+            const char* fragmentShaderSrc = R"(
+                #version 330 core
+                in vec2 TexCoord;
+                
+                uniform sampler2D ourTexture;
+                
+                out vec4 FragColor;
+                
+                void main() {
+                    FragColor = texture(ourTexture, TexCoord);
+                }
+            )";
+            
+            GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+            glShaderSource(vertexShader, 1, &vertexShaderSrc, nullptr);
+            glCompileShader(vertexShader);
+            
+            GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+            glShaderSource(fragmentShader, 1, &fragmentShaderSrc, nullptr);
+            glCompileShader(fragmentShader);
+            
+            m_ShaderProgram_Preview = glCreateProgram();
+            glAttachShader(m_ShaderProgram_Preview, vertexShader);
+            glAttachShader(m_ShaderProgram_Preview, fragmentShader);
+            glLinkProgram(m_ShaderProgram_Preview);
+            
+            glDeleteShader(vertexShader);
+            glDeleteShader(fragmentShader);        
+        }
+
+        void MapGeneratorState::OnExit() {
+            if (m_VAO_PreviewQuad) {
+                glDeleteVertexArrays(1, &m_VAO_PreviewQuad);
+                m_VAO_PreviewQuad = 0;
+            }
+            if (m_VBO_PreviewQuad) {
+                glDeleteBuffers(1, &m_VBO_PreviewQuad);
+                m_VBO_PreviewQuad = 0;
+            }
+            if (m_ShaderProgram_Preview) {
+                glDeleteProgram(m_ShaderProgram_Preview);
+                m_ShaderProgram_Preview = 0;
+            }
+            if (m_GLuint_PreviewTexture) {
+                glDeleteTextures(1, &m_GLuint_PreviewTexture);
+                m_GLuint_PreviewTexture = 0;
+            }
+            
+            SDL_StopTextInput();
         }
 
     }
