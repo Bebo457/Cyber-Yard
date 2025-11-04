@@ -15,6 +15,7 @@
 #include <utility>           
 #include <cmath> 
 #include <tuple>
+#include <functional>
 
 namespace ScotlandYard {
 namespace Core {
