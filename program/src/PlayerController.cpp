@@ -2,6 +2,7 @@
 #include "Player.h"
 #include "Application.h"
 #include "GameSettings.h"
+#include "ThreadPool.h"
 #include <iostream>
 #include <random>
 #include "GraphManager.h"
@@ -9,11 +10,11 @@
 #include <queue>
 #include <set>
 #include <map>
-#include <algorithm>            
-#include <vector>      
-#include <numeric>             
-#include <utility>           
-#include <cmath> 
+#include <algorithm>
+#include <vector>
+#include <numeric>
+#include <utility>
+#include <cmath>
 #include <tuple>
 #include <functional>
 
@@ -35,6 +36,7 @@ AIPlayerController::AIPlayerController(float f_MinTurnTime)
     , m_f_ElapsedTime(0.0f)
     , m_b_MoveRequested(false)
     , m_MoveDecision()
+    , m_b_CalculationInProgress(false)
 {
 }
 
@@ -45,12 +47,20 @@ void AIPlayerController::RequestMove(
     Application* p_App
 ) {
     if (vec_PossibleMoves.empty()) {
+        std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
         m_MoveDecision.b_HasDecision = false;
         m_b_MoveRequested = false;
+        m_b_CalculationInProgress = false;
         return;
     }
 
-    m_MoveDecision = CalculateBestMove(p_Player, vec_PossibleMoves, gameState);
+    // Submit AI calculation to ThreadPool
+    m_b_CalculationInProgress = true;
+    m_Future_MoveCalculation = Threading::ThreadPool::Submit(
+        [this, p_Player, vec_PossibleMoves, gameState]() -> MoveDecision {
+            return CalculateBestMove(p_Player, vec_PossibleMoves, gameState);
+        }
+    );
 
     // Reset timer
     m_f_ElapsedTime = 0.0f;
@@ -58,6 +68,15 @@ void AIPlayerController::RequestMove(
 }
 
 bool AIPlayerController::HasPendingMove() const {
+    if (m_b_CalculationInProgress && m_Future_MoveCalculation.valid()) {
+        if (m_Future_MoveCalculation.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+            //retrieve the result
+            std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
+            m_MoveDecision = m_Future_MoveCalculation.get();
+            m_b_CalculationInProgress = false;
+        }
+    }
+
     return m_b_MoveRequested && m_MoveDecision.b_HasDecision && (m_f_ElapsedTime >= m_f_MinTurnTime);
 }
 
@@ -66,6 +85,7 @@ MoveDecision AIPlayerController::GetMove() {
         return MoveDecision{};
     }
 
+    std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
     MoveDecision decision = m_MoveDecision;
     m_MoveDecision = MoveDecision{};
     m_b_MoveRequested = false;
@@ -81,9 +101,15 @@ void AIPlayerController::Update(float f_DeltaTime) {
 }
 
 void AIPlayerController::Reset() {
+    if (m_b_CalculationInProgress && m_Future_MoveCalculation.valid()) {
+        m_Future_MoveCalculation.wait();
+    }
+
+    std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
     m_MoveDecision = MoveDecision{};
     m_b_MoveRequested = false;
     m_f_ElapsedTime = 0.0f;
+    m_b_CalculationInProgress = false;
 }
 
 static MoveDecision DistanceMaximizationAlgorithm(

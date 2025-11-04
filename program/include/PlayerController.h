@@ -6,6 +6,8 @@
 #include <memory>
 #include <vector>
 #include <chrono>
+#include <future>
+#include <mutex>
 
 namespace ScotlandYard {
 namespace Core {
@@ -130,7 +132,11 @@ private:
     float m_f_ElapsedTime;
     bool m_b_MoveRequested;
     Core::AIAlgorithm m_e_Algorithm = Core::AIAlgorithm::Random;
-    MoveDecision m_MoveDecision;
+    mutable MoveDecision m_MoveDecision;
+
+    mutable std::future<MoveDecision> m_Future_MoveCalculation;
+    mutable std::mutex m_mtx_MoveDecision;
+    mutable bool m_b_CalculationInProgress;
 };
 
 } // namespace Core
