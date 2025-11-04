@@ -33,8 +33,8 @@ bool ExportMapToJSON(const std::string& s_Filename,
         const auto& node = vec_Nodes[i];
         file << "    {\n";
         file << "      \"id\": " << node.i_ID << ",\n";
-        file << "      \"x\": " << node.position.x << ",\n";
-        file << "      \"y\": " << node.position.y << ",\n";
+        file << "      \"x\": " << node.m_Position.f_X << ",\n";
+        file << "      \"y\": " << node.m_Position.f_Y << ",\n";
         file << "      \"isInPark\": " << (node.b_IsInPark ? "true" : "false") << ",\n";
         file << "      \"isNearRiver\": " << (node.b_IsNearRiver ? "true" : "false") << ",\n";
         
@@ -89,9 +89,9 @@ bool ExportMapToJSON(const std::string& s_Filename,
     for (size_t i = 0; i < vec_Parks.size(); ++i) {
         const auto& park = vec_Parks[i];
         file << "    {\n";
-        file << "      \"centerX\": " << park.center.x << ",\n";
-        file << "      \"centerY\": " << park.center.y << ",\n";
-        file << "      \"radius\": " << park.f_BaseRadius << "\n";
+        file << "      \"centerX\": " << park.m_Center.f_X << ",\n";
+        file << "      \"centerY\": " << park.m_Center.f_Y << ",\n";
+        file << "      \"radius\": " << park.m_f_BaseRadius << "\n";
         file << "    }";
         if (i + 1 < vec_Parks.size()) file << ",";
         file << "\n";

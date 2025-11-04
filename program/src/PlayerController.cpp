@@ -4,7 +4,7 @@
 #include "GameSettings.h"
 #include <iostream>
 #include <random>
-#include "../../Graphs/graph_manage.h"
+#include "GraphManager.h"
 #include "GameConstants.h"
 #include <queue>
 #include <set>
@@ -1977,9 +1977,9 @@ static MoveDecision MonteCarloPoliceAlgorithm(
             // Police moves
         for (size_t i = 0; i < vec_PolicePositions.size(); ++i) {
             int i_Pos = vec_PolicePositions[i];
-            auto& map_TicketsTaxi = vec_PoliceTicketsTaxi[i];  // jeden nie wspólny słownik
-            auto& map_TicketsBus = vec_PoliceTicketsBus[i];
-            auto& map_TicketsMetro = vec_PoliceTicketsMetro[i];
+            auto& i_TicketsTaxi = vec_PoliceTicketsTaxi[i];
+            auto& i_TicketsBus = vec_PoliceTicketsBus[i];
+            auto& i_TicketsMetro = vec_PoliceTicketsMetro[i];
 
             auto vec_Connections = gameState.p_Graph->GetConnections(gameState.vec_AllPlayers[i].i_Position);
 
@@ -1992,11 +1992,11 @@ static MoveDecision MonteCarloPoliceAlgorithm(
 
             std::vector<PossibleMove> vec_ValidMoves;
             for (const auto& m : vec_Moves) {
-                if (map_TicketsTaxi > 0 && i_TransportType == 1)
+                if (i_TicketsTaxi > 0 && m.i_TransportType == 1)
                     vec_ValidMoves.push_back(m);
-                if (map_TicketsBus > 0 && i_TransportType == 2)
+                if (i_TicketsBus > 0 && m.i_TransportType == 2)
                     vec_ValidMoves.push_back(m);
-                if (map_TicketsMetro > 0 && i_TransportType == 3)
+                if (i_TicketsMetro > 0 && m.i_TransportType == 3)
                     vec_ValidMoves.push_back(m);
             }
 
@@ -2019,15 +2019,15 @@ static MoveDecision MonteCarloPoliceAlgorithm(
             vec_PolicePositions[i] = chosenMove.i_DestinationNode;
             switch (chosenMove.i_TransportType) {
                 case 1:  // Taxi
-                    map_TicketsTaxi -= 1;
+                    i_TicketsTaxi -= 1;
                     break;
 
                 case 2:  // Bus
-                    map_TicketsBus -= 1;
+                    i_TicketsBus -= 1;
                     break;
 
                 case 3:  // Metro
-                    map_TicketsMetro -= 1;
+                    i_TicketsMetro -= 1;
                     break;
 
                 default:

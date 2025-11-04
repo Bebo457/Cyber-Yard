@@ -7,35 +7,35 @@ namespace ScotlandYard {
 namespace MapGen {
 
 // Park implementation
-Park::Park(Point c, float r) : center(c), f_BaseRadius(r), i_NumPoints(16) {
+Park::Park(Point c, float r) : m_Center(c), m_f_BaseRadius(r), m_i_NumPoints(16) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(-0.3f, 0.6f);
-    
-    for (int i = 0; i < i_NumPoints; ++i) {
-        vec_RadiusOffsets.push_back(1.0f + dis(gen));
+
+    for (int i = 0; i < m_i_NumPoints; ++i) {
+        m_vec_RadiusOffsets.push_back(1.0f + dis(gen));
     }
 }
 
 float Park::GetRadiusAt(float f_Angle) const {
-    float normalizedAngle = f_Angle / (2.0f * 3.14159f) * i_NumPoints;
-    int idx1 = static_cast<int>(normalizedAngle) % i_NumPoints;
-    int idx2 = (idx1 + 1) % i_NumPoints;
+    float normalizedAngle = f_Angle / (2.0f * 3.14159f) * m_i_NumPoints;
+    int idx1 = static_cast<int>(normalizedAngle) % m_i_NumPoints;
+    int idx2 = (idx1 + 1) % m_i_NumPoints;
     float t = normalizedAngle - static_cast<int>(normalizedAngle);
     
-    float r1 = f_BaseRadius * vec_RadiusOffsets[idx1];
-    float r2 = f_BaseRadius * vec_RadiusOffsets[idx2];
+    float r1 = m_f_BaseRadius * m_vec_RadiusOffsets[idx1];
+    float r2 = m_f_BaseRadius * m_vec_RadiusOffsets[idx2];
     
     return r1 * (1.0f - t) + r2 * t;
 }
 
 bool Park::ContainsPoint(float f_X, float f_Y) const {
-    float dx = f_X - center.x;
-    float dy = f_Y - center.y;
+    float dx = f_X - m_Center.f_X;
+    float dy = f_Y - m_Center.f_Y;
     float dist = sqrt(dx*dx + dy*dy);
     float angle = atan2(dy, dx);
     if (angle < 0) angle += 2.0f * 3.14159f;
-    
+
     return dist <= GetRadiusAt(angle);
 }
 
@@ -44,8 +44,8 @@ float GetDistanceToRiver(const Point& p, const std::vector<Point>& vec_RiverPath
     float minDist = 1e9f;
     
     for (const auto& rp : vec_RiverPath) {
-        float dx = p.x - rp.x;
-        float dy = p.y - rp.y;
+        float dx = p.f_X - rp.f_X;
+        float dy = p.f_Y - rp.f_Y;
         float dist = sqrt(dx*dx + dy*dy);
         if (dist < minDist) {
             minDist = dist;
@@ -56,28 +56,28 @@ float GetDistanceToRiver(const Point& p, const std::vector<Point>& vec_RiverPath
 }
 
 bool ParkCollidesWithRiver(const Park& park, const std::vector<Point>& vec_RiverPath) {
-    for (int i = 0; i < park.i_NumPoints; ++i) {
-        float angle = (2.0f * 3.14159f * i) / park.i_NumPoints;
+    for (int i = 0; i < park.m_i_NumPoints; ++i) {
+        float angle = (2.0f * 3.14159f * i) / park.m_i_NumPoints;
         float radius = park.GetRadiusAt(angle);
         Point edgePoint;
-        edgePoint.x = park.center.x + cos(angle) * radius;
-        edgePoint.y = park.center.y + sin(angle) * radius;
-        
+        edgePoint.f_X = park.m_Center.f_X + cos(angle) * radius;
+        edgePoint.f_Y = park.m_Center.f_Y + sin(angle) * radius;
+
         float dist = GetDistanceToRiver(edgePoint, vec_RiverPath);
         if (dist < Config::MIN_RIVER_DISTANCE) {
             return true;
         }
     }
-    
+
     return false;
 }
 
 bool ParksCollide(const Park& park1, const Park& park2) {
-    float dx = park1.center.x - park2.center.x;
-    float dy = park1.center.y - park2.center.y;
+    float dx = park1.m_Center.f_X - park2.m_Center.f_X;
+    float dy = park1.m_Center.f_Y - park2.m_Center.f_Y;
     float centerDist = sqrt(dx*dx + dy*dy);
     
-    return centerDist < (park1.f_BaseRadius + park2.f_BaseRadius + Config::MIN_PARK_DISTANCE);
+    return centerDist < (park1.m_f_BaseRadius + park2.m_f_BaseRadius + Config::MIN_PARK_DISTANCE);
 }
 
 bool IsOnMajorSide(const Point& p, const std::vector<Point>& vec_RiverPath, int i_Corner) {
@@ -85,8 +85,8 @@ bool IsOnMajorSide(const Point& p, const std::vector<Point>& vec_RiverPath, int 
     Point closestRiverPoint;
     
     for (const auto& rp : vec_RiverPath) {
-        float dx = p.x - rp.x;
-        float dy = p.y - rp.y;
+        float dx = p.f_X - rp.f_X;
+        float dy = p.f_Y - rp.f_Y;
         float dist = sqrt(dx*dx + dy*dy);
         if (dist < minDist) {
             minDist = dist;
@@ -95,10 +95,10 @@ bool IsOnMajorSide(const Point& p, const std::vector<Point>& vec_RiverPath, int 
     }
     
     switch(i_Corner) {
-        case 0: return (p.x > closestRiverPoint.x) || (p.y > closestRiverPoint.y);
-        case 1: return (p.x < closestRiverPoint.x) || (p.y > closestRiverPoint.y);
-        case 2: return (p.x < closestRiverPoint.x) || (p.y < closestRiverPoint.y);
-        case 3: return (p.x > closestRiverPoint.x) || (p.y < closestRiverPoint.y);
+        case 0: return (p.f_X > closestRiverPoint.f_X) || (p.f_Y > closestRiverPoint.f_Y);
+        case 1: return (p.f_X < closestRiverPoint.f_X) || (p.f_Y > closestRiverPoint.f_Y);
+        case 2: return (p.f_X < closestRiverPoint.f_X) || (p.f_Y < closestRiverPoint.f_Y);
+        case 3: return (p.f_X > closestRiverPoint.f_X) || (p.f_Y < closestRiverPoint.f_Y);
     }
     return true;
 }
@@ -109,11 +109,11 @@ Point BezierPoint(const Point& p0, const Point& p1, const Point& p2, const Point
     float uu = u * u;
     float uuu = uu * u;
     float ttt = tt * f_T;
-    
+
     Point result;
-    result.x = uuu * p0.x + 3 * uu * f_T * p1.x + 3 * u * tt * p2.x + ttt * p3.x;
-    result.y = uuu * p0.y + 3 * uu * f_T * p1.y + 3 * u * tt * p2.y + ttt * p3.y;
-    
+    result.f_X = uuu * p0.f_X + 3 * uu * f_T * p1.f_X + 3 * u * tt * p2.f_X + ttt * p3.f_X;
+    result.f_Y = uuu * p0.f_Y + 3 * uu * f_T * p1.f_Y + 3 * u * tt * p2.f_Y + ttt * p3.f_Y;
+
     return result;
 }
 

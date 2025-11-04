@@ -14,14 +14,14 @@ namespace ScotlandYard {
 
         void GameSetupState::OnEnter() {
             // default setup
-            m_iMode = 0;
-            m_iAIMrX = 0;
-            m_iAIDet = 0;
-            m_btns.clear();
+            m_i_Mode = 0;
+            m_i_AIMrX = 0;
+            m_i_AIDet = 0;
+            m_vec_Buttons.clear();
         }
 
-        void GameSetupState::layout(Core::Application* app) {
-            m_btns.clear();
+        void GameSetupState::Layout(Core::Application* app) {
+            m_vec_Buttons.clear();
 
             const int   W = app->GetWidth();
             const int   H = app->GetHeight();
@@ -38,7 +38,7 @@ namespace ScotlandYard {
             // vertical gap
             const float lineH = btnH + 45.0f;
 
-            const bool  hasHumanRow = (m_iMode == 1); // 1 = PvBot
+            const bool  hasHumanRow = (m_i_Mode == 1); // 1 = PvBot
             const int   rowsAboveFooter = hasHumanRow ? 4 : 3;
             const int   totalRows = rowsAboveFooter + 1; // +Footer
             const float blockH = totalRows * lineH + hasHumanRow;
@@ -56,7 +56,7 @@ namespace ScotlandYard {
                     for (int c = 0; c < 3; ++c) {
                         float x = gridX + c * cellW + cellGap;
                         const char* text = (c == 0 ? t0 : (c == 1 ? t1 : t2));
-                        m_btns.push_back({ row, c, x, y, btnW, btnH, text });
+                        m_vec_Buttons.push_back({ row, c, x, y, btnW, btnH, text });
                     }
                 };
 
@@ -67,7 +67,7 @@ namespace ScotlandYard {
             int idx = 1;
 
             // 1: HUMAN (PvBot)
-            if (m_iMode == 1) {
+            if (m_i_Mode == 1) {
                 const float y = rowYTopDown(idx);
                 const float gap = 2.0f * cellGap;
                 const float groupW = 2.0f * btnW + gap;
@@ -76,8 +76,8 @@ namespace ScotlandYard {
                 const float xR = xL + btnW + gap;
 
                 // buttons to choose a player
-                m_btns.push_back({ Row::Human, 0, xL, y, btnW, btnH, "Mr X" });
-                m_btns.push_back({ Row::Human, 1, xR, y, btnW, btnH, "Detectives" });
+                m_vec_Buttons.push_back({ Row::Human, 0, xL, y, btnW, btnH, "Mr X" });
+                m_vec_Buttons.push_back({ Row::Human, 1, xR, y, btnW, btnH, "Detectives" });
 
 
                 idx += 1;
@@ -94,43 +94,43 @@ namespace ScotlandYard {
             const float totalFW = fBtnW * 2 + fGap;
             const float fx0 = (W - totalFW) * 0.5f;
 
-            m_btns.push_back({ Row::Footer, 0, fx0,                  yF, fBtnW, btnH, "Back to Menu" });
-            m_btns.push_back({ Row::Footer, 1, fx0 + fBtnW + fGap,   yF, fBtnW, btnH, "Start Game" });
+            m_vec_Buttons.push_back({ Row::Footer, 0, fx0,                  yF, fBtnW, btnH, "Back to Menu" });
+            m_vec_Buttons.push_back({ Row::Footer, 1, fx0 + fBtnW + fGap,   yF, fBtnW, btnH, "Start Game" });
         }
 
 
-        bool GameSetupState::isRowDisabled(Row row) const {
+        bool GameSetupState::IsRowDisabled(Row row) const {
             if (row == Row::Footer || row == Row::Mode || row == Row::Human) return false;
 
-            if (m_iMode == 0) { // PvP
+            if (m_i_Mode == 0) { // PvP
                 return (row == Row::MrX || row == Row::Detectives);
             }
-            if (m_iMode == 1) { // PvBot
+            if (m_i_Mode == 1) { // PvBot
                 // off human side
-                return (m_iHuman == 0) ? (row == Row::MrX) : (row == Row::Detectives);
+                return (m_i_Human == 0) ? (row == Row::MrX) : (row == Row::Detectives);
             }
             return false; // BotvBot
         }
 
 
-        void GameSetupState::drawButton(const Button& b, bool selected, Core::Application* app) {
-            const bool disabled = isRowDisabled(b.row);
-            const bool hovered = (&b - m_btns.data()) == m_iHover && !disabled;
+        void GameSetupState::DrawButton(const Button& b, bool selected, Core::Application* app) {
+            const bool disabled = IsRowDisabled(b.e_Row);
+            const bool hovered = (&b - m_vec_Buttons.data()) == m_i_Hover && !disabled;
 
-            SDL_Rect r{ (int)std::lround(b.x), (int)std::lround(b.y),
-                         (int)std::lround(b.w), (int)std::lround(b.h) };
+            SDL_Rect r{ (int)std::lround(b.f_X), (int)std::lround(b.f_Y),
+                         (int)std::lround(b.f_W), (int)std::lround(b.f_H) };
 
             if (disabled) {
                 ScotlandYard::UI::Color bg{ 0.30f,0.32f,0.34f,0.85f };
                 ScotlandYard::UI::Color tx{ 0.75f,0.75f,0.75f,0.9f };
                 ScotlandYard::UI::DrawRoundedRectScreen((float)r.x, (float)r.y, (float)(r.x + r.w), (float)(r.y + r.h), bg, 12.f, app);
-                ScotlandYard::UI::DrawTextCenteredPx(b.text, (float)r.x, (float)r.y, (float)(r.x + r.w), (float)(r.y + r.h), tx, app, -4.f);
+                ScotlandYard::UI::DrawTextCenteredPx(b.p_Text, (float)r.x, (float)r.y, (float)(r.x + r.w), (float)(r.y + r.h), tx, app, -4.f);
                 return;
             }
 
-            ScotlandYard::UI::DrawMenuLikeButton(r, b.text, app, hovered);
+            ScotlandYard::UI::DrawMenuLikeButton(r, b.p_Text, app, hovered);
 
-            if (selected && b.row != Row::Footer) {
+            if (selected && b.e_Row != Row::Footer) {
                 ScotlandYard::UI::Color accent{ 1.f, 0.84f, 0.0f, 1.f };
                 ScotlandYard::UI::DrawRoundedRectScreen((float)r.x, (float)(r.y + r.h - 4),
                     (float)(r.x + r.w), (float)(r.y + r.h),
@@ -142,7 +142,7 @@ namespace ScotlandYard {
         void GameSetupState::HandleEvent(const SDL_Event& e, Core::Application* app) {
             if (e.type == SDL_KEYDOWN) {
                 if (e.key.keysym.sym == SDLK_ESCAPE) app->GetStateManager()->ChangeState("menu");
-                else if (e.key.keysym.sym == SDLK_RETURN) startGame(app);
+                else if (e.key.keysym.sym == SDLK_RETURN) StartGame(app);
                 return;
             }
 
@@ -152,11 +152,11 @@ namespace ScotlandYard {
                 float my = (float)e.motion.y;
                 float myBL = (float)app->GetHeight() - my;
 
-                m_iHover = -1;
-                for (int i = 0; i < (int)m_btns.size(); ++i) {
-                    const auto& b = m_btns[i];
-                    if (mx >= b.x && mx <= b.x + b.w && myBL >= b.y && myBL <= b.y + b.h) {
-                        if (!isRowDisabled(b.row)) m_iHover = i;
+                m_i_Hover = -1;
+                for (int i = 0; i < (int)m_vec_Buttons.size(); ++i) {
+                    const auto& b = m_vec_Buttons[i];
+                    if (mx >= b.f_X && mx <= b.f_X + b.f_W && myBL >= b.f_Y && myBL <= b.f_Y + b.f_H) {
+                        if (!IsRowDisabled(b.e_Row)) m_i_Hover = i;
                         break;
                     }
                 }
@@ -169,17 +169,17 @@ namespace ScotlandYard {
                 float my = (float)e.button.y;
                 float myBL = (float)app->GetHeight() - my;
 
-                for (const auto& b : m_btns) {
-                    if (mx >= b.x && mx <= b.x + b.w && myBL >= b.y && myBL <= b.y + b.h) {
-                        if (isRowDisabled(b.row)) return; // ignored
+                for (const auto& b : m_vec_Buttons) {
+                    if (mx >= b.f_X && mx <= b.f_X + b.f_W && myBL >= b.f_Y && myBL <= b.f_Y + b.f_H) {
+                        if (IsRowDisabled(b.e_Row)) return; // ignored
 
-                        if (b.row == Row::Mode) { m_iMode = b.col; return; }
-                        if (b.row == Row::Human) { m_iHuman = b.col; return; }
-                        if (b.row == Row::MrX) { m_iAIMrX = b.col; return; }
-                        if (b.row == Row::Detectives) { m_iAIDet = b.col; return; }
-                        if (b.row == Row::Footer) {
-                            if (b.col == 0) app->GetStateManager()->ChangeState("menu");
-                            else            startGame(app);
+                        if (b.e_Row == Row::Mode) { m_i_Mode = b.i_Col; return; }
+                        if (b.e_Row == Row::Human) { m_i_Human = b.i_Col; return; }
+                        if (b.e_Row == Row::MrX) { m_i_AIMrX = b.i_Col; return; }
+                        if (b.e_Row == Row::Detectives) { m_i_AIDet = b.i_Col; return; }
+                        if (b.e_Row == Row::Footer) {
+                            if (b.i_Col == 0) app->GetStateManager()->ChangeState("menu");
+                            else            StartGame(app);
                             return;
                         }
                     }
@@ -193,34 +193,34 @@ namespace ScotlandYard {
         void GameSetupState::Render(Core::Application* app) {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            layout(app);
+            Layout(app);
 
             // TITLE
             ScotlandYard::UI::DrawTextCenteredPx("Setup Your Game",
                 20, app->GetHeight() - 120, app->GetWidth() - 20, app->GetHeight() - 60, { 1,1,1,1 }, app, 0.f);
 
             // buttons drawing with selected option
-            for (const auto& b : m_btns) {
+            for (const auto& b : m_vec_Buttons) {
                 bool selected = false;
-                if (b.row == Row::Mode)       selected = (b.col == m_iMode);
-                if (b.row == Row::MrX)        selected = (b.col == m_iAIMrX);
-                if (b.row == Row::Detectives) selected = (b.col == m_iAIDet);
-                if (b.row == Row::Human)      selected = (b.col == m_iHuman);
-                drawButton(b, selected, app);
+                if (b.e_Row == Row::Mode)       selected = (b.i_Col == m_i_Mode);
+                if (b.e_Row == Row::MrX)        selected = (b.i_Col == m_i_AIMrX);
+                if (b.e_Row == Row::Detectives) selected = (b.i_Col == m_i_AIDet);
+                if (b.e_Row == Row::Human)      selected = (b.i_Col == m_i_Human);
+                DrawButton(b, selected, app);
             }
 
             // tooltip for PvP
-            if (m_iMode == 0) {
+            if (m_i_Mode == 0) {
                 float mrxLower = 1e9f;
                 float detUpper = -1e9f;
 
                 // to have it centred in 2 rows
-                for (const auto& b : m_btns) {
-                    if (b.row == Row::MrX) {
-                        mrxLower = std::min(mrxLower, b.y);
+                for (const auto& b : m_vec_Buttons) {
+                    if (b.e_Row == Row::MrX) {
+                        mrxLower = std::min(mrxLower, b.f_Y);
                     }
-                    else if (b.row == Row::Detectives) {
-                        detUpper = std::max(detUpper, b.y + b.h);
+                    else if (b.e_Row == Row::Detectives) {
+                        detUpper = std::max(detUpper, b.f_Y + b.f_H);
                     }
                 }
 
@@ -247,13 +247,13 @@ namespace ScotlandYard {
                 }
             }
             // tooltip for PvBot
-            if (m_iMode == 1) {
+            if (m_i_Mode == 1) {
                 // if human is Mr X -> Mr X AI should be off (the same logic with Detectives)
-                const Row disabledRow = (m_iHuman == 0) ? Row::MrX : Row::Detectives;
+                const Row disabledRow = (m_i_Human == 0) ? Row::MrX : Row::Detectives;
 
                 float humanTop = -1e9f;
-                for (const auto& b : m_btns) {
-                    if (b.row == Row::Human) humanTop = std::max(humanTop, b.y + b.h);
+                for (const auto& b : m_vec_Buttons) {
+                    if (b.e_Row == Row::Human) humanTop = std::max(humanTop, b.f_Y + b.f_H);
                 }
                 if (humanTop > -1e8f) {
                     ScotlandYard::UI::DrawTextCenteredPx(
@@ -264,12 +264,12 @@ namespace ScotlandYard {
 
                 float rowMinX = 1e9f, rowMaxX = -1e9f;
                 float rowMinY = 1e9f, rowMaxY = -1e9f;
-                for (const auto& b : m_btns) {
-                    if (b.row == disabledRow) {
-                        rowMinX = std::min(rowMinX, b.x);
-                        rowMaxX = std::max(rowMaxX, b.x + b.w);
-                        rowMinY = std::min(rowMinY, b.y);
-                        rowMaxY = std::max(rowMaxY, b.y + b.h);
+                for (const auto& b : m_vec_Buttons) {
+                    if (b.e_Row == disabledRow) {
+                        rowMinX = std::min(rowMinX, b.f_X);
+                        rowMaxX = std::max(rowMaxX, b.f_X + b.f_W);
+                        rowMinY = std::min(rowMinY, b.f_Y);
+                        rowMaxY = std::max(rowMaxY, b.f_Y + b.f_H);
                     }
                 }
 
@@ -301,12 +301,12 @@ namespace ScotlandYard {
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
         }
 
-        void GameSetupState::startGame(Core::Application* app) {
+        void GameSetupState::StartGame(Core::Application* app) {
             using namespace ScotlandYard::Core;
 
             auto& S = Settings();
             // mode mapping
-            switch (m_iMode) {
+            switch (m_i_Mode) {
             case 0: S.e_Mode = GameMode::PvP;     break;
             case 1: S.e_Mode = GameMode::PvBot;   break;
             case 2: S.e_Mode = GameMode::BotvBot; break;
@@ -319,9 +319,9 @@ namespace ScotlandYard {
                 default: return AIAlgorithm::Random;
                 }
                 };
-            S.e_AIMisterX = mapAI(m_iAIMrX);
-            S.e_AIDetectives = mapAI(m_iAIDet);
-            S.e_PvBotHuman = (m_iHuman == 0 ? HumanSide::MrX : HumanSide::Detectives);
+            S.e_AIMisterX = mapAI(m_i_AIMrX);
+            S.e_AIDetectives = mapAI(m_i_AIDet);
+            S.e_PvBotHuman = (m_i_Human == 0 ? HumanSide::MrX : HumanSide::Detectives);
 
             app->GetStateManager()->ChangeState("game");
         }

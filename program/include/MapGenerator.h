@@ -8,19 +8,18 @@
 namespace ScotlandYard {
 namespace MapGen {
 
-// Struktury
 struct Point {
-    float x, y;
-    Point(float x_ = 0, float y_ = 0) : x(x_), y(y_) {}
+    float f_X, f_Y;
+    Point(float f_X_ = 0, float f_Y_ = 0) : f_X(f_X_), f_Y(f_Y_) {}
 };
 
 struct Park {
-    Point center;
-    float f_BaseRadius;
-    std::vector<float> vec_RadiusOffsets;
-    int i_NumPoints;
-    
-    Park(Point c, float r);
+    Point m_Center;
+    float m_f_BaseRadius;
+    std::vector<float> m_vec_RadiusOffsets;
+    int m_i_NumPoints;
+
+    Park(Point s_Center, float f_Radius);
     float GetRadiusAt(float f_Angle) const;
     bool ContainsPoint(float f_X, float f_Y) const;
 };
@@ -33,18 +32,17 @@ enum class TransportType {
     Ferry = 3
 };
 
-// Graph node structure
 struct GraphNode {
     int i_ID;
-    Point position;
+    Point m_Position;
     std::set<int> set_TaxiConnections;
     std::set<int> set_BusConnections;
     std::set<int> set_MetroConnections;
     std::set<int> set_FerryConnections;
     bool b_IsInPark = false;
     bool b_IsNearRiver = false;
-    
-    GraphNode(int id, Point pos) : i_ID(id), position(pos) {}
+
+    GraphNode(int i_Id, Point s_Pos) : i_ID(i_Id), m_Position(s_Pos) {}
 };
 
 // Generation parameters

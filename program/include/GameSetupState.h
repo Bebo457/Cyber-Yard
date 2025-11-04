@@ -22,25 +22,24 @@ namespace ScotlandYard {
         private:
             enum class Row { Mode = 0, Human = 1, MrX = 2, Detectives = 3, Footer = 4 };
             struct Button {
-                Row row;
-                int col; // column
-                float x, y, w, h; // position
-                const char* text;
+                Row e_Row;
+                int i_Col;
+                float f_X, f_Y, f_W, f_H;
+                const char* p_Text;
             };
 
-            // game player choices
-            int m_iMode = 0;   // 0: PvP, 1: PvBot, 2: BotvBot
-            int m_iAIMrX = 0;  // 0: Random, 1: Greedy, 2: Neural
-            int m_iAIDet = 0;  // 0: Random, 1: Greedy, 2: Neural
-            int m_iHuman = 0;
-            int m_iHover = -1;
+            int m_i_Mode = 0;
+            int m_i_AIMrX = 0;
+            int m_i_AIDet = 0;
+            int m_i_Human = 0;
+            int m_i_Hover = -1;
 
-            std::vector<Button> m_btns;
+            std::vector<Button> m_vec_Buttons;
 
-            bool isRowDisabled(Row row) const;
-            void layout(Core::Application* app);
-            void drawButton(const Button& b, bool selected, Core::Application* app);
-            void startGame(Core::Application* app);
+            bool IsRowDisabled(Row e_Row) const;
+            void Layout(Core::Application* p_App);
+            void DrawButton(const Button& s_Button, bool b_Selected, Core::Application* p_App);
+            void StartGame(Core::Application* p_App);
         };
 
     }

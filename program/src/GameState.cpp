@@ -7,7 +7,7 @@
 
 #include <random>
 #include <algorithm>
-#include "../../Graphs/graph_manage.h"
+#include "GraphManager.h"
 #include <unordered_map>
 #include <sstream>
 
@@ -1426,21 +1426,21 @@ void GameState::RenderEdges(const glm::mat4& mat4_View, const glm::mat4& mat4_Pr
         if (!n) continue;
         int sc = n->GetSlotCount();
         for (int s = 0; s < sc; ++s) {
-            Edge* e = n->getEdge(s);
+            Edge* e = n->GetEdge(s);
             if (!e) continue;
-            if (e->getGeometryType() != Edge::GeometryType::Polyline) continue;
-            if (e->endpoints[0] != n) continue; // ensure draw once
+            if (e->GetGeometryType() != Edge::GeometryType::Polyline) continue;
+            if (e->p_Endpoints[0] != n) continue; // ensure draw once
 
-            int srcId = e->endpoints[0] ? e->endpoints[0]->id : -1;
-            int dstId = e->endpoints[1] ? e->endpoints[1]->id : -1;
-            const auto& ptsNorm = e->getPolylineNormalized();
+            int srcId = e->p_Endpoints[0] ? e->p_Endpoints[0]->i_Id : -1;
+            int dstId = e->p_Endpoints[1] ? e->p_Endpoints[1]->i_Id : -1;
+            const auto& ptsNorm = e->GetPolylineNormalized();
             if (ptsNorm.size() < 2) continue;
 
             std::vector<glm::vec2> ptsWorld;
             ptsWorld.reserve(ptsNorm.size());
             for (const auto& p : ptsNorm) {
-                float gx = p.x * Core::k_MapGridMaxX;
-                float gy = p.y * Core::k_MapGridMaxY;
+                float gx = p.f_X * Core::k_MapGridMaxX;
+                float gy = p.f_Y * Core::k_MapGridMaxY;
                 ptsWorld.emplace_back(gx * m_f_GlobalScale, gy * m_f_GlobalScale);
             }
             auto itSrc = map_NodePos.find(srcId);
@@ -1448,11 +1448,11 @@ void GameState::RenderEdges(const glm::mat4& mat4_View, const glm::mat4& mat4_Pr
             auto itDst = map_NodePos.find(dstId);
             if (itDst != map_NodePos.end()) ptsWorld.back() = itDst->second;
 
-            DrawEdge s_DrawEdge{e->type, std::move(ptsWorld)};
-            if (e->type == Core::k_TransportTypeMetro) vec_EdgesMetro.push_back(std::move(s_DrawEdge));
-            else if (e->type == Core::k_TransportTypeBus) vec_EdgesBus.push_back(std::move(s_DrawEdge));
-            else if (e->type == Core::k_TransportTypeTaxi) vec_EdgesTaxi.push_back(std::move(s_DrawEdge));
-            else if (e->type == Core::k_TransportTypeWater) vec_EdgesWater.push_back(std::move(s_DrawEdge));
+            DrawEdge s_DrawEdge{e->i_Type, std::move(ptsWorld)};
+            if (e->i_Type == Core::k_TransportTypeMetro) vec_EdgesMetro.push_back(std::move(s_DrawEdge));
+            else if (e->i_Type == Core::k_TransportTypeBus) vec_EdgesBus.push_back(std::move(s_DrawEdge));
+            else if (e->i_Type == Core::k_TransportTypeTaxi) vec_EdgesTaxi.push_back(std::move(s_DrawEdge));
+            else if (e->i_Type == Core::k_TransportTypeWater) vec_EdgesWater.push_back(std::move(s_DrawEdge));
         }
     }
 

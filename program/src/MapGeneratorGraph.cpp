@@ -9,8 +9,8 @@ namespace MapGen {
 
 // Helper: Calculate distance between two points
 float Distance(const Point& p1, const Point& p2) {
-    float dx = p1.x - p2.x;
-    float dy = p1.y - p2.y;
+    float dx = p1.f_X - p2.f_X;
+    float dy = p1.f_Y - p2.f_Y;
     return sqrt(dx * dx + dy * dy);
 }
 
@@ -18,7 +18,7 @@ float Distance(const Point& p1, const Point& p2) {
 bool ConnectionCrossesRiver(const Point& p1, const Point& p2, 
                            const std::vector<Point>& riverPath) {
     // Simple check: if midpoint is very close to river, assume crossing
-    Point mid((p1.x + p2.x) / 2.0f, (p1.y + p2.y) / 2.0f);
+    Point mid((p1.f_X + p2.f_X) / 2.0f, (p1.f_Y + p2.f_Y) / 2.0f);
     return GetDistanceToRiver(mid, riverPath) < Config::RIVER_WIDTH * 0.6f;
 }
 
@@ -35,7 +35,7 @@ std::vector<GraphNode> GenerateGraph(const std::vector<Point>& vec_GridPoints,
         
         // Mark if in park
         for (const auto& park : vec_Parks) {
-            if (park.ContainsPoint(pt.x, pt.y)) {
+            if (park.ContainsPoint(pt.f_X, pt.f_Y)) {
                 node.b_IsInPark = true;
                 break;
             }
@@ -72,7 +72,7 @@ void GenerateTaxiConnections(std::vector<GraphNode>& vec_Nodes, float f_Density)
         for (auto& other : vec_Nodes) {
             if (node.i_ID == other.i_ID) continue;
             
-            float dist = Distance(node.position, other.position);
+            float dist = Distance(node.m_Position, other.m_Position);
             if (dist <= Config::TAXI_MAX_DISTANCE * f_Density) {
                 candidates.push_back(other.i_ID);
             }
@@ -89,8 +89,8 @@ void GenerateTaxiConnections(std::vector<GraphNode>& vec_Nodes, float f_Density)
                 return a < b; // Fallback for invalid IDs
             }
             
-            float distA = Distance(node.position, vec_Nodes[a-1].position);
-            float distB = Distance(node.position, vec_Nodes[b-1].position);
+            float distA = Distance(node.m_Position, vec_Nodes[a-1].m_Position);
+            float distB = Distance(node.m_Position, vec_Nodes[b-1].m_Position);
             
             // Add randomness: 70% prefer closer, 30% random
             if (std::uniform_real_distribution<float>(0, 1)(gen) > 0.7f) {
@@ -143,7 +143,7 @@ void GenerateBusConnections(std::vector<GraphNode>& vec_Nodes, float f_Density) 
         for (auto& other : vec_Nodes) {
             if (node.i_ID == other.i_ID || other.b_IsInPark) continue;
             
-            float dist = Distance(node.position, other.position);
+            float dist = Distance(node.m_Position, other.m_Position);
             if (dist > Config::TAXI_MAX_DISTANCE && 
                 dist <= Config::BUS_MAX_DISTANCE * f_Density) {
                 candidates.push_back(other.i_ID);
@@ -287,7 +287,7 @@ void GenerateFerryConnections(std::vector<GraphNode>& vec_Nodes,
         for (auto& node : vec_Nodes) {
             if (node.b_IsInPark) continue; // Parks: taxi only
             
-            float dist = Distance(node.position, riverPoint);
+            float dist = Distance(node.m_Position, riverPoint);
             if (dist < 200.0f) { // Wider search radius
                 candidates.push_back({node.i_ID, dist});
             }

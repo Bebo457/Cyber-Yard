@@ -51,35 +51,35 @@ bool ExportMapToPNG(const std::string& s_Filename,
         };
         
         for (const auto& node : *p_Nodes) {
-            int x0 = (int)node.position.x;
-            int y0 = (int)node.position.y;
+            int x0 = (int)node.m_Position.f_X;
+            int y0 = (int)node.m_Position.f_Y;
             
             // Draw taxi connections
             for (int targetID : node.set_TaxiConnections) {
                 if (targetID <= node.i_ID) continue;
                 const auto& target = (*p_Nodes)[targetID - 1];
-                drawConnection(x0, y0, (int)target.position.x, (int)target.position.y, taxiColor);
+                drawConnection(x0, y0, (int)target.m_Position.f_X, (int)target.m_Position.f_Y, taxiColor);
             }
             
             // Draw bus connections
             for (int targetID : node.set_BusConnections) {
                 if (targetID <= node.i_ID) continue;
                 const auto& target = (*p_Nodes)[targetID - 1];
-                drawConnection(x0, y0, (int)target.position.x, (int)target.position.y, busColor);
+                drawConnection(x0, y0, (int)target.m_Position.f_X, (int)target.m_Position.f_Y, busColor);
             }
             
             // Draw metro connections
             for (int targetID : node.set_MetroConnections) {
                 if (targetID <= node.i_ID) continue;
                 const auto& target = (*p_Nodes)[targetID - 1];
-                drawConnection(x0, y0, (int)target.position.x, (int)target.position.y, metroColor);
+                drawConnection(x0, y0, (int)target.m_Position.f_X, (int)target.m_Position.f_Y, metroColor);
             }
             
             // Draw ferry connections
             for (int targetID : node.set_FerryConnections) {
                 if (targetID <= node.i_ID) continue;
                 const auto& target = (*p_Nodes)[targetID - 1];
-                drawConnection(x0, y0, (int)target.position.x, (int)target.position.y, ferryColor);
+                drawConnection(x0, y0, (int)target.m_Position.f_X, (int)target.m_Position.f_Y, ferryColor);
             }
         }
     }
@@ -87,10 +87,10 @@ bool ExportMapToPNG(const std::string& s_Filename,
     // Draw parks (green)
     Uint32 parkColor = SDL_MapRGB(surface->format, 34, 139, 34);
     for (const auto& park : vec_Parks) {
-        int minX = std::max(0, (int)(park.center.x - park.f_BaseRadius * 1.5f));
-        int maxX = std::min(i_Width - 1, (int)(park.center.x + park.f_BaseRadius * 1.5f));
-        int minY = std::max(0, (int)(park.center.y - park.f_BaseRadius * 1.5f));
-        int maxY = std::min(i_Height - 1, (int)(park.center.y + park.f_BaseRadius * 1.5f));
+        int minX = std::max(0, (int)(park.m_Center.f_X - park.m_f_BaseRadius * 1.5f));
+        int maxX = std::min(i_Width - 1, (int)(park.m_Center.f_X + park.m_f_BaseRadius * 1.5f));
+        int minY = std::max(0, (int)(park.m_Center.f_Y - park.m_f_BaseRadius * 1.5f));
+        int maxY = std::min(i_Height - 1, (int)(park.m_Center.f_Y + park.m_f_BaseRadius * 1.5f));
         
         for (int y = minY; y <= maxY; ++y) {
             for (int x = minX; x <= maxX; ++x) {
@@ -105,8 +105,8 @@ bool ExportMapToPNG(const std::string& s_Filename,
     Uint32 riverColor = SDL_MapRGB(surface->format, 50, 150, 255);
     for (size_t i = 0; i < vec_RiverPath.size(); ++i) {
         for (int offset = -Config::RIVER_WIDTH/2; offset <= Config::RIVER_WIDTH/2; ++offset) {
-            int x = (int)vec_RiverPath[i].x + offset;
-            int y = (int)vec_RiverPath[i].y;
+            int x = (int)vec_RiverPath[i].f_X + offset;
+            int y = (int)vec_RiverPath[i].f_Y;
             if (x >= 0 && x < i_Width && y >= 0 && y < i_Height) {
                 pixels[y * i_Width + x] = riverColor;
             }
@@ -119,8 +119,8 @@ bool ExportMapToPNG(const std::string& s_Filename,
         for (int dy = -4; dy <= 4; ++dy) {
             for (int dx = -4; dx <= 4; ++dx) {
                 if (dx*dx + dy*dy <= 16) {
-                    int x = (int)p.x + dx;
-                    int y = (int)p.y + dy;
+                    int x = (int)p.f_X + dx;
+                    int y = (int)p.f_Y + dy;
                     if (x >= 0 && x < i_Width && y >= 0 && y < i_Height) {
                         pixels[y * i_Width + x] = gridColor;
                     }

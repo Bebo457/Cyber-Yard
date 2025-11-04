@@ -12,7 +12,7 @@
 #include <SDL2/SDL.h>
 #include "Player.h"
 #include "PlayerController.h"
-#include "../../Graphs/graph_manage.h"
+#include "GraphManager.h"
 #include <thread>
 #include <mutex>
 #include <atomic>

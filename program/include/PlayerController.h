@@ -7,11 +7,10 @@
 #include <vector>
 #include <chrono>
 
-
-class GraphManager;
-
 namespace ScotlandYard {
 namespace Core {
+
+class GraphManager;
 
 class Player;
 class Application;
