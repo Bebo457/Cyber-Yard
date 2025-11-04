@@ -110,7 +110,7 @@ private:
     std::atomic_bool m_b_ConsoleThreadRunning{false};
     std::mutex m_mtx_Players;  // Protects m_vec_Players
 
-    std::vector<Core::Player> m_vec_Players;
+    std::vector<Core::Player> m_vec_Players;    
     std::vector<std::unique_ptr<Core::IPlayerController>> m_vec_PlayerControllers;
     std::atomic_bool m_b_RequestMenuChange{false};
     struct PlayerToken {
@@ -120,6 +120,11 @@ private:
     std::vector<PlayerToken> m_vec_PlayerTokens;
     std::vector<float> generateCylinderVertices(float radius, float height, int segments);    
     std::vector<float> generateHemisphereVertices(float radius, int segments);
+
+    // 3D text (labels lying flat on the board)
+    GLuint m_ShaderProgram_Text3D = 0;
+    GLuint m_VAO_Text3D = 0;
+    GLuint m_VBO_Text3D = 0;
 
     // Player token 
     GLuint m_VAO_Cylinder = 0;
@@ -217,6 +222,7 @@ private:
     void HandleResize(Core::Application* p_App);
     void RenderBoard(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+    void RenderStationLabels(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderEdges(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
@@ -230,14 +236,8 @@ private:
     bool CheckCapture() const;
     void ResetToInitial();
 
-    // Helper: builds a compact suffix with remaining tickets for all players
-    // Format example:
-    //  " | Tickets: MrX(taxi:10, bus:8, metro:4, water:0, black:5, 2x:2) D0(taxi:10, bus:8, metro:4, water:0) D1(...)"
     std::string BuildTicketsLogSuffix();
 
-    // Helper: builds a compact suffix with remaining tickets for a specific player
-    // Format example for detective: " | Tickets: taxi:10, bus:8, metro:4, water:0"
-    // For MrX adds extras: ", black:5, 2x:2"
     std::string BuildPlayerTicketsSuffix(int i_PlayerIndex);
 };
 

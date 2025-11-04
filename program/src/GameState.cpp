@@ -472,6 +472,56 @@ void GameState::OnEnter() {
 
     glBindVertexArray(0);
 
+    // 3D Text shader (glyphs lying flat on the board)
+    const char* text3DVS = R"(
+        #version 330 core
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aUV;
+        uniform mat4 MVP;
+        out vec2 TexCoord;
+        void main() {
+            TexCoord = aUV;
+            gl_Position = MVP * vec4(aPos, 1.0);
+        }
+    )";
+
+    const char* text3DFS = R"(
+        #version 330 core
+        in vec2 TexCoord;
+        uniform sampler2D glyph;
+        uniform vec3 textColor;
+        out vec4 FragColor;
+        void main() {
+            float a = texture(glyph, TexCoord).r;
+            FragColor = vec4(textColor, a);
+        }
+    )";
+
+    GLuint tVS = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(tVS, 1, &text3DVS, nullptr);
+    glCompileShader(tVS);
+    GLuint tFS = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(tFS, 1, &text3DFS, nullptr);
+    glCompileShader(tFS);
+    m_ShaderProgram_Text3D = glCreateProgram();
+    glAttachShader(m_ShaderProgram_Text3D, tVS);
+    glAttachShader(m_ShaderProgram_Text3D, tFS);
+    glLinkProgram(m_ShaderProgram_Text3D);
+    glDeleteShader(tVS);
+    glDeleteShader(tFS);
+
+    // Geometry for a single glyph quad (updated per glyph)
+    glGenVertexArrays(1, &m_VAO_Text3D);
+    glGenBuffers(1, &m_VBO_Text3D);
+    glBindVertexArray(m_VAO_Text3D);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Text3D);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 5 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glBindVertexArray(0);
+
     // Quad for thick line segments (edge rendering)
     {
         float quadLine[] = {
@@ -948,6 +998,18 @@ void GameState::OnExit() {
         glDeleteProgram(m_ShaderProgram_Circle);
         m_ShaderProgram_Circle = 0;
     }
+    if (m_VAO_Text3D) {
+        glDeleteVertexArrays(1, &m_VAO_Text3D);
+        m_VAO_Text3D = 0;
+    }
+    if (m_VBO_Text3D) {
+        glDeleteBuffers(1, &m_VBO_Text3D);
+        m_VBO_Text3D = 0;
+    }
+    if (m_ShaderProgram_Text3D) {
+        glDeleteProgram(m_ShaderProgram_Text3D);
+        m_ShaderProgram_Text3D = 0;
+    }
     if (m_FBO_Picking) {
         glDeleteFramebuffers(1, &m_FBO_Picking);
         m_FBO_Picking = 0;
@@ -1164,6 +1226,8 @@ void GameState::Render(Core::Application* p_App) {
     RenderBoard(p_App, mat4_View, mat4_Projection);
     RenderEdges(mat4_View, mat4_Projection);
     RenderStations(mat4_View, mat4_Projection);
+    // Draw numeric labels on top of station circles
+    RenderStationLabels(p_App, mat4_View, mat4_Projection);
     RenderPlayers(mat4_View, mat4_Projection);
     RenderArrows(mat4_View, mat4_Projection);
     RenderHUD(p_App);
@@ -1180,6 +1244,104 @@ void GameState::Render(Core::Application* p_App) {
         }
         m_b_RequestMenuChange.store(false);
     }
+}
+
+void GameState::RenderStationLabels(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+    if (!p_App) return;
+
+    // Compute MVP once; we draw in world coordinates (lying on XZ plane)
+    glm::mat4 mat4_MVP = mat4_Projection * mat4_View;
+
+    // Match the vertical stacking logic from RenderStations for top (white) circle height
+    const float f_YStart = 0.001f;
+    const float f_YStep = 0.02f;
+
+    // Convert glyph pixel sizes to world-units (tuned to fit inside white circles)
+    const float f_WorldPerPx = 0.0060f * m_f_GlobalScale; // tweak if you want bigger/smaller text
+    const float f_ZLift = 0.0025f * m_f_GlobalScale;      // avoid z-fighting with the top circle
+    const float f_LabelOffsetPx = 2.0f;                   // slight right shift to visually center within circle
+
+    // Access glyph atlas from Application
+    const auto& map_Characters = p_App->GetCharacterMap();
+
+    glUseProgram(m_ShaderProgram_Text3D);
+    glUniformMatrix4fv(glGetUniformLocation(m_ShaderProgram_Text3D, "MVP"), 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+    glUniform3f(glGetUniformLocation(m_ShaderProgram_Text3D, "textColor"), 0.f, 0.f, 0.f);
+    glActiveTexture(GL_TEXTURE0);
+    glUniform1i(glGetUniformLocation(m_ShaderProgram_Text3D, "glyph"), 0);
+
+    GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+    if (!b_BlendWas) glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBindVertexArray(m_VAO_Text3D);
+
+    static const std::vector<std::string> vec_TransportOrder = { "metro", "bus", "taxi", "water" };
+    for (const auto& station : m_vec_CircleStations) {
+        // Count rings to get top white circle height
+        int i_Count = 0;
+        for (const auto& s_Type : vec_TransportOrder) {
+            if (std::find(station.transportTypes.begin(), station.transportTypes.end(), s_Type) != station.transportTypes.end()) ++i_Count;
+        }
+        const float f_YTop = f_YStart + i_Count * f_YStep;
+
+        // Center position of label (world)
+        const glm::vec3 vec3_Center(station.position.x, f_YTop * m_f_GlobalScale + f_ZLift, station.position.y);
+
+        // Build string and measure width/height in pixels
+        const std::string s_Text = std::to_string(station.stationID);
+        int i_PxAdvanceSum = 0;
+        int i_PxMaxH = 0;
+        for (char c : s_Text) {
+            auto it = map_Characters.find(c);
+            if (it == map_Characters.end()) continue;
+            i_PxAdvanceSum += (it->second.m_i_Advance >> 6);
+            i_PxMaxH = std::max(i_PxMaxH, it->second.m_i_Height);
+        }
+        float f_TextW = i_PxAdvanceSum * f_WorldPerPx;
+        float f_TextH = std::max(8, i_PxMaxH) * f_WorldPerPx;
+
+        // Starting pen X so that text is centered around the station
+        float f_PenX = vec3_Center.x - f_TextW * 0.5f + f_LabelOffsetPx * f_WorldPerPx;
+        float f_BaseZ0 = vec3_Center.z - f_TextH * 0.5f;
+
+        // Draw glyphs as quads on XZ plane (lying flat). For each glyph we update VBO and draw.
+        for (char c : s_Text) {
+            auto it = map_Characters.find(c);
+            if (it == map_Characters.end()) continue;
+            const auto& ch = it->second;
+            float f_GlyphW = ch.m_i_Width * f_WorldPerPx;
+            float f_GlyphH = ch.m_i_Height * f_WorldPerPx;
+
+            // Align each glyph vertically within total text box
+            float f_Z0 = f_BaseZ0 + (f_TextH - f_GlyphH) * 0.5f;
+            float f_X0 = f_PenX;
+            float f_X1 = f_PenX + f_GlyphW;
+            float f_Z1 = f_Z0 + f_GlyphH;
+
+            // Two triangles, each vertex: pos.xyz, uv
+            float verts[6][5] = {
+                { f_X0, vec3_Center.y, f_Z0, 0.0f, 0.0f },
+                { f_X0, vec3_Center.y, f_Z1, 0.0f, 1.0f },
+                { f_X1, vec3_Center.y, f_Z1, 1.0f, 1.0f },
+                { f_X0, vec3_Center.y, f_Z0, 0.0f, 0.0f },
+                { f_X1, vec3_Center.y, f_Z1, 1.0f, 1.0f },
+                { f_X1, vec3_Center.y, f_Z0, 1.0f, 0.0f }
+            };
+
+            glBindTexture(GL_TEXTURE_2D, ch.m_TextureID);
+            glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Text3D);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            // Advance pen
+            f_PenX += (ch.m_i_Advance >> 6) * f_WorldPerPx;
+        }
+    }
+
+    glBindVertexArray(0);
+    if (!b_BlendWas) glDisable(GL_BLEND);
 }
 
 void GameState::HandleResize(Core::Application* p_App) {

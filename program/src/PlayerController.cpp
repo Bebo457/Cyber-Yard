@@ -2078,6 +2078,488 @@ static MoveDecision MonteCarloPoliceAlgorithm(
     return decision;
 }
 
+// === MINIMAX ALGORITHM FOR POLICE ===
+
+static double EvaluateStateForMinimax(
+    int i_MrXPos,
+    const std::vector<int>& vec_PolicePositions,
+    const std::vector<std::map<int, int>>& vec_PoliceTickets,
+    const std::map<int, int>& map_MrXTickets,
+    const GraphManager* p_Graph
+) {
+    // Distance average computation
+    double f_DistSum = 0.0;
+    int i_Count = 0;
+
+    for (int i_PolicePos : vec_PolicePositions) {
+        int i_Dist = ShortestPathDistance(p_Graph, i_PolicePos, i_MrXPos);
+        if (i_Dist >= 0) {
+            f_DistSum += static_cast<double>(i_Dist);
+            i_Count++;
+        }
+    }
+
+    double f_AvgDist = (i_Count > 0) ? (f_DistSum / i_Count) : 50.0;
+
+    // Clustering penalty - police too close to each other
+    double f_ClusterPenalty = 0.0;
+    for (size_t i = 0; i < vec_PolicePositions.size(); ++i) {
+        for (size_t j = i + 1; j < vec_PolicePositions.size(); ++j) {
+            int i_Dist = ShortestPathDistance(p_Graph, vec_PolicePositions[i], vec_PolicePositions[j]);
+            if (i_Dist >= 0 && i_Dist <= 2) {
+                f_ClusterPenalty += (2.0 - i_Dist);
+            }
+        }
+    }
+
+    // Ticket advantage
+    int i_PoliceTicketSum = 0;
+    for (const auto& map_Tickets : vec_PoliceTickets) {
+        for (const auto& [_, i_Count] : map_Tickets) {
+            if (i_Count != std::numeric_limits<int>::max()) {
+                i_PoliceTicketSum += i_Count;
+            }
+        }
+    }
+
+    int i_MrXTicketSum = 0;
+    for (const auto& [_, i_Count] : map_MrXTickets) {
+        if (i_Count != std::numeric_limits<int>::max()) {
+            i_MrXTicketSum += i_Count;
+        }
+    }
+
+    double f_TicketAdv = static_cast<double>(i_PoliceTicketSum - i_MrXTicketSum);
+
+    // Lower score is better for police (negative of distance)
+    return -(0.7 * f_AvgDist - 0.1 * f_TicketAdv + 0.3 * f_ClusterPenalty);
+}
+
+static std::vector<std::pair<int, int>> GetBestMovesForPolice(
+    int i_PolicePos,
+    int i_MrXPos,
+    const std::map<int, int>& map_Tickets,
+    const GraphManager* p_Graph,
+    int i_N
+) {
+    std::vector<std::pair<int, int>> vec_Moves;
+    auto vec_Connections = p_Graph->GetConnections(i_PolicePos);
+
+    for (const auto& conn : vec_Connections) {
+        auto it = map_Tickets.find(conn.i_TransportType);
+        if (it != map_Tickets.end() && it->second > 0) {
+            vec_Moves.push_back({conn.i_NodeId, conn.i_TransportType});
+        }
+    }
+
+    if (vec_Moves.empty()) {
+        return {{i_PolicePos, 0}};
+    }
+
+    // Score moves by distance to Mr. X
+    std::vector<std::tuple<int, int, int>> vec_ScoredMoves;
+    for (const auto& [i_Dest, i_Transport] : vec_Moves) {
+        int i_Dist = ShortestPathDistance(p_Graph, i_Dest, i_MrXPos);
+        vec_ScoredMoves.push_back({i_Dest, i_Transport, i_Dist});
+    }
+
+    std::sort(vec_ScoredMoves.begin(), vec_ScoredMoves.end(),
+              [](const auto& a, const auto& b) { return std::get<2>(a) < std::get<2>(b); });
+
+    std::vector<std::pair<int, int>> vec_Result;
+    int i_Limit = std::min(i_N, static_cast<int>(vec_ScoredMoves.size()));
+    for (int i = 0; i < i_Limit; ++i) {
+        vec_Result.push_back({std::get<0>(vec_ScoredMoves[i]), std::get<1>(vec_ScoredMoves[i])});
+    }
+
+    return vec_Result;
+}
+
+struct JointPoliceMove {
+    std::vector<int> vec_Destinations;
+    std::vector<int> vec_Transports;
+    std::vector<int> vec_PoliceIndices;
+};
+
+static std::vector<JointPoliceMove> GenerateJointMoves(
+    const std::vector<int>& vec_PolicePositions,
+    const std::vector<std::map<int, int>>& vec_PoliceTickets,
+    int i_MrXPos,
+    const GraphManager* p_Graph,
+    int i_N
+) {
+    std::vector<std::vector<std::tuple<int, int, int>>> vec_MovesPerPolice;
+
+    for (size_t i = 0; i < vec_PolicePositions.size(); ++i) {
+        auto vec_Moves = GetBestMovesForPolice(
+            vec_PolicePositions[i], i_MrXPos, vec_PoliceTickets[i], p_Graph, i_N
+        );
+
+        std::vector<std::tuple<int, int, int>> vec_IndexedMoves;
+        for (const auto& [i_Dest, i_Transport] : vec_Moves) {
+            vec_IndexedMoves.push_back({i_Dest, i_Transport, static_cast<int>(i)});
+        }
+        vec_MovesPerPolice.push_back(vec_IndexedMoves);
+    }
+
+    // Generate all combinations
+    std::vector<JointPoliceMove> vec_JointMoves;
+
+    std::function<void(size_t, std::vector<int>&, std::vector<int>&, std::vector<int>&)> fn_Generate;
+    fn_Generate = [&](size_t i_Depth, std::vector<int>& vec_Dests, 
+                     std::vector<int>& vec_Trans, std::vector<int>& vec_Idx) {
+        if (i_Depth == vec_MovesPerPolice.size()) {
+            // Check for collisions
+            std::set<int> set_UniquePos(vec_Dests.begin(), vec_Dests.end());
+            if (set_UniquePos.size() == vec_Dests.size()) {
+                // No collisions - valid joint move
+                JointPoliceMove move;
+                move.vec_Destinations = vec_Dests;
+                move.vec_Transports = vec_Trans;
+                move.vec_PoliceIndices = vec_Idx;
+                vec_JointMoves.push_back(move);
+            }
+            return;
+        }
+
+        for (const auto& [i_Dest, i_Transport, i_Index] : vec_MovesPerPolice[i_Depth]) {
+            // Check tickets
+            auto it = vec_PoliceTickets[i_Depth].find(i_Transport);
+            if (i_Transport != 0 && (it == vec_PoliceTickets[i_Depth].end() || it->second <= 0)) {
+                continue;
+            }
+
+            vec_Dests.push_back(i_Dest);
+            vec_Trans.push_back(i_Transport);
+            vec_Idx.push_back(i_Index);
+
+            fn_Generate(i_Depth + 1, vec_Dests, vec_Trans, vec_Idx);
+
+            vec_Dests.pop_back();
+            vec_Trans.pop_back();
+            vec_Idx.pop_back();
+        }
+    };
+
+    std::vector<int> vec_Dests, vec_Trans, vec_Idx;
+    fn_Generate(0, vec_Dests, vec_Trans, vec_Idx);
+
+    return vec_JointMoves;
+}
+
+static bool IsTerminalState(
+    int i_MrXPos,
+    const std::vector<int>& vec_PolicePositions,
+    const std::map<int, int>& map_MrXTickets,
+    const std::vector<std::map<int, int>>& vec_PoliceTickets,
+    const GraphManager* p_Graph
+) {
+    // Mr. X caught
+    if (std::find(vec_PolicePositions.begin(), vec_PolicePositions.end(), i_MrXPos) 
+        != vec_PolicePositions.end()) {
+        return true;
+    }
+
+    // Mr. X has no moves
+    auto vec_Connections = p_Graph->GetConnections(i_MrXPos);
+    bool b_HasMove = false;
+    for (const auto& conn : vec_Connections) {
+        auto it = map_MrXTickets.find(conn.i_TransportType);
+        if (it != map_MrXTickets.end() && it->second > 0) {
+            b_HasMove = true;
+            break;
+        }
+    }
+    if (!b_HasMove) {
+        return true;
+    }
+
+    // Police have no moves
+    auto vec_JointMoves = GenerateJointMoves(vec_PolicePositions, vec_PoliceTickets, i_MrXPos, p_Graph, 4);
+    if (vec_JointMoves.empty()) {
+        return true;
+    }
+
+    return false;
+}
+
+static double MinimaxAlgorithmRecursive(
+    int i_MrXPos,
+    std::vector<int> vec_PolicePositions,
+    std::map<int, int> map_MrXTickets,
+    std::vector<std::map<int, int>> vec_PoliceTickets,
+    int i_Depth,
+    bool b_IsMrXTurn,
+    double f_Alpha,
+    double f_Beta,
+    const GraphManager* p_Graph,
+    const std::vector<std::tuple<int, int, double>>& vec_MrXPositionCandidates
+) {
+    // Terminal conditions
+    if (i_Depth == 0 || IsTerminalState(i_MrXPos, vec_PolicePositions, map_MrXTickets, vec_PoliceTickets, p_Graph)) {
+        return EvaluateStateForMinimax(i_MrXPos, vec_PolicePositions, vec_PoliceTickets, map_MrXTickets, p_Graph);
+    }
+
+    // Check if caught
+    if (std::find(vec_PolicePositions.begin(), vec_PolicePositions.end(), i_MrXPos) 
+        != vec_PolicePositions.end()) {
+        return -100000.0;
+    }
+
+    if (b_IsMrXTurn) {
+        // Mr. X turn - maximize
+        double f_MaxEval = std::numeric_limits<double>::lowest();
+
+        for (const auto& [i_MrXNewPos, i_Transport, f_Weight] : vec_MrXPositionCandidates) {
+            // Check if move is valid from current position
+            auto vec_Connections = p_Graph->GetConnections(i_MrXPos);
+            bool b_ValidMove = false;
+            int i_MoveTransport = 0;
+
+            for (const auto& conn : vec_Connections) {
+                if (conn.i_NodeId == i_MrXNewPos) {
+                    auto it = map_MrXTickets.find(conn.i_TransportType);
+                    if (it != map_MrXTickets.end() && it->second > 0) {
+                        b_ValidMove = true;
+                        i_MoveTransport = conn.i_TransportType;
+                        break;
+                    }
+                }
+            }
+
+            if (!b_ValidMove) {
+                continue;
+            }
+
+            // Apply move
+            std::map<int, int> map_NewTickets = map_MrXTickets;
+            if (map_NewTickets[i_MoveTransport] != std::numeric_limits<int>::max()) {
+                map_NewTickets[i_MoveTransport] -= 1;
+            }
+
+            double f_Eval = MinimaxAlgorithmRecursive(
+                i_MrXNewPos, vec_PolicePositions, map_NewTickets, vec_PoliceTickets,
+                i_Depth - 1, false, f_Alpha, f_Beta, p_Graph, vec_MrXPositionCandidates
+            );
+
+            f_MaxEval = std::max(f_MaxEval, f_Eval);
+            f_Alpha = std::max(f_Alpha, f_Eval);
+
+            if (f_Beta <= f_Alpha) {
+                break; // Beta cutoff
+            }
+        }
+
+        return (f_MaxEval != std::numeric_limits<double>::lowest()) ? f_MaxEval : -10000.0;
+
+    } else {
+        // Police turn - minimize
+        double f_MinEval = std::numeric_limits<double>::max();
+
+        auto vec_JointMoves = GenerateJointMoves(vec_PolicePositions, vec_PoliceTickets, i_MrXPos, p_Graph, 4);
+
+        for (const auto& jointMove : vec_JointMoves) {
+            // Apply joint move
+            std::vector<int> vec_NewPositions = jointMove.vec_Destinations;
+            std::vector<std::map<int, int>> vec_NewTickets = vec_PoliceTickets;
+
+            bool b_Valid = true;
+            for (size_t i = 0; i < jointMove.vec_PoliceIndices.size(); ++i) {
+                int i_Idx = jointMove.vec_PoliceIndices[i];
+                int i_Transport = jointMove.vec_Transports[i];
+
+                if (i_Transport != 0) {
+                    auto it = vec_NewTickets[i_Idx].find(i_Transport);
+                    if (it == vec_NewTickets[i_Idx].end() || it->second <= 0) {
+                        b_Valid = false;
+                        break;
+                    }
+                    vec_NewTickets[i_Idx][i_Transport] -= 1;
+                }
+            }
+
+            if (!b_Valid) {
+                continue;
+            }
+
+            double f_Eval = MinimaxAlgorithmRecursive(
+                i_MrXPos, vec_NewPositions, map_MrXTickets, vec_NewTickets,
+                i_Depth - 1, true, f_Alpha, f_Beta, p_Graph, vec_MrXPositionCandidates
+            );
+
+            f_MinEval = std::min(f_MinEval, f_Eval);
+            f_Beta = std::min(f_Beta, f_Eval);
+
+            if (f_Beta <= f_Alpha) {
+                break; // Alpha cutoff
+            }
+        }
+
+        return (f_MinEval != std::numeric_limits<double>::max()) ? f_MinEval : 10000.0;
+    }
+}
+
+static MoveDecision MinimaxPoliceAlgorithm(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState
+) {
+    MoveDecision decision;
+    decision.b_HasDecision = false;
+
+    if (vec_PossibleMoves.empty()) {
+        return decision;
+    }
+
+    constexpr int i_kMaxDepth = 5;
+    constexpr int i_kNBestPoliceMoves = 4;
+    constexpr int i_kNBestMrXPositions = 4;
+
+    const GraphManager* p_Graph = gameState.p_Graph;
+    if (!p_Graph) {
+        return decision;
+    }
+
+    // Get probability map for Mr. X positions
+    std::map<int, double> map_ProbMap = ComputeProbabilityMap(gameState, p_Player);
+    if (map_ProbMap.empty()) {
+        map_ProbMap[gameState.i_MrXLastKnownPosition > 0 ? gameState.i_MrXLastKnownPosition : 1] = 1.0;
+    }
+
+    // Sort by probability and take top N
+    std::vector<std::tuple<int, int, double>> vec_MrXPositions;
+    for (const auto& [i_Node, f_Prob] : map_ProbMap) {
+        vec_MrXPositions.push_back({i_Node, 0, f_Prob});
+    }
+
+    std::sort(vec_MrXPositions.begin(), vec_MrXPositions.end(),
+              [](const auto& a, const auto& b) { return std::get<2>(a) > std::get<2>(b); });
+
+    if (vec_MrXPositions.size() > i_kNBestMrXPositions) {
+        vec_MrXPositions.resize(i_kNBestMrXPositions);
+    }
+
+    // Get police info
+    std::vector<int> vec_PolicePositions;
+    std::vector<std::map<int, int>> vec_PoliceTickets;
+
+    for (const auto& info : gameState.vec_AllPlayers) {
+        if (!info.b_IsMisterX) {
+            vec_PolicePositions.push_back(info.i_Position);
+
+            std::map<int, int> map_Tickets;
+            map_Tickets[Core::k_TransportTypeTaxi] = info.i_TaxiTickets;
+            map_Tickets[Core::k_TransportTypeBus] = info.i_BusTickets;
+            map_Tickets[Core::k_TransportTypeMetro] = info.i_MetroTickets;
+            vec_PoliceTickets.push_back(map_Tickets);
+        }
+    }
+
+    // Get Mr. X tickets (estimated)
+    std::map<int, int> map_MrXTickets;
+    const PlayerInfo* p_MrXInfo = nullptr;
+    for (const auto& info : gameState.vec_AllPlayers) {
+        if (info.b_IsMisterX) {
+            p_MrXInfo = &info;
+            break;
+        }
+    }
+
+    if (p_MrXInfo) {
+        map_MrXTickets[Core::k_TransportTypeTaxi] = p_MrXInfo->i_TaxiTickets;
+        map_MrXTickets[Core::k_TransportTypeBus] = p_MrXInfo->i_BusTickets;
+        map_MrXTickets[Core::k_TransportTypeMetro] = p_MrXInfo->i_MetroTickets;
+        map_MrXTickets[Core::k_TransportTypeWater] = p_MrXInfo->i_BlackTickets;
+    } else {
+        // Default values if no info
+        map_MrXTickets[Core::k_TransportTypeTaxi] = 10;
+        map_MrXTickets[Core::k_TransportTypeBus] = 10;
+        map_MrXTickets[Core::k_TransportTypeMetro] = 10;
+        map_MrXTickets[Core::k_TransportTypeWater] = 3;
+    }
+
+    // Find current player index
+    int i_PlayerIndex = -1;
+    for (size_t i = 0; i < gameState.vec_AllPlayers.size(); ++i) {
+        if (!gameState.vec_AllPlayers[i].b_IsMisterX) {
+            if (gameState.vec_AllPlayers[i].i_Position == p_Player->GetOccupiedNode()) {
+                i_PlayerIndex = static_cast<int>(i) - 1; // Subtract 1 because Mr. X is at index 0
+                for (size_t j = 0; j <= i; ++j) {
+                    if (gameState.vec_AllPlayers[j].b_IsMisterX) {
+                        i_PlayerIndex++;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    if (i_PlayerIndex < 0 || i_PlayerIndex >= static_cast<int>(vec_PolicePositions.size())) {
+        // Fallback: find by position matching
+        for (size_t i = 0; i < vec_PolicePositions.size(); ++i) {
+            if (vec_PolicePositions[i] == p_Player->GetOccupiedNode()) {
+                i_PlayerIndex = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+
+    if (i_PlayerIndex < 0) {
+        // Ultimate fallback - random move
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, static_cast<int>(vec_PossibleMoves.size()) - 1);
+        const auto& move = vec_PossibleMoves[dis(gen)];
+        decision = { true, move.i_DestinationNode, move.i_TransportType };
+        return decision;
+    }
+
+    // Evaluate each possible move
+    double f_BestScore = std::numeric_limits<double>::lowest();
+    PossibleMove bestMove = vec_PossibleMoves[0];
+
+    for (const auto& move : vec_PossibleMoves) {
+        // Apply move temporarily
+        int i_PrevPos = vec_PolicePositions[i_PlayerIndex];
+        std::map<int, int> map_PrevTickets = vec_PoliceTickets[i_PlayerIndex];
+
+        vec_PolicePositions[i_PlayerIndex] = move.i_DestinationNode;
+
+        if (vec_PoliceTickets[i_PlayerIndex].count(move.i_TransportType) && 
+            vec_PoliceTickets[i_PlayerIndex][move.i_TransportType] > 0) {
+            vec_PoliceTickets[i_PlayerIndex][move.i_TransportType] -= 1;
+        }
+
+        // Evaluate across all probable Mr. X positions
+        double f_TotalScore = 0.0;
+        for (const auto& [i_MrXPos, _, f_Weight] : vec_MrXPositions) {
+            double f_Score = MinimaxAlgorithmRecursive(
+                i_MrXPos, vec_PolicePositions, map_MrXTickets, vec_PoliceTickets,
+                i_kMaxDepth, true,
+                std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(),
+                p_Graph, vec_MrXPositions
+            );
+
+            f_TotalScore += f_Weight * f_Score;
+        }
+
+        // Restore position
+        vec_PolicePositions[i_PlayerIndex] = i_PrevPos;
+        vec_PoliceTickets[i_PlayerIndex] = map_PrevTickets;
+
+        if (f_TotalScore > f_BestScore) {
+            f_BestScore = f_TotalScore;
+            bestMove = move;
+        }
+    }
+
+    decision.b_HasDecision = true;
+    decision.i_DestinationNode = bestMove.i_DestinationNode;
+    decision.i_TransportType = bestMove.i_TransportType;
+
+    return decision;
+}
 
 MoveDecision AIPlayerController::CalculateBestMove(
     const Player* p_Player,
@@ -2100,17 +2582,21 @@ MoveDecision AIPlayerController::CalculateBestMove(
             break;
         }
         case Core::AIAlgorithm::GreedyShortestPath:
-            // TODO implementing algorithm here, rn fallback to Random
+// TODO implementing algorithm here, rn fallback to Random
+            //[[fallthrough]];
+            // decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            //decision = MonteCarloMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
+// TODO implementing algorithm here, rn fallback to Random
             //[[fallthrough]];
             // decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
             //decision = MonteCarloMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
             decision = DFSMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
         case Core::AIAlgorithm::NeuralNet:
-            // TODO implementing algorithm here, rn fallback to Random
+// TODO implementing algorithm here, rn fallback to Random
             {
-                decision = MonteCarloPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
-                break;
+            decision = MonteCarloPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+break;//decision = MinimaxPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
             }
             break;
     }
