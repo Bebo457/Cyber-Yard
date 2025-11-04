@@ -7,7 +7,9 @@ namespace ScotlandYard {
 namespace Core {
 
 // Game Rules
-static constexpr int k_MaxRounds = 24;
+// Base rounds in the game (not counting Mr. X double-move extra turns)
+// Per requirement, the basic number of rounds is 22.
+static constexpr int k_MaxRounds = 22;
 static constexpr int k_DetectiveCount = 4;
 
 // Mr X Reveal Rounds
