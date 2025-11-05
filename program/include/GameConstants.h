@@ -7,9 +7,7 @@ namespace ScotlandYard {
 namespace Core {
 
 // Game Rules
-// Base rounds in the game (not counting Mr. X double-move extra turns)
-// Per requirement, the basic number of rounds is 22.
-static constexpr int k_MaxRounds = 22;
+static constexpr int k_MaxRounds = 24;
 static constexpr int k_DetectiveCount = 4;
 
 // Mr X Reveal Rounds
@@ -39,8 +37,6 @@ static constexpr int k_MrXDoubleMoveTickets = 2;
 // Map Data Paths - use GetMapPath() to get full paths with ASSETS_DIR
 static constexpr const char* k_NodeDataRelativePath = "maps/nodes_original.csv";
 static constexpr const char* k_ConnectionsRelativePath = "maps/polaczenia.csv";
-// Edge geometry (normalized polylines or curves)
-static constexpr const char* k_EdgeGeometryRelativePath = "maps/edges_geometry.csv";
 
 // Helper function to build full asset path (like GetAssetPath in Application)
 inline std::string GetMapPath(const std::string& s_RelativePath) {
@@ -54,29 +50,6 @@ inline std::string GetMapPath(const std::string& s_RelativePath) {
 // Map Constants
 static constexpr int k_MaxNodes = 200;
 static constexpr float k_MapSizeMeters = 13.0f;
-// Grid extents used to denormalize edge geometry points from [0..1] to board units
-static constexpr float k_MapGridMaxX = 22.0f; // matches nodes_original.csv max pos_x
-static constexpr float k_MapGridMaxY = 15.0f; // matches nodes_original.csv max pos_y
-
-// Edge rendering thickness (before applying global scale matrix)
-static constexpr float k_EdgeThicknessTaxi  = 0.15f; // thinnest
-static constexpr float k_EdgeThicknessBus   = 0.22f; // middle
-static constexpr float k_EdgeThicknessMetro = 0.35f; // thickest
-static constexpr float k_EdgeThicknessWater = 0.25f; // thicker for visibility
-
-// Edge colors (RGB in [0..1])
-static constexpr float k_EdgeColorTaxi[3]  = {1.0f, 1.0f, 0.0f}; // yellow
-static constexpr float k_EdgeColorBus[3]   = {0.0f, 1.0f, 0.0f}; // green
-static constexpr float k_EdgeColorMetro[3] = {1.0f, 0.0f, 0.0f}; // red
-static constexpr float k_EdgeColorWater[3] = {0.2f, 0.2f, 0.2f}; // dark gray
-
-// Metro dashed rendering (lengths in world units after applying node scale; tuned visually)
-static constexpr float k_MetroDashLen = 0.02f;
-static constexpr float k_MetroGapLen  = 0.02f;
-
-// Water dashed rendering (separate from metro for independent tuning)
-static constexpr float k_WaterDashLen = 0.035f;
-static constexpr float k_WaterGapLen  = 0.025f;
 
 // Transport Types
 static constexpr int k_TransportTypeTaxi = 1;
@@ -89,13 +62,13 @@ static constexpr int k_TransportTypeWater = 4;
 namespace UI {
 
 // Arrow Geometry
-static constexpr float k_ArrowLength = 0.20f;
-static constexpr float k_ArrowWidth = 0.12f;
+static constexpr float k_ArrowLength = 0.08f;
+static constexpr float k_ArrowWidth = 0.04f;
 
 // Transport Orbital Radii (distance from station center for direction arrows)
 static constexpr float k_TaxiWaterOrbitalRadius = 0.15f;
-static constexpr float k_BusOrbitalRadius = 0.41f;
-static constexpr float k_MetroOrbitalRadius = 0.72f;
+static constexpr float k_BusOrbitalRadius = 0.27f;
+static constexpr float k_MetroOrbitalRadius = 0.34f;
 
 } // namespace UI
 

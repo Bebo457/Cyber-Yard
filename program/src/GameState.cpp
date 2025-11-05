@@ -1,69 +1,19 @@
 #include "GameState.h"
 #include "Application.h"
 #include "StateManager.h"
-#include "GameConstants.h"
-#include "GameSettings.h"
 #include <GL/glew.h>
 
 #include <random>
 #include <algorithm>
-#include <iostream>
-#include "GraphManager.h"
-#include <unordered_map>
-#include <sstream>
+#include "graph_manage.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../external/stb_image.h"
 
 #include "HUDOverlay.h"
-#include <unordered_map>
 
 namespace ScotlandYard {
 namespace States {
-
-std::string GameState::BuildTicketsLogSuffix() {
-    std::lock_guard<std::mutex> lock(m_mtx_Players);
-    if (m_vec_Players.empty()) return std::string();
-
-    std::ostringstream oss;
-    oss << " | Tickets: ";
-    int i_DetIdx = 0;
-    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
-        const auto& p = m_vec_Players[i];
-        bool b_IsMrX = (p.GetType() == Core::PlayerType::MisterX);
-        if (i > 0) oss << ' ';
-        if (b_IsMrX) oss << "MrX";
-        else         oss << "D" << i_DetIdx++;
-
-        oss << "(taxi:" << p.GetTaxiTickets()
-            << ", bus:" << p.GetBusTickets()
-            << ", metro:" << p.GetMetroTickets()
-            << ", water:" << p.GetWaterTickets();
-        if (b_IsMrX) {
-            oss << ", black:" << p.GetBlackTickets()
-                << ", 2x:" << p.GetDoubleMoveTickets();
-        }
-        oss << ")";
-    }
-    return oss.str();
-}
-
-std::string GameState::BuildPlayerTicketsSuffix(int i_PlayerIndex) {
-    std::lock_guard<std::mutex> lock(m_mtx_Players);
-    if (i_PlayerIndex < 0 || i_PlayerIndex >= static_cast<int>(m_vec_Players.size())) return std::string();
-    const auto& p = m_vec_Players[i_PlayerIndex];
-    std::ostringstream oss;
-    oss << " | Tickets: "
-        << "taxi:" << p.GetTaxiTickets()
-        << ", bus:" << p.GetBusTickets()
-        << ", metro:" << p.GetMetroTickets()
-        << ", water:" << p.GetWaterTickets();
-    if (p.GetType() == Core::PlayerType::MisterX) {
-        oss << ", black:" << p.GetBlackTickets()
-            << ", 2x:" << p.GetDoubleMoveTickets();
-    }
-    return oss.str();
-}
 
 GameState::GameState()
     : m_b_GameActive(false)
@@ -134,7 +84,7 @@ void GameState::OnEnter() {
     }
 
     if (vec_StationData.empty()) {
-    std::cerr << "[GameState] Warning: No positions loaded from CSV, using defaults.\n";
+        std::cerr << "[GameState] Warning: No positions loaded from CSV, using defaults.\n";
 
         m_vec_CircleStations = {
             { glm::vec2(-0.9f, -0.9f), {"taxi"}, 1 },
@@ -345,7 +295,7 @@ void GameState::OnEnter() {
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_RBO_PickingDepth);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "[GameState] ERROR: Picking framebuffer is not complete!\n";
+        std::cerr << "[GameState] ERROR: Picking framebuffer is not complete!\n";
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -362,7 +312,7 @@ void GameState::OnEnter() {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_TextureID_PickingDilated, 0);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "[GameState] ERROR: Dilated picking framebuffer is not complete!\n";
+        std::cerr << "[GameState] ERROR: Dilated picking framebuffer is not complete!\n";
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -472,77 +422,6 @@ void GameState::OnEnter() {
 
     glBindVertexArray(0);
 
-    // 3D Text shader (glyphs lying flat on the board)
-    const char* text3DVS = R"(
-        #version 330 core
-        layout(location = 0) in vec3 aPos;
-        layout(location = 1) in vec2 aUV;
-        uniform mat4 MVP;
-        out vec2 TexCoord;
-        void main() {
-            TexCoord = aUV;
-            gl_Position = MVP * vec4(aPos, 1.0);
-        }
-    )";
-
-    const char* text3DFS = R"(
-        #version 330 core
-        in vec2 TexCoord;
-        uniform sampler2D glyph;
-        uniform vec3 textColor;
-        out vec4 FragColor;
-        void main() {
-            float a = texture(glyph, TexCoord).r;
-            FragColor = vec4(textColor, a);
-        }
-    )";
-
-    GLuint tVS = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(tVS, 1, &text3DVS, nullptr);
-    glCompileShader(tVS);
-    GLuint tFS = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(tFS, 1, &text3DFS, nullptr);
-    glCompileShader(tFS);
-    m_ShaderProgram_Text3D = glCreateProgram();
-    glAttachShader(m_ShaderProgram_Text3D, tVS);
-    glAttachShader(m_ShaderProgram_Text3D, tFS);
-    glLinkProgram(m_ShaderProgram_Text3D);
-    glDeleteShader(tVS);
-    glDeleteShader(tFS);
-
-    // Geometry for a single glyph quad (updated per glyph)
-    glGenVertexArrays(1, &m_VAO_Text3D);
-    glGenBuffers(1, &m_VBO_Text3D);
-    glBindVertexArray(m_VAO_Text3D);
-    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Text3D);
-    glBufferData(GL_ARRAY_BUFFER, 6 * 5 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-
-    // Quad for thick line segments (edge rendering)
-    {
-        float quadLine[] = {
-            0.0f, 0.0f, -0.5f,
-            1.0f, 0.0f, -0.5f,
-            1.0f, 0.0f,  0.5f,
-            0.0f, 0.0f, -0.5f,
-            1.0f, 0.0f,  0.5f,
-            0.0f, 0.0f,  0.5f
-        };
-        m_i_LineVertexCount = 6;
-        glGenVertexArrays(1, &m_VAO_Line);
-        glGenBuffers(1, &m_VBO_Line);
-        glBindVertexArray(m_VAO_Line);
-        glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Line);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadLine), quadLine, GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-        glBindVertexArray(0);
-    }
-
     UI::SetCameraToggleCallback([this]() {
         m_b_Camera3D = !m_b_Camera3D;
         });
@@ -613,8 +492,6 @@ void GameState::OnEnter() {
     m_vec_MovedThisRound.assign(m_vec_Players.size(), false);
     m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
     m_i_Round.store(1);
-    m_i_MrXTurn.store(0);
-    m_b_MrXSecondMovePending.store(false);
 
     // Ensure MisterX is the active player at the start of the game/rounds
     {
@@ -627,9 +504,6 @@ void GameState::OnEnter() {
             }
         }
     }
-
-    // Initialize player controllers (human/AI)
-    InitializePlayerControllers();
 
     // Reset HUD / ticket marks so previous game's marks don't persist
     {
@@ -649,8 +523,6 @@ void GameState::OnEnter() {
 
     // --- Console interaction in background thread: allow moving a player to a connected node ---
     m_graph.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
-    // Load optional edge geometry (normalized polylines)
-    m_graph.LoadEdgeGeometryCSV(Core::GetMapPath(Core::k_EdgeGeometryRelativePath), true);
 
     // Launch console input loop as a dedicated joinable thread so we don't occupy a ThreadPool worker
     m_b_ConsoleThreadRunning.store(true);
@@ -745,9 +617,6 @@ void GameState::OnEnter() {
             int i_DestinationNode = conns[i_MoveIndex].i_NodeId;
             int i_TransportType = conns[i_MoveIndex].i_TransportType;
             bool b_Moved = false;
-            bool b_MrXUsedBlack = false;
-            bool b_MrXUsedDouble = false;
-            bool b_MrXSecondMoveWasPending = false;
 
             // 1 move per round guard - protected by m_mtx_GameState
             {
@@ -769,40 +638,17 @@ void GameState::OnEnter() {
                 auto& player = m_vec_Players[idx];
                 bool b_TicketAvailable = true;
 
-                // If Mr X is moving, allow choosing Black ticket usage
-                if (player.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
-                    b_MrXSecondMoveWasPending = m_b_MrXSecondMovePending.load();
-                    std::cout << "[Console] Mr X move: use BLACK ticket? (y/N): ";
-                    std::string s_Black;
-                    std::getline(std::cin, s_Black);
-                    if (!s_Black.empty() && (s_Black == "y" || s_Black == "Y")) {
-                        if (player.GetBlackTickets() > 0) {
-                            if (!player.SpendBlackTicket()) {
-                                std::cout << "[Console] Unexpected: failed to spend black ticket.\n";
-                                b_TicketAvailable = false;
-                            } else {
-                                b_TicketAvailable = true;
-                                b_MrXUsedBlack = true;
-                            }
-                        } else {
-                            std::cout << "[Console] No BLACK tickets left. Using regular ticket...\n";
-                        }
-                    }
+                if (i_TransportType == Core::k_TransportTypeTaxi) {
+                    b_TicketAvailable = player.SpendTaxiTicket();
                 }
-
-                if (!b_MrXUsedBlack) {
-                    if (i_TransportType == Core::k_TransportTypeTaxi) {
-                        b_TicketAvailable = player.SpendTaxiTicket();
-                    }
-                    else if (i_TransportType == Core::k_TransportTypeBus) {
-                        b_TicketAvailable = player.SpendBusTicket();
-                    }
-                    else if (i_TransportType == Core::k_TransportTypeMetro) {
-                        b_TicketAvailable = player.SpendMetroTicket();
-                    }
-                    else if (i_TransportType == Core::k_TransportTypeWater) {
-                        b_TicketAvailable = player.SpendWaterTicket();
-                    }
+                else if (i_TransportType == Core::k_TransportTypeBus) {
+                    b_TicketAvailable = player.SpendBusTicket();
+                }
+                else if (i_TransportType == Core::k_TransportTypeMetro) {
+                    b_TicketAvailable = player.SpendMetroTicket();
+                }
+                else if (i_TransportType == Core::k_TransportTypeWater) {
+                    b_TicketAvailable = player.SpendWaterTicket();
                 }
 
                 if (!b_TicketAvailable) {
@@ -833,50 +679,20 @@ void GameState::OnEnter() {
                     }
                 }
 
-                // Track Mr X ticket usage for HUD, Mr X turn counter, and clear/keep his active flag depending on double-move
+                // Track Mr X ticket usage for HUD and clear his active flag after he moves
                 using UI::TicketMark;
                 {
                     std::lock_guard<std::mutex> lock(m_mtx_Players);
                     auto& ref_Player = m_vec_Players[idx];
                     if (ref_Player.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
                         TicketMark mark = TicketMark::None;
-                        if (b_MrXUsedBlack) {
-                            mark = TicketMark::Black;
-                        } else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
+                        if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
                         else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
                         else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
                         else if (i_TransportType == Core::k_TransportTypeWater) mark = TicketMark::Water;
-
-                        int i_TurnIdx = m_i_MrXTurn.load() + 1; // 1-based for HUD
-                        UI::SetSlotMark(i_TurnIdx, mark, true);
-                        m_i_MrXTurn.store(i_TurnIdx);
-
-                        // Ask for DOUBLE ticket only after first move and if not already pending
-                        if (!b_MrXSecondMoveWasPending && !m_b_MrXSecondMovePending.load() && ref_Player.GetDoubleMoveTickets() > 0) {
-                            std::cout << "[Console] Use DOUBLE MOVE ticket and move again now? (y/N): ";
-                            std::string s_Double;
-                            std::getline(std::cin, s_Double);
-                            if (!s_Double.empty() && (s_Double == "y" || s_Double == "Y")) {
-                                if (ref_Player.SpendDoubleMoveTicket()) {
-                                    b_MrXUsedDouble = true;
-                                    m_b_MrXSecondMovePending.store(true);
-                                    // Keep Mr X active to perform the second move immediately
-                                    ref_Player.SetActive(true);
-                                    std::cout << "[Console] DOUBLE MOVE activated: Mr X moves again this round.\n";
-                                } else {
-                                    std::cout << "[Console] Failed to spend DOUBLE ticket.\n";
-                                }
-                            }
-                        }
-
-                        // If this was the second move of a double, clear pending and end Mr X turn
-                        if (b_MrXSecondMoveWasPending) {
-                            m_b_MrXSecondMovePending.store(false);
-                            ref_Player.SetActive(false);
-                        } else if (!m_b_MrXSecondMovePending.load()) {
-                            // No double-move pending — Mr X ends his turn
-                            ref_Player.SetActive(false);
-                        }
+                        UI::SetSlotMark(m_i_Round.load(), mark, true);
+                        // Mr X moved — clear his active flag so other players can move
+                        ref_Player.SetActive(false);
                     }
                 }
 
@@ -884,20 +700,10 @@ void GameState::OnEnter() {
                 {
                     std::lock_guard<std::mutex> lock(m_mtx_GameState);
                     if (idx >= 0 && idx < (int)m_vec_MovedThisRound.size() && !m_vec_MovedThisRound[idx]) {
-                        // If Mr X has a second move pending, do not close his turn yet
-                        bool b_IsMrX = false;
-                        {
-                            std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
-                            b_IsMrX = (m_vec_Players[idx].GetType() == Core::PlayerType::MisterX);
-                        }
-                        if (b_IsMrX && m_b_MrXSecondMovePending.load()) {
-                            // keep his moved flag false to allow another move within this round
-                        } else {
-                            m_vec_MovedThisRound[idx] = true;
-                            int i_Remaining = m_i_PlayersRemainingThisRound.load();
-                            if (i_Remaining > 0) {
-                                m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
-                            }
+                        m_vec_MovedThisRound[idx] = true;
+                        int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                        if (i_Remaining > 0) {
+                            m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
                         }
                     }
 
@@ -921,7 +727,6 @@ void GameState::OnEnter() {
                                     if (p.GetType() == Core::PlayerType::MisterX) p.SetActive(true);
                                     else p.SetActive(false);
                                 }
-                                m_b_MrXSecondMovePending.store(false);
                             }
                         }
                     }
@@ -982,14 +787,6 @@ void GameState::OnExit() {
         glDeleteBuffers(1, &m_VBO_Hemisphere);
         m_VBO_Hemisphere = 0;
     }
-    if (m_VAO_Line) {
-        glDeleteVertexArrays(1, &m_VAO_Line);
-        m_VAO_Line = 0;
-    }
-    if (m_VBO_Line) {
-        glDeleteBuffers(1, &m_VBO_Line);
-        m_VBO_Line = 0;
-    }
     if (m_ShaderProgram_Plane) {
         glDeleteProgram(m_ShaderProgram_Plane);
         m_ShaderProgram_Plane = 0;
@@ -997,18 +794,6 @@ void GameState::OnExit() {
     if (m_ShaderProgram_Circle) {
         glDeleteProgram(m_ShaderProgram_Circle);
         m_ShaderProgram_Circle = 0;
-    }
-    if (m_VAO_Text3D) {
-        glDeleteVertexArrays(1, &m_VAO_Text3D);
-        m_VAO_Text3D = 0;
-    }
-    if (m_VBO_Text3D) {
-        glDeleteBuffers(1, &m_VBO_Text3D);
-        m_VBO_Text3D = 0;
-    }
-    if (m_ShaderProgram_Text3D) {
-        glDeleteProgram(m_ShaderProgram_Text3D);
-        m_ShaderProgram_Text3D = 0;
     }
     if (m_FBO_Picking) {
         glDeleteFramebuffers(1, &m_FBO_Picking);
@@ -1054,14 +839,6 @@ void GameState::OnExit() {
         glDeleteBuffers(1, &m_VBO_FullscreenQuad);
         m_VBO_FullscreenQuad = 0;
     }
-    if (m_VAO_Line) {
-        glDeleteVertexArrays(1, &m_VAO_Line);
-        m_VAO_Line = 0;
-    }
-    if (m_VBO_Line) {
-        glDeleteBuffers(1, &m_VBO_Line);
-        m_VBO_Line = 0;
-    }
     // Note: do not delete m_TextureID here -- textures are managed by Application's cache.
     // ResetToInitial() will set m_TextureID to 0 so LoadTextures() can re-acquire or reload it.
     m_b_GameActive = false;
@@ -1090,8 +867,6 @@ void GameState::ResetToInitial() {
     m_vec_MovedThisRound.clear();
     m_i_PlayersRemainingThisRound.store(0);
     m_i_Round.store(1);
-    m_i_MrXTurn.store(0);
-    m_b_MrXSecondMovePending.store(false);
     m_b_GameActive = false;
     m_b_TexturesLoaded = false;
 
@@ -1162,10 +937,6 @@ void GameState::Update(float f_DeltaTime) {
     }
 
     UpdateCameraPhysics(f_DeltaTime);
-
-    // Update AI players and process their moves
-    UpdateAIPlayers(nullptr, f_DeltaTime);
-    ProcessAIPendingMoves();
 }
 
 void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc) {
@@ -1224,10 +995,7 @@ void GameState::Render(Core::Application* p_App) {
     }
 
     RenderBoard(p_App, mat4_View, mat4_Projection);
-    RenderEdges(mat4_View, mat4_Projection);
     RenderStations(mat4_View, mat4_Projection);
-    // Draw numeric labels on top of station circles
-    RenderStationLabels(p_App, mat4_View, mat4_Projection);
     RenderPlayers(mat4_View, mat4_Projection);
     RenderArrows(mat4_View, mat4_Projection);
     RenderHUD(p_App);
@@ -1244,104 +1012,6 @@ void GameState::Render(Core::Application* p_App) {
         }
         m_b_RequestMenuChange.store(false);
     }
-}
-
-void GameState::RenderStationLabels(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
-    if (!p_App) return;
-
-    // Compute MVP once; we draw in world coordinates (lying on XZ plane)
-    glm::mat4 mat4_MVP = mat4_Projection * mat4_View;
-
-    // Match the vertical stacking logic from RenderStations for top (white) circle height
-    const float f_YStart = 0.001f;
-    const float f_YStep = 0.02f;
-
-    // Convert glyph pixel sizes to world-units (tuned to fit inside white circles)
-    const float f_WorldPerPx = 0.0060f * m_f_GlobalScale; // tweak if you want bigger/smaller text
-    const float f_ZLift = 0.0025f * m_f_GlobalScale;      // avoid z-fighting with the top circle
-    const float f_LabelOffsetPx = 2.0f;                   // slight right shift to visually center within circle
-
-    // Access glyph atlas from Application
-    const auto& map_Characters = p_App->GetCharacterMap();
-
-    glUseProgram(m_ShaderProgram_Text3D);
-    glUniformMatrix4fv(glGetUniformLocation(m_ShaderProgram_Text3D, "MVP"), 1, GL_FALSE, glm::value_ptr(mat4_MVP));
-    glUniform3f(glGetUniformLocation(m_ShaderProgram_Text3D, "textColor"), 0.f, 0.f, 0.f);
-    glActiveTexture(GL_TEXTURE0);
-    glUniform1i(glGetUniformLocation(m_ShaderProgram_Text3D, "glyph"), 0);
-
-    GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
-    if (!b_BlendWas) glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glBindVertexArray(m_VAO_Text3D);
-
-    static const std::vector<std::string> vec_TransportOrder = { "metro", "bus", "taxi", "water" };
-    for (const auto& station : m_vec_CircleStations) {
-        // Count rings to get top white circle height
-        int i_Count = 0;
-        for (const auto& s_Type : vec_TransportOrder) {
-            if (std::find(station.transportTypes.begin(), station.transportTypes.end(), s_Type) != station.transportTypes.end()) ++i_Count;
-        }
-        const float f_YTop = f_YStart + i_Count * f_YStep;
-
-        // Center position of label (world)
-        const glm::vec3 vec3_Center(station.position.x, f_YTop * m_f_GlobalScale + f_ZLift, station.position.y);
-
-        // Build string and measure width/height in pixels
-        const std::string s_Text = std::to_string(station.stationID);
-        int i_PxAdvanceSum = 0;
-        int i_PxMaxH = 0;
-        for (char c : s_Text) {
-            auto it = map_Characters.find(c);
-            if (it == map_Characters.end()) continue;
-            i_PxAdvanceSum += (it->second.m_i_Advance >> 6);
-            i_PxMaxH = std::max(i_PxMaxH, it->second.m_i_Height);
-        }
-        float f_TextW = i_PxAdvanceSum * f_WorldPerPx;
-        float f_TextH = std::max(8, i_PxMaxH) * f_WorldPerPx;
-
-        // Starting pen X so that text is centered around the station
-        float f_PenX = vec3_Center.x - f_TextW * 0.5f + f_LabelOffsetPx * f_WorldPerPx;
-        float f_BaseZ0 = vec3_Center.z - f_TextH * 0.5f;
-
-        // Draw glyphs as quads on XZ plane (lying flat). For each glyph we update VBO and draw.
-        for (char c : s_Text) {
-            auto it = map_Characters.find(c);
-            if (it == map_Characters.end()) continue;
-            const auto& ch = it->second;
-            float f_GlyphW = ch.m_i_Width * f_WorldPerPx;
-            float f_GlyphH = ch.m_i_Height * f_WorldPerPx;
-
-            // Align each glyph vertically within total text box
-            float f_Z0 = f_BaseZ0 + (f_TextH - f_GlyphH) * 0.5f;
-            float f_X0 = f_PenX;
-            float f_X1 = f_PenX + f_GlyphW;
-            float f_Z1 = f_Z0 + f_GlyphH;
-
-            // Two triangles, each vertex: pos.xyz, uv
-            float verts[6][5] = {
-                { f_X0, vec3_Center.y, f_Z0, 0.0f, 0.0f },
-                { f_X0, vec3_Center.y, f_Z1, 0.0f, 1.0f },
-                { f_X1, vec3_Center.y, f_Z1, 1.0f, 1.0f },
-                { f_X0, vec3_Center.y, f_Z0, 0.0f, 0.0f },
-                { f_X1, vec3_Center.y, f_Z1, 1.0f, 1.0f },
-                { f_X1, vec3_Center.y, f_Z0, 1.0f, 0.0f }
-            };
-
-            glBindTexture(GL_TEXTURE_2D, ch.m_TextureID);
-            glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Text3D);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-
-            // Advance pen
-            f_PenX += (ch.m_i_Advance >> 6) * f_WorldPerPx;
-        }
-    }
-
-    glBindVertexArray(0);
-    if (!b_BlendWas) glDisable(GL_BLEND);
 }
 
 void GameState::HandleResize(Core::Application* p_App) {
@@ -1539,167 +1209,19 @@ void GameState::RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_P
     }
 }
 
-void GameState::RenderEdges(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
-    // Visualize edge geometry as thick 3D lines with transport colors
-    GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
-    GLboolean b_DepthMaskWas = GL_TRUE;
-    glGetBooleanv(GL_DEPTH_WRITEMASK, &b_DepthMaskWas);
-    if (b_DepthWas) glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
-
-    glUseProgram(m_ShaderProgram_Circle);
-    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
-    GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
-
-    // Build lookup: stationID -> position (already scaled by m_f_GlobalScale)
-    std::unordered_map<int, glm::vec2> map_NodePos;
-    map_NodePos.reserve(m_vec_CircleStations.size());
-    for (const auto& sc : m_vec_CircleStations) map_NodePos[sc.stationID] = sc.position;
-
-    auto colorForType = [](int t) -> glm::vec3 {
-        if (t == Core::k_TransportTypeTaxi)  return { Core::k_EdgeColorTaxi[0],  Core::k_EdgeColorTaxi[1],  Core::k_EdgeColorTaxi[2] };
-        if (t == Core::k_TransportTypeBus)   return { Core::k_EdgeColorBus[0],   Core::k_EdgeColorBus[1],   Core::k_EdgeColorBus[2] };
-        if (t == Core::k_TransportTypeMetro) return { Core::k_EdgeColorMetro[0], Core::k_EdgeColorMetro[1], Core::k_EdgeColorMetro[2] };
-        if (t == Core::k_TransportTypeWater) return { Core::k_EdgeColorWater[0], Core::k_EdgeColorWater[1], Core::k_EdgeColorWater[2] };
-        return {1.0f, 1.0f, 1.0f};
-    };
-
-    auto thicknessForType = [](int t) -> float {
-        if (t == Core::k_TransportTypeTaxi)  return Core::k_EdgeThicknessTaxi;
-        if (t == Core::k_TransportTypeBus)   return Core::k_EdgeThicknessBus;
-        if (t == Core::k_TransportTypeMetro) return Core::k_EdgeThicknessMetro;
-        if (t == Core::k_TransportTypeWater) return Core::k_EdgeThicknessWater;
-        return Core::k_EdgeThicknessTaxi;
-    };
-
-    auto zOffsetForType = [&](int t) -> float {
-        // lower values render closer to the board; we lift a bit per type to enforce draw order
-        if (t == Core::k_TransportTypeMetro) return 0.006f * m_f_GlobalScale; // lowest
-        if (t == Core::k_TransportTypeBus)   return 0.010f * m_f_GlobalScale; // middle
-        if (t == Core::k_TransportTypeWater) return 0.012f * m_f_GlobalScale; // between bus and taxi
-        if (t == Core::k_TransportTypeTaxi)  return 0.014f * m_f_GlobalScale; // top
-        return 0.012f * m_f_GlobalScale;
-    };
-
-    struct DrawEdge { int i_Type; std::vector<glm::vec2> vec_Points; };
-    std::vector<DrawEdge> vec_EdgesMetro, vec_EdgesBus, vec_EdgesWater, vec_EdgesTaxi;
-
-    for (int i = 1; i <= Core::k_MaxNodes; ++i) {
-        Node* n = m_graph.GetNode(i);
-        if (!n) continue;
-        int sc = n->GetSlotCount();
-        for (int s = 0; s < sc; ++s) {
-            Edge* e = n->GetEdge(s);
-            if (!e) continue;
-            if (e->GetGeometryType() != Edge::GeometryType::Polyline) continue;
-            if (e->p_Endpoints[0] != n) continue; // ensure draw once
-
-            int srcId = e->p_Endpoints[0] ? e->p_Endpoints[0]->i_Id : -1;
-            int dstId = e->p_Endpoints[1] ? e->p_Endpoints[1]->i_Id : -1;
-            const auto& ptsNorm = e->GetPolylineNormalized();
-            if (ptsNorm.size() < 2) continue;
-
-            std::vector<glm::vec2> ptsWorld;
-            ptsWorld.reserve(ptsNorm.size());
-            for (const auto& p : ptsNorm) {
-                float gx = p.f_X * Core::k_MapGridMaxX;
-                float gy = p.f_Y * Core::k_MapGridMaxY;
-                ptsWorld.emplace_back(gx * m_f_GlobalScale, gy * m_f_GlobalScale);
-            }
-            auto itSrc = map_NodePos.find(srcId);
-            if (itSrc != map_NodePos.end()) ptsWorld.front() = itSrc->second;
-            auto itDst = map_NodePos.find(dstId);
-            if (itDst != map_NodePos.end()) ptsWorld.back() = itDst->second;
-
-            DrawEdge s_DrawEdge{e->i_Type, std::move(ptsWorld)};
-            if (e->i_Type == Core::k_TransportTypeMetro) vec_EdgesMetro.push_back(std::move(s_DrawEdge));
-            else if (e->i_Type == Core::k_TransportTypeBus) vec_EdgesBus.push_back(std::move(s_DrawEdge));
-            else if (e->i_Type == Core::k_TransportTypeTaxi) vec_EdgesTaxi.push_back(std::move(s_DrawEdge));
-            else if (e->i_Type == Core::k_TransportTypeWater) vec_EdgesWater.push_back(std::move(s_DrawEdge));
-        }
-    }
-
-    auto fn_DrawPolyline = [&](const DrawEdge& s_Edge, bool b_Dashed) {
-        glm::vec3 vec3_Color = colorForType(s_Edge.i_Type);
-        float f_BaseThickness = thicknessForType(s_Edge.i_Type);
-        float f_YOffset = zOffsetForType(s_Edge.i_Type);
-
-        for (size_t k = 1; k < s_Edge.vec_Points.size(); ++k) {
-            glm::vec2 vec2_P0 = s_Edge.vec_Points[k-1];
-            glm::vec2 vec2_P1 = s_Edge.vec_Points[k];
-            glm::vec2 vec2_D = vec2_P1 - vec2_P0;
-            float f_LenScaled = glm::length(vec2_D);
-            if (f_LenScaled <= 1e-6f) continue;
-            float f_AngleY = atan2(-vec2_D.y, vec2_D.x);
-            glm::vec2 vec2_Dir = vec2_D / f_LenScaled;
-
-            auto fn_DrawOne = [&](const glm::vec2& vec2_SegStart, float f_SegLenScaled) {
-                glm::mat4 model = glm::mat4(1.0f);
-                model = glm::translate(model, glm::vec3(vec2_SegStart.x, f_YOffset, vec2_SegStart.y));
-                model = glm::rotate(model, f_AngleY, glm::vec3(0,1,0));
-                model = glm::scale(model, glm::vec3(f_SegLenScaled / m_f_GlobalScale, 1.0f, f_BaseThickness));
-                model = model * m_mat4_GlobalScaleMatrix;
-                glm::mat4 mvp = mat4_Projection * mat4_View * model;
-                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
-                glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
-                glBindVertexArray(m_VAO_Line);
-                glDrawArrays(GL_TRIANGLES, 0, m_i_LineVertexCount);
-            };
-
-            if (!b_Dashed) {
-                fn_DrawOne(vec2_P0, f_LenScaled);
-            } else {
-                float f_DashLenScaled = Core::k_MetroDashLen;
-                float f_GapLenScaled  = Core::k_MetroGapLen;
-                if (s_Edge.i_Type == Core::k_TransportTypeWater) {
-                    f_DashLenScaled = Core::k_WaterDashLen;
-                    f_GapLenScaled  = Core::k_WaterGapLen;
-                }
-                float f_T = 0.0f;
-                while (f_T < f_LenScaled - 1e-6f) {
-                    float f_SegLen = std::min(f_DashLenScaled, std::max(0.0f, f_LenScaled - f_T));
-                    glm::vec2 vec2_SegStart = vec2_P0 + vec2_Dir * f_T;
-                    fn_DrawOne(vec2_SegStart, f_SegLen);
-                    f_T += f_DashLenScaled + f_GapLenScaled;
-                }
-            }
-        }
-    };
-
-    for (const auto& e : vec_EdgesMetro) fn_DrawPolyline(e, true);
-    for (const auto& e : vec_EdgesBus)   fn_DrawPolyline(e, false);
-    for (const auto& e : vec_EdgesWater) fn_DrawPolyline(e, true);  // dashed water
-    for (const auto& e : vec_EdgesTaxi)  fn_DrawPolyline(e, false);
-
-    glBindVertexArray(0);
-
-    // Restore depth state
-    if (b_DepthWas) glEnable(GL_DEPTH_TEST);
-    glDepthMask(b_DepthMaskWas);
-}
-
 void GameState::RenderHUD(Core::Application* p_App) {
     std::vector<std::string> labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
 
     int black = -1, dbl = -1;
-    bool b_MrXActive = false;
-    bool b_DoublePending = m_b_MrXSecondMovePending.load();
     for (const auto& pl : m_vec_Players) {
         if (pl.GetType() == Core::PlayerType::MisterX) {
             black = pl.GetBlackTickets();
             dbl = pl.GetDoubleMoveTickets();
-            b_MrXActive = pl.IsActive();
             break;
         }
     }
     std::vector<int> counts = { -1, black, dbl, -1, -1, -1 };
 
-    // Show Mr X action buttons only during Mr X turn
-    ScotlandYard::UI::SetMrXButtonsVisible(b_MrXActive);
-    // Enable if Mr X has tickets and (for double) not on second step
-    bool b_EnableBlack = b_MrXActive && black > 0;
-    bool b_EnableDouble = b_MrXActive && dbl > 0 && !b_DoublePending;
-    ScotlandYard::UI::SetMrXButtonsEnabled(b_EnableBlack, b_EnableDouble);
     ScotlandYard::UI::SetTopBar(labels, {}, counts);
     ScotlandYard::UI::SetRound(m_i_Round.load());
     ScotlandYard::UI::RenderHUD(p_App);
@@ -1808,9 +1330,9 @@ void GameState::CheckEndOfGame(Winner winner) {
     m_b_ShowEndGameModal.store(true);
 
     if (winner == Winner::Detectives) {
-    std::cout << "[Game] Detectives win -- MisterX captured!\n";
+        std::cout << "[Game] Detectives win -- MisterX captured!\n";
     } else if (winner == Winner::MisterX) {
-    std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
+        std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
     }
 }
 
@@ -2197,7 +1719,7 @@ void GameState::HandlePlayerClick(int i_PlayerIndex) {
     if (b_CanSelect) {
         m_i_SelectedPlayerIndex = i_PlayerIndex;
         UpdateArrowsForSelectedPlayer();
-    std::cout << "[GameState] Selected player " << i_PlayerIndex << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
+        std::cout << "[GameState] Selected player " << i_PlayerIndex << "\n";
     }
 }
 
@@ -2216,32 +1738,20 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
 
     int i_TransportType = arrowIt->i_TransportType;
     bool b_MoveSuccessful = false;
-    bool b_MrXUsedBlack = false;
-    bool b_MrXSecondMoveWasPending = false;
 
     {
         std::lock_guard<std::mutex> lock(m_mtx_Players);
         auto& player = m_vec_Players[i_PlayerIndex];
 
         bool b_TicketAvailable = true;
-        if (player.GetType() == Core::PlayerType::MisterX) {
-            b_MrXSecondMoveWasPending = m_b_MrXSecondMovePending.load();
-            bool b_UIBlack = UI::IsMrXBlackSelected();
-            if (b_UIBlack && player.GetBlackTickets() > 0) {
-                b_TicketAvailable = player.SpendBlackTicket();
-                b_MrXUsedBlack = b_TicketAvailable;
-            }
-        }
-        if (!b_MrXUsedBlack) {
-            if (i_TransportType == Core::k_TransportTypeTaxi) {
-                b_TicketAvailable = player.SpendTaxiTicket();
-            } else if (i_TransportType == Core::k_TransportTypeBus) {
-                b_TicketAvailable = player.SpendBusTicket();
-            } else if (i_TransportType == Core::k_TransportTypeMetro) {
-                b_TicketAvailable = player.SpendMetroTicket();
-            } else if (i_TransportType == Core::k_TransportTypeWater) {
-                b_TicketAvailable = player.SpendWaterTicket();
-            }
+        if (i_TransportType == Core::k_TransportTypeTaxi) {
+            b_TicketAvailable = player.SpendTaxiTicket();
+        } else if (i_TransportType == Core::k_TransportTypeBus) {
+            b_TicketAvailable = player.SpendBusTicket();
+        } else if (i_TransportType == Core::k_TransportTypeMetro) {
+            b_TicketAvailable = player.SpendMetroTicket();
+        } else if (i_TransportType == Core::k_TransportTypeWater) {
+            b_TicketAvailable = player.SpendWaterTicket();
         }
 
         if (!b_TicketAvailable) {
@@ -2254,7 +1764,7 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
     }
 
     if (b_MoveSuccessful) {
-    std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
+        std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << "\n";
 
         m_i_SelectedPlayerIndex = -1;
         m_vec_CurrentArrows.clear();
@@ -2273,41 +1783,12 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
             std::lock_guard<std::mutex> lock(m_mtx_Players);
             auto& ref_Player = m_vec_Players[i_PlayerIndex];
             if (ref_Player.GetType() == Core::PlayerType::MisterX) {
-                using UI::TicketMark;
-                TicketMark mark = TicketMark::None;
-                if (b_MrXUsedBlack) mark = TicketMark::Black;
-                else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
-                else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
-                else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
-                else if (i_TransportType == Core::k_TransportTypeWater) mark = TicketMark::Water;
-
-                int i_TurnIdx = m_i_MrXTurn.load() + 1;
-                UI::SetSlotMark(i_TurnIdx, mark, true);
-                m_i_MrXTurn.store(i_TurnIdx);
-
-                bool b_UIDouble = UI::IsMrXDoubleSelected();
-                if (!b_MrXSecondMoveWasPending && !m_b_MrXSecondMovePending.load() && b_UIDouble && ref_Player.GetDoubleMoveTickets() > 0) {
-                    if (ref_Player.SpendDoubleMoveTicket()) {
-                        m_b_MrXSecondMovePending.store(true);
-                        ref_Player.SetActive(true);
-                    }
-                }
-
-                if (b_MrXSecondMoveWasPending) {
-                    m_b_MrXSecondMovePending.store(false);
-                    ref_Player.SetActive(false);
-                } else if (!m_b_MrXSecondMovePending.load()) {
-                    ref_Player.SetActive(false);
-                }
-
-                // If Mr X turn ended now, activate detectives
-                if (!ref_Player.IsActive()) {
-                    for (auto& p : m_vec_Players) {
-                        if (p.GetType() == Core::PlayerType::Detective) p.SetActive(true);
-                    }
-                }
-            } else {
-                // Detective moved - deactivate them
+                UI::TicketMark mark = UI::TicketMark::None;
+                if (i_TransportType == Core::k_TransportTypeTaxi) mark = UI::TicketMark::Taxi;
+                else if (i_TransportType == Core::k_TransportTypeBus) mark = UI::TicketMark::Bus;
+                else if (i_TransportType == Core::k_TransportTypeMetro) mark = UI::TicketMark::Metro;
+                else if (i_TransportType == Core::k_TransportTypeWater) mark = UI::TicketMark::Water;
+                UI::SetSlotMark(m_i_Round.load(), mark, true);
                 ref_Player.SetActive(false);
             }
         }
@@ -2315,20 +1796,10 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
         {
             std::lock_guard<std::mutex> lock(m_mtx_GameState);
             if (!m_vec_MovedThisRound[i_PlayerIndex]) {
-                // If Mr X has a second move pending, don't mark as moved yet
-                bool b_IsMrX = false;
-                {
-                    std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
-                    b_IsMrX = (m_vec_Players[i_PlayerIndex].GetType() == Core::PlayerType::MisterX);
-                }
-                if (b_IsMrX && m_b_MrXSecondMovePending.load()) {
-                    // allow second move within the same round
-                } else {
-                    m_vec_MovedThisRound[i_PlayerIndex] = true;
-                    int i_Remaining = m_i_PlayersRemainingThisRound.load();
-                    if (i_Remaining > 0) {
-                        m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
-                    }
+                m_vec_MovedThisRound[i_PlayerIndex] = true;
+                int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                if (i_Remaining > 0) {
+                    m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
                 }
             }
 
@@ -2348,14 +1819,10 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
                             if (p.GetType() == Core::PlayerType::MisterX) p.SetActive(true);
                             else p.SetActive(false);
                         }
-                        m_b_MrXSecondMovePending.store(false);
                     }
                 }
             }
         }
-
-        // Clear UI selections after applying the move
-        UI::ClearMrXSelections();
     }
 }
 
@@ -2500,177 +1967,6 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
     glBindVertexArray(0);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-// Player Controller
-void GameState::InitializePlayerControllers() {
-    using namespace ScotlandYard::Core;
-    const auto& S = Settings();
-
-    m_vec_PlayerControllers.clear();
-    m_vec_PlayerControllers.reserve(m_vec_Players.size());
-
-    auto makeAI = [&](AIAlgorithm algo) {
-        auto u = std::make_unique<Core::AIPlayerController>(S.f_AITurnDelay);
-        u->SetAlgorithm(algo);
-        return u;
-        };
-
-    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
-        const bool isMrX = (m_vec_Players[i].GetType() == Core::PlayerType::MisterX);
-        switch (S.e_Mode) {
-        case GameMode::PvP: {
-            m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
-            break;
-        }
-        case GameMode::PvBot: {
-            if (S.e_PvBotHuman == HumanSide::MrX) {
-                if (isMrX) m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
-                else       m_vec_PlayerControllers.push_back(makeAI(S.e_AIDetectives));
-            }
-            else { // Human = Detectives
-                if (isMrX) m_vec_PlayerControllers.push_back(makeAI(S.e_AIMisterX));
-                else       m_vec_PlayerControllers.push_back(std::make_unique<Core::HumanPlayerController>());
-            }
-            break;
-        }
-
-        case GameMode::BotvBot: {
-            auto algo = isMrX ? S.e_AIMisterX : S.e_AIDetectives;
-            m_vec_PlayerControllers.push_back(makeAI(algo));
-            break;
-        }
-        }
-    }
-}
-
-void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
-    for (auto& p_Controller : m_vec_PlayerControllers) {
-        if (p_Controller && p_Controller->IsAIControlled()) {
-            p_Controller->Update(f_DeltaTime);
-        }
-    }
-
-    // check if move
-    std::lock_guard<std::mutex> lock(m_mtx_Players);
-
-    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
-        if (i >= m_vec_PlayerControllers.size()) continue;
-
-        auto& p_Controller = m_vec_PlayerControllers[i];
-        if (!p_Controller || !p_Controller->IsAIControlled()) continue;
-
-        const auto& player = m_vec_Players[i];
-
-        auto* p_AIController = dynamic_cast<Core::AIPlayerController*>(p_Controller.get());
-        if (player.IsActive() &&
-            p_AIController &&
-            !p_AIController->IsMoveRequested() &&
-            i < m_vec_MovedThisRound.size() &&
-            !m_vec_MovedThisRound[i]) {
-
-            // Get possible move list
-            std::vector<Core::PossibleMove> vec_PossibleMoves = GetPossibleMovesForPlayer(i);
-
-            if (!vec_PossibleMoves.empty()) {
-                Core::GameStateData gameState;
-                gameState.i_CurrentPlayerIndex = static_cast<int>(i);
-                // Use Mr X turn counter (counts double moves) for reveal scheduling and AI hints
-                int i_MrXTurnForAI = m_i_MrXTurn.load();
-                gameState.i_CurrentRound = i_MrXTurnForAI;
-                gameState.b_IsRevealRound = Core::IsRevealRound(i_MrXTurnForAI);
-                gameState.b_IsNextRevealRound = Core::IsRevealRound(i_MrXTurnForAI + 1);
-                gameState.p_Graph = &m_graph;
-
-                int i_MrXIndex = -1;
-                int i_MrXPosition = -1;
-                for (size_t j = 0; j < m_vec_Players.size(); ++j) {
-                    const auto& p = m_vec_Players[j];
-                    Core::PlayerInfo info;
-
-                    info.i_Position = p.GetOccupiedNode();
-                    info.b_IsMisterX = (p.GetType() == Core::PlayerType::MisterX);
-                    info.i_TaxiTickets = p.GetTaxiTickets();
-                    info.i_BusTickets = p.GetBusTickets();
-                    info.i_MetroTickets = p.GetMetroTickets();
-                    info.i_BlackTickets = p.GetBlackTickets();
-                    info.i_DoubleMoveTickets = p.GetDoubleMoveTickets();
-
-                    if (info.b_IsMisterX) {
-                        i_MrXIndex = static_cast<int>(j);
-                        i_MrXPosition = info.i_Position;
-                        info.b_IsVisible = gameState.b_IsRevealRound || p.IsVisible();
-                    } else {
-                        info.b_IsVisible = true;
-                    }
-
-                    gameState.vec_AllPlayers.push_back(info);
-                }
-
-                // Mr X last known position
-                if (i_MrXIndex != -1) {
-                    if (gameState.b_IsRevealRound) {
-                        gameState.i_MrXLastKnownPosition = i_MrXPosition;
-                        gameState.i_MrXLastKnownRound = gameState.i_CurrentRound;
-                    } else {
-                        gameState.i_MrXLastKnownPosition = -1;
-                        gameState.i_MrXLastKnownRound = -1;
-                        for (int r = 0; r < Core::k_RevealRoundsCount; ++r) {
-                            if (Core::k_RevealRounds[r] < gameState.i_CurrentRound) {
-                                gameState.i_MrXLastKnownRound = Core::k_RevealRounds[r];
-                                gameState.i_MrXLastKnownPosition = -1;
-                            }
-                        }
-                    }
-                }
-                p_Controller->RequestMove(&player, vec_PossibleMoves, gameState, p_App);
-            }
-        }
-    }
-}
-
-void GameState::ProcessAIPendingMoves() {
-    std::unique_lock<std::mutex> lock(m_mtx_Players);
-
-    for (size_t i = 0; i < m_vec_PlayerControllers.size(); ++i) {
-        auto& p_Controller = m_vec_PlayerControllers[i];
-        if (!p_Controller || !p_Controller->IsAIControlled()) continue;
-
-        if (p_Controller->HasPendingMove()) {
-            Core::MoveDecision decision = p_Controller->GetMove();
-
-            if (decision.b_HasDecision) {
-                // Select the AI player (required for HandleArrowClick), this function needs to be generalized
-                m_i_SelectedPlayerIndex = static_cast<int>(i);
-
-                lock.unlock();
-                UpdateArrowsForSelectedPlayer();
-                HandleArrowClick(static_cast<int>(i), decision.i_DestinationNode);
-
-                lock.lock();
-            }
-        }
-    }
-}
-
-std::vector<Core::PossibleMove> GameState::GetPossibleMovesForPlayer(int i_PlayerIndex) {
-    std::vector<Core::PossibleMove> vec_Result;
-    if (i_PlayerIndex < 0 || i_PlayerIndex >= static_cast<int>(m_vec_Players.size())) {
-        return vec_Result;
-    }
-
-    const auto& player = m_vec_Players[i_PlayerIndex];
-    int i_CurrentNode = player.GetOccupiedNode();
-
-    auto connections = m_graph.GetConnections(i_CurrentNode);
-    for (const auto& conn : connections) {
-        Core::PossibleMove move;
-        move.i_DestinationNode = conn.i_NodeId;
-        move.i_TransportType = conn.i_TransportType;
-        vec_Result.push_back(move);
-    }
-
-    return vec_Result;
 }
 
 } // namespace States
