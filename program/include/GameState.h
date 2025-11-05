@@ -11,12 +11,10 @@
 #include <map>
 #include <SDL2/SDL.h>
 #include "Player.h"
-#include "PlayerController.h"
-#include "GraphManager.h"
+#include "graph_manage.h"
 #include <thread>
 #include <mutex>
 #include <atomic>
-#include <memory>
 
 namespace ScotlandYard {
 namespace Core {
@@ -45,12 +43,9 @@ private:
 
     // Game round state - protected by m_mtx_GameState for thread safety
     std::atomic<int> m_i_Round{1};
-    std::atomic<int> m_i_MrXTurn{0};
     std::vector<bool> m_vec_MovedThisRound;
     std::atomic<int> m_i_PlayersRemainingThisRound{0};
     std::mutex m_mtx_GameState;
-
-    std::atomic_bool m_b_MrXSecondMovePending{false};
 
     GLuint m_VAO_Plane;
     GLuint m_VBO_Plane;
@@ -110,8 +105,7 @@ private:
     std::atomic_bool m_b_ConsoleThreadRunning{false};
     std::mutex m_mtx_Players;  // Protects m_vec_Players
 
-    std::vector<Core::Player> m_vec_Players;    
-    std::vector<std::unique_ptr<Core::IPlayerController>> m_vec_PlayerControllers;
+    std::vector<Core::Player> m_vec_Players;
     std::atomic_bool m_b_RequestMenuChange{false};
     struct PlayerToken {
         glm::vec3 color;
@@ -120,11 +114,6 @@ private:
     std::vector<PlayerToken> m_vec_PlayerTokens;
     std::vector<float> generateCylinderVertices(float radius, float height, int segments);    
     std::vector<float> generateHemisphereVertices(float radius, int segments);
-
-    // 3D text (labels lying flat on the board)
-    GLuint m_ShaderProgram_Text3D = 0;
-    GLuint m_VAO_Text3D = 0;
-    GLuint m_VBO_Text3D = 0;
 
     // Player token 
     GLuint m_VAO_Cylinder = 0;
@@ -191,9 +180,6 @@ private:
     GLuint m_ShaderProgram_Dilation;
     GLuint m_VAO_FullscreenQuad;
     GLuint m_VBO_FullscreenQuad;
-    GLuint m_VAO_Line = 0;
-    GLuint m_VBO_Line = 0;
-    int m_i_LineVertexCount = 0;
 
     int m_i_SelectedPlayerIndex;
     std::vector<DirectionArrow> m_vec_CurrentArrows;
@@ -223,10 +209,8 @@ private:
     void HandleResize(Core::Application* p_App);
     void RenderBoard(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
-    void RenderStationLabels(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
-    void RenderEdges(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
     void RenderHUD(Core::Application* p_App);
     void RenderDebugOverlay(Core::Application* p_App);
     void RenderPicking(Core::Application* p_App, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
@@ -236,10 +220,6 @@ private:
 
     bool CheckCapture() const;
     void ResetToInitial();
-
-    std::string BuildTicketsLogSuffix();
-
-    std::string BuildPlayerTicketsSuffix(int i_PlayerIndex);
 };
 
 } // namespace States

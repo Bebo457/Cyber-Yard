@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 project(ScotlandYardPlusPlus VERSION 1.0.0 LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -49,16 +49,10 @@ set(SOURCES
     src/GameState.cpp
     src/HUDOverlay.cpp
     src/Player.cpp
-    src/PlayerController.cpp
     src/MapDataLoader.cpp
-    src/MapGenerator.cpp
-    src/MapGeneratorPNG.cpp
-    src/MapGeneratorGraph.cpp
-    src/MapGeneratorJSON.cpp
     src/MapGeneratorState.cpp
-    src/GameSettings.cpp
-    src/GameSetupState.cpp
-    src/GraphManager.cpp
+    src/MapGenerator.cpp
+    src/MapGeneratorState.cpp
 )
 
 set(HEADERS
@@ -72,17 +66,12 @@ set(HEADERS
     include/GameState.h
     include/HUDOverlay.h
     include/Player.h
-    include/PlayerController.h
     include/GameConstants.h
     include/MapDataLoader.h
     include/MapGeneratorState.h
-    include/GameSettings.h
-    include/GameSetupState.h
-    include/GraphManager.h
 )
 
 # EXE =================================================
-set(VCPKG_APPLOCAL_DEPS OFF)
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
@@ -123,24 +112,6 @@ if(WIN32)
             "${SDL2_DIR}/../bin/SDL2.dll"
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
         )
-    endif()
-
-    # Copy vcpkg DLLs to output directory (if using vcpkg)
-    if(DEFINED ENV{VCPKG_ROOT})
-        set(VCPKG_BIN_DIR "$ENV{VCPKG_ROOT}/installed/x64-windows/bin")
-    elseif(EXISTS "C:/vcpkg/installed/x64-windows/bin")
-        set(VCPKG_BIN_DIR "C:/vcpkg/installed/x64-windows/bin")
-    endif()
-
-    if(DEFINED VCPKG_BIN_DIR AND EXISTS "${VCPKG_BIN_DIR}")
-        file(GLOB VCPKG_DLLS "${VCPKG_BIN_DIR}/*.dll")
-        foreach(DLL_FILE ${VCPKG_DLLS})
-            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${DLL_FILE}"
-                $<TARGET_FILE_DIR:${PROJECT_NAME}>
-            )
-        endforeach()
     endif()
 
     # Copy assets (fonts, textures, icons, maps) to binary directory

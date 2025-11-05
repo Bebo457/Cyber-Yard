@@ -286,7 +286,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             case SDLK_RETURN:
                 switch (m_i_SelectedOption) {
                     case 0: // New Game
-                        p_App->GetStateManager()->ChangeState("setup");
+                        p_App->GetStateManager()->ChangeState("game");
                         break;
                     case 1: // Map Generator
                         p_App->GetStateManager()->ChangeState("mapgen");
@@ -320,7 +320,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                 m_i_SelectedOption = i;
                 switch (i) {
                     case 0: // New Game
-                        p_App->GetStateManager()->ChangeState("setup");
+                        p_App->GetStateManager()->ChangeState("game");
                         break;
                     case 1: 
                         p_App->GetStateManager()->ChangeState("mapgen"); 

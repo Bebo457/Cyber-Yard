@@ -88,12 +88,6 @@ namespace UI {
         const std::vector<Color>& vec_PillColors = {},
         const std::vector<int>& vec_Counts = {});
     void SetRound(int round_1_to_24);
-    void SetMrXButtonsVisible(bool b_Visible);
-
-    bool IsMrXBlackSelected();
-    bool IsMrXDoubleSelected();
-    void ClearMrXSelections();
-    void SetMrXButtonsEnabled(bool b_BlackEnabled, bool b_DoubleEnabled);
 
     void RenderHUD(Core::Application* p_App);
 
