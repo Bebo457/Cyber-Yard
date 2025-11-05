@@ -10,6 +10,8 @@
 #include <queue>
 #include <set>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <vector>
 #include <numeric>
@@ -18,6 +20,7 @@
 #include <tuple>
 #include <functional>
 #include <limits>
+#include <optional>
 
 namespace ScotlandYard {
 namespace Core {
@@ -2398,6 +2401,758 @@ static MoveDecision MonteCarloPoliceAlgorithm(
     return decision;
 }
 
+struct BeliefCentroid
+{
+    double d_X = 0.0;
+    double d_Y = 0.0;
+    bool b_Valid = false;
+};
+
+struct FrontPlanEntry
+{
+    bool b_HasMove = false;
+    PossibleMove move{};
+    int i_TargetNode = -1;
+    double d_TargetProbability = 0.0;
+};
+
+struct FrontPlanCache
+{
+    int i_Round = -1;
+    int i_LastKnownRound = -1;
+    int i_LastKnownPosition = -1;
+    size_t i_DetectiveCount = 0U;
+    bool b_MrXVisible = false;
+    bool b_CentroidValid = false;
+    std::pair<double, double> centroid{0.0, 0.0};
+    std::map<int, double> mapBelief;
+    std::map<int, FrontPlanEntry> mapEntries;
+};
+
+static std::mutex s_mtx_FrontPlan;
+static std::map<int, int> s_mapFrontBlockedNodes;
+static FrontPlanCache s_FrontPlanCache;
+
+static void DecayFrontBlockedNodes(std::map<int, int>& mapNodes)
+{
+    for (auto it = mapNodes.begin(); it != mapNodes.end(); ) {
+        if (it->second > 0) {
+            --(it->second);
+        }
+        if (it->second <= 0) {
+            it = mapNodes.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+static void MarkFrontBlockedNode(std::map<int, int>& mapNodes, int i_Node)
+{
+    if (i_Node <= 0) {
+        return;
+    }
+    constexpr int i_kMaxPenalty = 6;
+    int& i_Entry = mapNodes[i_Node];
+    i_Entry = std::min(i_Entry + 2, i_kMaxPenalty);
+}
+
+static std::unordered_map<int, int> ComputeBfsDistances(const GraphManager* p_Graph, int i_Start)
+{
+    std::unordered_map<int, int> mapDistances;
+    if (!p_Graph || !p_Graph->IsValidNode(i_Start)) {
+        return mapDistances;
+    }
+
+    std::queue<int> queueNodes;
+    queueNodes.push(i_Start);
+    mapDistances[i_Start] = 0;
+
+    while (!queueNodes.empty()) {
+        int i_Node = queueNodes.front();
+        queueNodes.pop();
+        int i_NextDist = mapDistances[i_Node] + 1;
+
+        for (const auto& conn : p_Graph->GetConnections(i_Node)) {
+            int i_Neighbor = conn.i_NodeId;
+            if (!p_Graph->IsValidNode(i_Neighbor)) {
+                continue;
+            }
+            if (mapDistances.find(i_Neighbor) != mapDistances.end()) {
+                continue;
+            }
+            mapDistances[i_Neighbor] = i_NextDist;
+            queueNodes.push(i_Neighbor);
+        }
+    }
+
+    return mapDistances;
+}
+
+static std::vector<PossibleMove> ComputeLegalMovesForDetective(
+    const PlayerInfo& info,
+    const GameStateData& gameState,
+    const std::set<int>& set_ForbiddenDestinations
+)
+{
+    std::vector<PossibleMove> vec_Moves;
+    const GraphManager* p_Graph = gameState.p_Graph;
+    if (!p_Graph) {
+        return vec_Moves;
+    }
+
+    for (const auto& conn : p_Graph->GetConnections(info.i_Position)) {
+        int i_Dest = conn.i_NodeId;
+        if (set_ForbiddenDestinations.count(i_Dest) != 0) {
+            continue;
+        }
+
+        bool b_CanTravel = false;
+        switch (conn.i_TransportType) {
+            case Core::k_TransportTypeTaxi:
+                b_CanTravel = info.i_TaxiTickets > 0;
+                break;
+            case Core::k_TransportTypeBus:
+                b_CanTravel = info.i_BusTickets > 0;
+                break;
+            case Core::k_TransportTypeMetro:
+                b_CanTravel = info.i_MetroTickets > 0;
+                break;
+            case Core::k_TransportTypeWater:
+                b_CanTravel = info.i_BlackTickets > 0;
+                break;
+            default:
+                b_CanTravel = false;
+                break;
+        }
+
+        if (b_CanTravel) {
+            vec_Moves.push_back({i_Dest, conn.i_TransportType});
+        }
+    }
+
+    return vec_Moves;
+}
+
+static std::vector<int> SelectGuardNodes(
+    const std::map<int, double>& map_Belief,
+    const std::set<int>& set_UsedNodes,
+    const GraphManager* p_Graph
+)
+{
+    std::vector<int> vec_Result;
+    std::set<int> set_Seen;
+    std::set<int> set_Used = set_UsedNodes;
+
+    std::set<int> set_FerryNodes;
+    if (p_Graph) {
+        for (const auto& [i_Node, _] : map_Belief) {
+            bool b_HasWater = false;
+            for (const auto& conn : p_Graph->GetConnections(i_Node)) {
+                if (conn.i_TransportType == Core::k_TransportTypeWater) {
+                    b_HasWater = true;
+                    break;
+                }
+            }
+            if (b_HasWater) {
+                set_FerryNodes.insert(i_Node);
+            }
+        }
+    }
+
+    auto fn_AddCandidate = [&](int i_Node) {
+        if (set_Used.count(i_Node) != 0) {
+            return;
+        }
+        if (set_Seen.insert(i_Node).second) {
+            vec_Result.push_back(i_Node);
+        }
+    };
+
+    for (int i_Node : set_FerryNodes) {
+        fn_AddCandidate(i_Node);
+    }
+
+    std::vector<std::pair<int, double>> vec_Sorted(map_Belief.begin(), map_Belief.end());
+    std::sort(vec_Sorted.begin(), vec_Sorted.end(), [](const auto& a, const auto& b) {
+        if (std::fabs(a.second - b.second) < 1e-9) {
+            return a.first < b.first;
+        }
+        return a.second > b.second;
+    });
+
+    for (const auto& entry : vec_Sorted) {
+        fn_AddCandidate(entry.first);
+    }
+
+    return vec_Result;
+}
+
+static BeliefCentroid ComputeBeliefCentroid(const std::map<int, double>& map_Belief, const GraphManager* p_Graph)
+{
+    BeliefCentroid result;
+    if (!p_Graph || map_Belief.empty()) {
+        return result;
+    }
+
+    double d_Total = 0.0;
+    double d_SumX = 0.0;
+    double d_SumY = 0.0;
+
+    for (const auto& [i_Node, d_Prob] : map_Belief) {
+        if (d_Prob <= 0.0) {
+            continue;
+        }
+        const Node* p_Node = p_Graph->GetNode(i_Node);
+        if (!p_Node) {
+            continue;
+        }
+        d_Total += d_Prob;
+        d_SumX += d_Prob * static_cast<double>(p_Node->i_X);
+        d_SumY += d_Prob * static_cast<double>(p_Node->i_Y);
+    }
+
+    if (d_Total > 0.0) {
+        result.d_X = d_SumX / d_Total;
+        result.d_Y = d_SumY / d_Total;
+        result.b_Valid = true;
+    }
+
+    return result;
+}
+
+static double DistanceToCentroid(int i_Node, const BeliefCentroid& centroid, const GraphManager* p_Graph)
+{
+    if (!centroid.b_Valid || !p_Graph) {
+        return 0.0;
+    }
+
+    const Node* p_Node = p_Graph->GetNode(i_Node);
+    if (!p_Node) {
+        return 0.0;
+    }
+
+    double d_Dx = static_cast<double>(p_Node->i_X) - centroid.d_X;
+    double d_Dy = static_cast<double>(p_Node->i_Y) - centroid.d_Y;
+    return std::sqrt(d_Dx * d_Dx + d_Dy * d_Dy);
+}
+
+static std::optional<PossibleMove> SelectFallbackMove(
+    const std::vector<PossibleMove>& vec_Moves,
+    const std::map<int, double>& map_Belief,
+    const BeliefCentroid& centroid,
+    const GraphManager* p_Graph
+)
+{
+    if (vec_Moves.empty()) {
+        return std::nullopt;
+    }
+
+    constexpr double d_kEpsilon = 1e-6;
+    std::optional<PossibleMove> opt_Best;
+    double d_BestProb = -1.0;
+    double d_BestDist = std::numeric_limits<double>::max();
+
+    for (const auto& move : vec_Moves) {
+        double d_Prob = 0.0;
+        auto it = map_Belief.find(move.i_DestinationNode);
+        if (it != map_Belief.end()) {
+            d_Prob = it->second;
+        }
+
+        double d_Dist = DistanceToCentroid(move.i_DestinationNode, centroid, p_Graph);
+
+        if (!opt_Best.has_value() || d_Prob > d_BestProb + d_kEpsilon ||
+            (std::fabs(d_Prob - d_BestProb) <= d_kEpsilon && d_Dist < d_BestDist)) {
+            opt_Best = move;
+            d_BestProb = d_Prob;
+            d_BestDist = d_Dist;
+        }
+    }
+
+    return opt_Best;
+}
+
+static bool FindTicketAwarePath(
+    const GraphManager* p_Graph,
+    int i_Start,
+    int i_Target,
+    const TicketState& initialTickets,
+    const std::set<int>& set_ForbiddenNodes,
+    std::vector<int>& out_PathNodes,
+    std::vector<int>& out_PathTransports,
+    int i_MaxDepth = 6
+)
+{
+    out_PathNodes.clear();
+    out_PathTransports.clear();
+
+    if (!p_Graph || !p_Graph->IsValidNode(i_Start) || !p_Graph->IsValidNode(i_Target)) {
+        return false;
+    }
+
+    struct PathState {
+        int i_Node;
+        TicketState tickets;
+        int i_ParentIndex;
+        int i_UsedTransport;
+        int i_Depth;
+    };
+
+    std::vector<PathState> vec_States;
+    vec_States.push_back({i_Start, initialTickets, -1, 0, 0});
+    std::queue<int> queue_Indices;
+    queue_Indices.push(0);
+
+    std::set<std::tuple<int, int, int, int, int>> set_Visited;
+    set_Visited.insert(std::make_tuple(i_Start, initialTickets.taxi, initialTickets.bus, initialTickets.metro, initialTickets.black));
+
+    while (!queue_Indices.empty()) {
+        int i_Index = queue_Indices.front();
+        queue_Indices.pop();
+        const PathState& state = vec_States[i_Index];
+
+        if (state.i_Node == i_Target) {
+            std::vector<int> vec_ReversedNodes;
+            std::vector<int> vec_ReversedTransports;
+            int i_Cursor = i_Index;
+            while (i_Cursor >= 0) {
+                const PathState& nodeState = vec_States[i_Cursor];
+                vec_ReversedNodes.push_back(nodeState.i_Node);
+                vec_ReversedTransports.push_back(nodeState.i_UsedTransport);
+                i_Cursor = nodeState.i_ParentIndex;
+            }
+
+            std::reverse(vec_ReversedNodes.begin(), vec_ReversedNodes.end());
+            std::reverse(vec_ReversedTransports.begin(), vec_ReversedTransports.end());
+
+            if (!vec_ReversedTransports.empty()) {
+                vec_ReversedTransports.erase(vec_ReversedTransports.begin());
+            }
+
+            out_PathNodes = std::move(vec_ReversedNodes);
+            out_PathTransports = std::move(vec_ReversedTransports);
+            return true;
+        }
+
+        if (state.i_Depth >= i_MaxDepth) {
+            continue;
+        }
+
+        for (const auto& conn : p_Graph->GetConnections(state.i_Node)) {
+            int i_NextNode = conn.i_NodeId;
+            if (set_ForbiddenNodes.count(i_NextNode) != 0 && i_NextNode != i_Target) {
+                continue;
+            }
+
+            TicketState nextTickets = state.tickets;
+            if (!ConsumeTicketForTransport(nextTickets, conn.i_TransportType)) {
+                continue;
+            }
+
+            auto visitKey = std::make_tuple(
+                i_NextNode,
+                nextTickets.taxi,
+                nextTickets.bus,
+                nextTickets.metro,
+                nextTickets.black
+            );
+
+            if (!set_Visited.insert(visitKey).second) {
+                continue;
+            }
+
+            vec_States.push_back({i_NextNode, nextTickets, i_Index, conn.i_TransportType, state.i_Depth + 1});
+            queue_Indices.push(static_cast<int>(vec_States.size()) - 1);
+        }
+    }
+
+    return false;
+}
+
+static FrontPlanCache BuildFrontPlan(const GameStateData& gameState, std::map<int, int>& map_BlockedNodes)
+{
+    FrontPlanCache cache;
+    cache.i_Round = gameState.i_CurrentRound;
+    cache.i_LastKnownRound = gameState.i_MrXLastKnownRound;
+    cache.i_LastKnownPosition = gameState.i_MrXLastKnownPosition;
+
+    const GraphManager* p_Graph = gameState.p_Graph;
+    if (!p_Graph) {
+        return cache;
+    }
+
+    std::vector<int> vec_DetectiveIndices;
+    std::set<int> set_OccupiedNodes;
+    bool b_MrXVisibleNow = false;
+
+    for (size_t i = 0; i < gameState.vec_AllPlayers.size(); ++i) {
+        const PlayerInfo& info = gameState.vec_AllPlayers[i];
+        if (info.b_IsMisterX) {
+            b_MrXVisibleNow = info.b_IsVisible;
+        } else {
+            vec_DetectiveIndices.push_back(static_cast<int>(i));
+            set_OccupiedNodes.insert(info.i_Position);
+        }
+    }
+
+    cache.i_DetectiveCount = vec_DetectiveIndices.size();
+    cache.b_MrXVisible = b_MrXVisibleNow;
+
+    if (vec_DetectiveIndices.empty()) {
+        return cache;
+    }
+
+    std::map<int, double> map_Belief = ComputeProbabilityMap(gameState, nullptr);
+    if (map_Belief.empty()) {
+        int i_NodeCount = p_Graph->GetNodeCount();
+        if (i_NodeCount <= 0) {
+            i_NodeCount = 1;
+        }
+        double d_Uniform = 1.0 / static_cast<double>(i_NodeCount);
+        for (int i_Node = 1; i_Node <= i_NodeCount; ++i_Node) {
+            map_Belief[i_Node] = d_Uniform;
+        }
+    }
+
+    double d_Total = 0.0;
+    for (auto& entry : map_Belief) {
+        if (set_OccupiedNodes.count(entry.first) != 0) {
+            entry.second = 0.0;
+        } else {
+            auto itBlocked = map_BlockedNodes.find(entry.first);
+            if (itBlocked != map_BlockedNodes.end()) {
+                double d_Penalty = 1.0 - std::min(0.6, 0.15 * static_cast<double>(itBlocked->second));
+                entry.second *= std::max(0.0, d_Penalty);
+            }
+        }
+        d_Total += entry.second;
+    }
+
+    if (d_Total <= 0.0) {
+        map_Belief.clear();
+        std::vector<int> vec_Candidates;
+        int i_NodeCount = p_Graph->GetNodeCount();
+        for (int i_Node = 1; i_Node <= i_NodeCount; ++i_Node) {
+            if (set_OccupiedNodes.count(i_Node) == 0) {
+                vec_Candidates.push_back(i_Node);
+            }
+        }
+
+        if (vec_Candidates.empty()) {
+            vec_Candidates.push_back(vec_DetectiveIndices.front() < static_cast<int>(gameState.vec_AllPlayers.size())
+                                        ? gameState.vec_AllPlayers[vec_DetectiveIndices.front()].i_Position
+                                        : 1);
+        }
+
+        double d_Uniform = 1.0 / static_cast<double>(vec_Candidates.size());
+        for (int i_Node : vec_Candidates) {
+            map_Belief[i_Node] = d_Uniform;
+        }
+    } else {
+        for (auto& entry : map_Belief) {
+            entry.second = (d_Total > 0.0) ? (entry.second / d_Total) : 0.0;
+        }
+    }
+
+    cache.mapBelief = map_Belief;
+
+    BeliefCentroid centroid = ComputeBeliefCentroid(map_Belief, p_Graph);
+    cache.centroid = {centroid.d_X, centroid.d_Y};
+    cache.b_CentroidValid = centroid.b_Valid;
+
+    std::vector<std::pair<int, double>> vec_BeliefSorted;
+    vec_BeliefSorted.reserve(map_Belief.size());
+    for (const auto& entry : map_Belief) {
+        if (entry.second > 0.0) {
+            vec_BeliefSorted.push_back(entry);
+        }
+    }
+
+    std::sort(vec_BeliefSorted.begin(), vec_BeliefSorted.end(), [](const auto& a, const auto& b) {
+        if (std::fabs(a.second - b.second) < 1e-9) {
+            return a.first < b.first;
+        }
+        return a.second > b.second;
+    });
+
+    size_t i_DetectiveCount = vec_DetectiveIndices.size();
+    double d_Cumulative = 0.0;
+    std::vector<std::pair<int, double>> vec_FrontNodes;
+    for (const auto& entry : vec_BeliefSorted) {
+        vec_FrontNodes.push_back(entry);
+        d_Cumulative += entry.second;
+        if (vec_FrontNodes.size() >= i_DetectiveCount || d_Cumulative >= 0.75) {
+            break;
+        }
+    }
+
+    std::unordered_map<int, std::unordered_map<int, int>> map_DistanceCache;
+    for (int idx : vec_DetectiveIndices) {
+        const PlayerInfo& info = gameState.vec_AllPlayers[idx];
+        map_DistanceCache[idx] = ComputeBfsDistances(p_Graph, info.i_Position);
+    }
+
+    std::set<int> set_AvailableDetectives(vec_DetectiveIndices.begin(), vec_DetectiveIndices.end());
+    std::map<int, int> map_Assignments;
+    std::map<int, double> map_AssignmentProb;
+
+    for (const auto& [i_Node, d_Prob] : vec_FrontNodes) {
+        int i_SelectedDetective = -1;
+        double d_BestScore = std::numeric_limits<double>::infinity();
+
+        for (int idx : set_AvailableDetectives) {
+            auto itDist = map_DistanceCache[idx].find(i_Node);
+            if (itDist == map_DistanceCache[idx].end()) {
+                continue;
+            }
+
+            double d_Score = static_cast<double>(itDist->second) - d_Prob * 2.0;
+            if (d_Score < d_BestScore) {
+                d_BestScore = d_Score;
+                i_SelectedDetective = idx;
+            }
+        }
+
+        if (i_SelectedDetective != -1) {
+            map_Assignments[i_SelectedDetective] = i_Node;
+            map_AssignmentProb[i_SelectedDetective] = d_Prob;
+            set_AvailableDetectives.erase(i_SelectedDetective);
+        }
+    }
+
+    std::set<int> set_UsedTargetNodes;
+    for (const auto& entry : map_Assignments) {
+        set_UsedTargetNodes.insert(entry.second);
+    }
+
+    std::vector<int> vec_GuardNodes = SelectGuardNodes(map_Belief, set_UsedTargetNodes, p_Graph);
+
+    struct PlanningOrderEntry {
+        int i_Index;
+        double d_Primary;
+        double d_Secondary;
+    };
+
+    std::vector<PlanningOrderEntry> vec_PlanningOrder;
+    vec_PlanningOrder.reserve(vec_DetectiveIndices.size());
+    for (int idx : vec_DetectiveIndices) {
+        bool b_Assigned = map_Assignments.count(idx) > 0;
+        double d_Primary = b_Assigned ? 0.0 : 1.0;
+        double d_Secondary = b_Assigned ? -map_AssignmentProb[idx] : 0.0;
+        vec_PlanningOrder.push_back({idx, d_Primary, d_Secondary});
+    }
+
+    std::sort(vec_PlanningOrder.begin(), vec_PlanningOrder.end(), [](const PlanningOrderEntry& a, const PlanningOrderEntry& b) {
+        if (std::fabs(a.d_Primary - b.d_Primary) > 1e-6) {
+            return a.d_Primary < b.d_Primary;
+        }
+        if (std::fabs(a.d_Secondary - b.d_Secondary) > 1e-6) {
+            return a.d_Secondary < b.d_Secondary;
+        }
+        return a.i_Index < b.i_Index;
+    });
+
+    std::set<int> set_ReservedDestinations;
+    std::set<int> set_CurrentOccupied = set_OccupiedNodes;
+
+    auto fn_FetchGuardNode = [&]() -> int {
+        while (!vec_GuardNodes.empty()) {
+            int i_Candidate = vec_GuardNodes.front();
+            vec_GuardNodes.erase(vec_GuardNodes.begin());
+            if (set_CurrentOccupied.count(i_Candidate) != 0 || set_ReservedDestinations.count(i_Candidate) != 0) {
+                continue;
+            }
+            return i_Candidate;
+        }
+        return -1;
+    };
+
+    for (const auto& orderEntry : vec_PlanningOrder) {
+        int idx = orderEntry.i_Index;
+        const PlayerInfo& info = gameState.vec_AllPlayers[idx];
+
+        set_CurrentOccupied.erase(info.i_Position);
+
+        int i_TargetNode = -1;
+        if (map_Assignments.count(idx)) {
+            i_TargetNode = map_Assignments[idx];
+        } else {
+            i_TargetNode = fn_FetchGuardNode();
+        }
+
+        std::set<int> set_Forbidden = set_CurrentOccupied;
+        set_Forbidden.insert(set_ReservedDestinations.begin(), set_ReservedDestinations.end());
+        std::vector<PossibleMove> vec_LegalMoves = ComputeLegalMovesForDetective(info, gameState, set_Forbidden);
+
+        FrontPlanEntry entry;
+        entry.i_TargetNode = i_TargetNode;
+        entry.d_TargetProbability = (i_TargetNode >= 0 && map_Belief.count(i_TargetNode)) ? map_Belief[i_TargetNode] : 0.0;
+
+        bool b_Planned = false;
+        if (i_TargetNode > 0 && i_TargetNode != info.i_Position) {
+            int i_Attempts = 0;
+            int i_CurrentTarget = i_TargetNode;
+
+            while (i_CurrentTarget > 0 && i_Attempts < 3 && !b_Planned) {
+                std::vector<int> vec_PathNodes;
+                std::vector<int> vec_PathTransports;
+                TicketState tickets{
+                    std::max(0, info.i_TaxiTickets),
+                    std::max(0, info.i_BusTickets),
+                    std::max(0, info.i_MetroTickets),
+                    std::max(0, info.i_BlackTickets)
+                };
+
+                std::set<int> set_PathForbidden = set_Forbidden;
+                if (FindTicketAwarePath(p_Graph, info.i_Position, i_CurrentTarget, tickets, set_PathForbidden, vec_PathNodes, vec_PathTransports)) {
+                    if (vec_PathNodes.size() > 1 && !vec_PathTransports.empty()) {
+                        entry.move.i_DestinationNode = vec_PathNodes[1];
+                        entry.move.i_TransportType = vec_PathTransports[0];
+                        entry.b_HasMove = true;
+                        set_ReservedDestinations.insert(entry.move.i_DestinationNode);
+                        set_CurrentOccupied.insert(entry.move.i_DestinationNode);
+                        b_Planned = true;
+                    }
+                }
+
+                if (!b_Planned) {
+                    MarkFrontBlockedNode(map_BlockedNodes, i_CurrentTarget);
+                    i_CurrentTarget = fn_FetchGuardNode();
+                    ++i_Attempts;
+                }
+            }
+        }
+
+        if (!b_Planned) {
+            std::optional<PossibleMove> opt_Fallback = SelectFallbackMove(vec_LegalMoves, map_Belief, centroid, p_Graph);
+            if (opt_Fallback.has_value()) {
+                entry.move = opt_Fallback.value();
+                entry.b_HasMove = true;
+                set_ReservedDestinations.insert(entry.move.i_DestinationNode);
+                set_CurrentOccupied.insert(entry.move.i_DestinationNode);
+            } else {
+                set_CurrentOccupied.insert(info.i_Position);
+            }
+        }
+
+        cache.mapEntries[idx] = entry;
+    }
+
+    return cache;
+}
+
+static MoveDecision FrontSearchEncirclementPoliceAlgorithm(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState
+)
+{
+    MoveDecision decision;
+    decision.b_HasDecision = false;
+
+    if (vec_PossibleMoves.empty()) {
+        return decision;
+    }
+
+    const int i_PlayerIndex = gameState.i_CurrentPlayerIndex;
+    if (i_PlayerIndex < 0 || i_PlayerIndex >= static_cast<int>(gameState.vec_AllPlayers.size())) {
+        return GreedyShortestPathPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+    }
+
+    bool b_ForceRebuild = false;
+    constexpr int i_kMaxAttempts = 2;
+
+    for (int i_Attempt = 0; i_Attempt < i_kMaxAttempts; ++i_Attempt) {
+        FrontPlanCache cacheSnapshot;
+        size_t i_DetectiveCount = 0;
+        bool b_MrXVisibleNow = false;
+        for (const auto& info : gameState.vec_AllPlayers) {
+            if (info.b_IsMisterX) {
+                b_MrXVisibleNow = info.b_IsVisible;
+            } else {
+                ++i_DetectiveCount;
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(s_mtx_FrontPlan);
+
+            bool b_NeedsRebuild = b_ForceRebuild ||
+                s_FrontPlanCache.i_Round != gameState.i_CurrentRound ||
+                s_FrontPlanCache.i_DetectiveCount != i_DetectiveCount ||
+                s_FrontPlanCache.i_LastKnownRound != gameState.i_MrXLastKnownRound ||
+                s_FrontPlanCache.i_LastKnownPosition != gameState.i_MrXLastKnownPosition ||
+                s_FrontPlanCache.b_MrXVisible != b_MrXVisibleNow;
+
+            if (b_NeedsRebuild) {
+                DecayFrontBlockedNodes(s_mapFrontBlockedNodes);
+                s_FrontPlanCache = BuildFrontPlan(gameState, s_mapFrontBlockedNodes);
+            }
+
+            cacheSnapshot = s_FrontPlanCache;
+        }
+
+        auto itEntry = cacheSnapshot.mapEntries.find(i_PlayerIndex);
+        if (itEntry != cacheSnapshot.mapEntries.end() && itEntry->second.b_HasMove) {
+            PossibleMove plannedMove = itEntry->second.move;
+
+            const PossibleMove* p_MatchedMove = nullptr;
+            for (const auto& move : vec_PossibleMoves) {
+                if (move.i_DestinationNode == plannedMove.i_DestinationNode &&
+                    move.i_TransportType == plannedMove.i_TransportType) {
+                    p_MatchedMove = &move;
+                    break;
+                }
+            }
+
+            if (!p_MatchedMove) {
+                for (const auto& move : vec_PossibleMoves) {
+                    if (move.i_DestinationNode == plannedMove.i_DestinationNode) {
+                        p_MatchedMove = &move;
+                        plannedMove.i_TransportType = move.i_TransportType;
+                        break;
+                    }
+                }
+            }
+
+            if (p_MatchedMove) {
+                decision.b_HasDecision = true;
+                decision.i_DestinationNode = p_MatchedMove->i_DestinationNode;
+                decision.i_TransportType = p_MatchedMove->i_TransportType;
+                return decision;
+            }
+
+            int i_TargetToBlock = itEntry->second.i_TargetNode;
+            {
+                std::lock_guard<std::mutex> lock(s_mtx_FrontPlan);
+                MarkFrontBlockedNode(s_mapFrontBlockedNodes, i_TargetToBlock);
+                s_FrontPlanCache.i_Round = -1;
+            }
+
+            b_ForceRebuild = true;
+            continue;
+        }
+
+        BeliefCentroid centroid;
+        centroid.d_X = cacheSnapshot.centroid.first;
+        centroid.d_Y = cacheSnapshot.centroid.second;
+        centroid.b_Valid = cacheSnapshot.b_CentroidValid;
+
+        auto opt_Fallback = SelectFallbackMove(vec_PossibleMoves, cacheSnapshot.mapBelief, centroid, gameState.p_Graph);
+        if (opt_Fallback.has_value()) {
+            decision.b_HasDecision = true;
+            decision.i_DestinationNode = opt_Fallback->i_DestinationNode;
+            decision.i_TransportType = opt_Fallback->i_TransportType;
+            return decision;
+        }
+
+        break;
+    }
+
+    return GreedyShortestPathPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+}
+
 // === MINIMAX ALGORITHM FOR POLICE ===
 
 static double EvaluateStateForMinimax(
@@ -2925,8 +3680,7 @@ MoveDecision AIPlayerController::CalculateBestMove(
             decision = GreedyShortestPathPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
         case Core::AIAlgorithm::FrontSearchEncirclementPolice:
-            // TODO implementing algorithm here, rn fallback to monte carlo
-            decision = MonteCarloPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            decision = FrontSearchEncirclementPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
         
         case Core::AIAlgorithm::NeuralNet: {
