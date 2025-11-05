@@ -279,18 +279,23 @@ std::vector<Point> GenerateRiverPath(const std::vector<Point>& vec_ControlPoints
 
 std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
                                 const std::vector<Point>& vec_RiverPath,
-                                int i_Corner, int i_NumParks) {
+                                int i_Corner, int i_NumParks,
+                                float f_MinSize, float f_MaxSize) {
     std::vector<Park> vec_Parks;
     std::vector<Point> vec_ValidPoints;
     
+    // POPRAWIONE: użyj f_MaxSize zamiast Config::PARK_MAX_SIZE
     for (const auto& gp : vec_GridPoints) {
         if (IsOnMajorSide(gp, vec_RiverPath, i_Corner)) {
             float f_DistToRiver = GetDistanceToRiver(gp, vec_RiverPath);
-            if (f_DistToRiver > Config::MIN_RIVER_DISTANCE + Config::PARK_MAX_SIZE) {
+            if (f_DistToRiver > Config::MIN_RIVER_DISTANCE + f_MaxSize) {
                 vec_ValidPoints.push_back(gp);
             }
         }
     }
+    
+    std::cout << "[MapGen] Valid points for parks: " << vec_ValidPoints.size() << std::endl;
+    std::cout << "[MapGen] Using park size range: " << f_MinSize << " - " << f_MaxSize << std::endl;
     
     int i_Attempts = 0;
     const int MAX_ATTEMPTS = 100;
@@ -302,8 +307,12 @@ std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
         int i_Idx = rand() % vec_ValidPoints.size();
         Point center = vec_ValidPoints[i_Idx];
         
-        float f_Size = Config::PARK_MIN_SIZE + 
-                     (rand() % 100) / 100.0f * (Config::PARK_MAX_SIZE - Config::PARK_MIN_SIZE);
+        // POPRAWIONE: użyj f_MinSize i f_MaxSize z parametrów
+        float f_Range = f_MaxSize - f_MinSize;
+        float f_Size = f_MinSize + (rand() % 100) / 100.0f * f_Range;
+        
+        std::cout << "[MapGen] Trying park with size: " << f_Size << std::endl;
+        
         Park newPark(center, f_Size);
         
         bool b_HasCollision = false;
@@ -321,12 +330,16 @@ std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
         
         if (!b_HasCollision) {
             vec_Parks.push_back(newPark);
+            std::cout << "[MapGen] Park " << vec_Parks.size() << " generated at (" 
+                      << center.x << ", " << center.y << ") with radius " << f_Size << std::endl;
             vec_ValidPoints.erase(vec_ValidPoints.begin() + i_Idx);
         } else {
             i_Attempts++;
         }
     }
     
+    std::cout << "[MapGen] Generated " << vec_Parks.size() << " parks after " 
+              << i_Attempts << " attempts" << std::endl;
     return vec_Parks;
 }
 

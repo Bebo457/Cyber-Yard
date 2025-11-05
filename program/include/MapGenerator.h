@@ -45,7 +45,9 @@ std::vector<Point> GenerateRiverControlPoints(int* p_CurrentCorner, int i_Width,
 std::vector<Point> GenerateRiverPath(const std::vector<Point>& vec_ControlPoints, int i_Segments = 100);
 std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
                                 const std::vector<Point>& vec_RiverPath,
-                                int i_Corner, int i_NumParks);
+                                int i_Corner, int i_NumParks,
+                                float f_MinSize = Config::PARK_MIN_SIZE,
+                                float f_MaxSize = Config::PARK_MAX_SIZE);
 
 } // namespace MapGen
 } // namespace ScotlandYard

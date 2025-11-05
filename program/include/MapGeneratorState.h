@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <GL/gl.h>
-#include <memory>
 
 namespace ScotlandYard { namespace Core { class Application; } }
 
@@ -53,6 +52,7 @@ private:
     int m_i_FocusedFieldIndex = -1;
 
     SDL_Rect m_BtnGenerate{};
+    SDL_Rect m_BtnSave{};
     SDL_Rect m_BtnBack{};
     SDL_Rect m_BtnRandomSeed{};
 
@@ -61,12 +61,18 @@ private:
     GLuint m_GLuint_PreviewTexture = 0;
     SDL_Rect m_rect_PreviewArea{};
     bool m_b_HasPreview = false;
+    int m_i_PreviewWidth = 0;
+    int m_i_PreviewHeight = 0;
 
     std::vector<MapGen::Point> m_vec_GridPoints;
     std::vector<MapGen::Point> m_vec_RiverPath;
     std::vector<MapGen::Point> m_vec_ControlPoints;
     std::vector<MapGen::Park> m_vec_Parks;
     int m_i_CurrentCorner = 0;
+
+    GLuint m_VAO_PreviewQuad = 0;
+    GLuint m_VBO_PreviewQuad = 0;
+    GLuint m_ShaderProgram_Preview = 0;
 
 private:
     void LayoutUI(int i_Width, int i_Height, Core::Application* p_App);
@@ -78,12 +84,12 @@ private:
     void AppendTextToFocusedField(const char* p_Utf8Text);
     void BackspaceInFocusedField();
     void TryGenerateMap();
-    void MakeDummyPreview(int i_Width, int i_Height);
     void RandomizeSeed();
-    void ShowMapInNewWindow(int i_Width, int i_Height);
-    
-    void GenerateMapPreview(int i_Width, int i_Height);
-    void RenderMapToTexture(int i_Width, int i_Height);
+    void SaveMapToFile();
+    void RenderMapToTexture();
+    void UpdatePreviewTexture();
+    void RenderPreviewTexture(Core::Application* p_App);
+    void CreatePreviewQuad();
 };
 
 } // namespace States
