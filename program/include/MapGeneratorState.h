@@ -54,6 +54,7 @@ private:
 
     SDL_Rect m_BtnGenerate{};
     SDL_Rect m_BtnBack{};
+    SDL_Rect m_BtnRandomSeed{};
 
     std::string m_s_InfoText;
 
@@ -78,6 +79,7 @@ private:
     void BackspaceInFocusedField();
     void TryGenerateMap();
     void MakeDummyPreview(int i_Width, int i_Height);
+    void RandomizeSeed();
     void ShowMapInNewWindow(int i_Width, int i_Height);
     
     void GenerateMapPreview(int i_Width, int i_Height);

@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <ctime>
+#include <algorithm>
 
 namespace ScotlandYard {
 namespace MapGen {
@@ -82,6 +83,11 @@ bool ParksCollide(const Park& park1, const Park& park2) {
 }
 
 bool IsOnMajorSide(const Point& p, const std::vector<Point>& vec_RiverPath, int i_Corner) {
+
+    if (i_Corner == 4){
+        return true;
+    }
+
     float f_MinDist = 1e9f;
     Point closestRiverPoint;
     for (const auto& rp : vec_RiverPath) {
@@ -135,54 +141,117 @@ std::vector<Point> GenerateGridPoints(int i_Width, int i_Height) {
 
 std::vector<Point> GenerateRiverControlPoints(int* p_CurrentCorner, int i_Width, int i_Height) {
     std::vector<Point> vec_ControlPoints;
-    int i_Corner = rand() % 4;
-    *p_CurrentCorner = i_Corner;
     
-    float f_CutSize = 0.30f;
-    float f_Var1 = f_CutSize + (rand() % 100) / 500.0f;
-    float f_Meander1 = 0.01f + (rand() % 100) / 1000.0f;
-    float f_Meander2 = 0.01f + (rand() % 100) / 1000.0f;
+    int i_RiverType = rand() % 100;
     
-    switch(i_Corner) {
-        case 0: 
-            vec_ControlPoints.push_back(Point(i_Width * f_Var1, 0));
-            vec_ControlPoints.push_back(Point(i_Width * (f_Var1 + f_Meander1), i_Height * 0.08f));
-            vec_ControlPoints.push_back(Point(i_Width * (f_Var1 - f_Meander2), i_Height * 0.12f));
-            vec_ControlPoints.push_back(Point(i_Width * f_Var1 * 0.7f, i_Height * f_Var1 * 0.5f));
-            vec_ControlPoints.push_back(Point(i_Width * 0.03f, i_Height * f_Var1 * 0.7f));
-            vec_ControlPoints.push_back(Point(i_Width * f_Meander1, i_Height * (f_Var1 - 0.02f)));
-            vec_ControlPoints.push_back(Point(0, i_Height * f_Var1));
-            break;
-        case 1: 
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1), 0));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 - f_Meander1), i_Height * 0.08f));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 + f_Meander2), i_Height * 0.12f));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 * 0.7f), i_Height * f_Var1 * 0.5f));
-            vec_ControlPoints.push_back(Point(i_Width * 0.97f, i_Height * f_Var1 * 0.7f));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Meander1), i_Height * (f_Var1 - 0.02f)));
-            vec_ControlPoints.push_back(Point(i_Width, i_Height * f_Var1));
-            break;
-        case 2: 
-            vec_ControlPoints.push_back(Point(i_Width, i_Height * (1.0f - f_Var1)));
-            vec_ControlPoints.push_back(Point(i_Width * 0.97f, i_Height * (1.0f - f_Var1 - f_Meander1)));
-            vec_ControlPoints.push_back(Point(i_Width * 0.92f, i_Height * (1.0f - f_Var1 + f_Meander2)));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 * 0.5f), i_Height * (1.0f - f_Var1 * 0.7f)));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 * 0.7f), i_Height * 0.97f));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 + 0.02f), i_Height * (1.0f - f_Meander1)));
-            vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1), i_Height));
-            break;
-        case 3: 
-            vec_ControlPoints.push_back(Point(0, i_Height * (1.0f - f_Var1)));
-            vec_ControlPoints.push_back(Point(i_Width * 0.03f, i_Height * (1.0f - f_Var1 - f_Meander1)));
-            vec_ControlPoints.push_back(Point(i_Width * 0.08f, i_Height * (1.0f - f_Var1 + f_Meander2)));
-            vec_ControlPoints.push_back(Point(i_Width * (f_Var1 * 0.5f), i_Height * (1.0f - f_Var1 * 0.7f)));
-            vec_ControlPoints.push_back(Point(i_Width * (f_Var1 * 0.7f), i_Height * 0.97f));
-            vec_ControlPoints.push_back(Point(i_Width * (f_Var1 - 0.02f), i_Height * (1.0f - f_Meander1)));
-            vec_ControlPoints.push_back(Point(i_Width * f_Var1, i_Height));
-            break;
+    if (i_RiverType < 70) {
+        *p_CurrentCorner = 4;  
+        
+        int i_Orientation = rand() % 2;
+        
+        if (i_Orientation == 0) {
+            float f_CenterY = 0.5f;
+            float f_MeanderAmp = 0.1f + (rand() % 100) / 500.0f;
+            
+            vec_ControlPoints.push_back(Point(0, i_Height * f_CenterY));
+            
+            float f_Offset1 = ((rand() % 2) * 2 - 1) * f_MeanderAmp; 
+            vec_ControlPoints.push_back(Point(i_Width * 0.15f, i_Height * f_CenterY));
+            vec_ControlPoints.push_back(Point(i_Width * 0.20f, i_Height * (f_CenterY + f_Offset1 * 0.5f)));
+            vec_ControlPoints.push_back(Point(i_Width * 0.25f, i_Height * (f_CenterY + f_Offset1)));
+            
+            float f_Offset2 = -f_Offset1 * (0.8f + (rand() % 40) / 100.0f);
+            vec_ControlPoints.push_back(Point(i_Width * 0.30f, i_Height * (f_CenterY + f_Offset1)));
+            vec_ControlPoints.push_back(Point(i_Width * 0.40f, i_Height * (f_CenterY + f_Offset2 * 0.5f)));
+            vec_ControlPoints.push_back(Point(i_Width * 0.50f, i_Height * (f_CenterY + f_Offset2)));
+            
+            float f_Offset3 = -f_Offset2 * (0.8f + (rand() % 40) / 100.0f);
+            vec_ControlPoints.push_back(Point(i_Width * 0.55f, i_Height * (f_CenterY + f_Offset2)));
+            vec_ControlPoints.push_back(Point(i_Width * 0.65f, i_Height * (f_CenterY + f_Offset3 * 0.5f)));
+            vec_ControlPoints.push_back(Point(i_Width * 0.75f, i_Height * (f_CenterY + f_Offset3)));
+            
+            vec_ControlPoints.push_back(Point(i_Width * 0.80f, i_Height * (f_CenterY + f_Offset3)));
+            vec_ControlPoints.push_back(Point(i_Width * 0.90f, i_Height * f_CenterY));
+            vec_ControlPoints.push_back(Point(i_Width, i_Height * f_CenterY));
+            
+        } else {
+            float f_CenterX = 0.5f;
+            float f_MeanderAmp = 0.1f + (rand() % 100) / 500.0f;
+            
+            vec_ControlPoints.push_back(Point(i_Width * f_CenterX, 0));
+            
+            float f_Offset1 = ((rand() % 2) * 2 - 1) * f_MeanderAmp;
+            vec_ControlPoints.push_back(Point(i_Width * f_CenterX, i_Height * 0.15f));
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset1 * 0.5f), i_Height * 0.20f));
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset1), i_Height * 0.25f));
+            
+            float f_Offset2 = -f_Offset1 * (0.8f + (rand() % 40) / 100.0f);
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset1), i_Height * 0.30f));
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset2 * 0.5f), i_Height * 0.40f));
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset2), i_Height * 0.50f));
+            
+            float f_Offset3 = -f_Offset2 * (0.8f + (rand() % 40) / 100.0f);
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset2), i_Height * 0.55f));
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset3 * 0.5f), i_Height * 0.65f));
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset3), i_Height * 0.75f));
+            
+            vec_ControlPoints.push_back(Point(i_Width * (f_CenterX + f_Offset3), i_Height * 0.80f));
+            vec_ControlPoints.push_back(Point(i_Width * f_CenterX, i_Height * 0.90f));
+            vec_ControlPoints.push_back(Point(i_Width * f_CenterX, i_Height));
+        }
+        
+    } else {
+        int i_Corner = rand() % 4;
+        *p_CurrentCorner = i_Corner;
+        
+        float f_CutSize = 0.30f;
+        float f_Var1 = f_CutSize + (rand() % 100) / 500.0f;
+        float f_Meander1 = 0.01f + (rand() % 100) / 1000.0f;
+        float f_Meander2 = 0.01f + (rand() % 100) / 1000.0f;
+        
+        switch(i_Corner) {
+            case 0:
+                vec_ControlPoints.push_back(Point(i_Width * f_Var1, 0));
+                vec_ControlPoints.push_back(Point(i_Width * (f_Var1 + f_Meander1), i_Height * 0.08f));
+                vec_ControlPoints.push_back(Point(i_Width * (f_Var1 - f_Meander2), i_Height * 0.12f));
+                vec_ControlPoints.push_back(Point(i_Width * f_Var1 * 0.7f, i_Height * f_Var1 * 0.5f));
+                vec_ControlPoints.push_back(Point(i_Width * 0.03f, i_Height * f_Var1 * 0.7f));
+                vec_ControlPoints.push_back(Point(i_Width * f_Meander1, i_Height * (f_Var1 - 0.02f)));
+                vec_ControlPoints.push_back(Point(0, i_Height * f_Var1));
+                break;
+            case 1: 
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1), 0));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 - f_Meander1), i_Height * 0.08f));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 + f_Meander2), i_Height * 0.12f));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 * 0.7f), i_Height * f_Var1 * 0.5f));
+                vec_ControlPoints.push_back(Point(i_Width * 0.97f, i_Height * f_Var1 * 0.7f));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Meander1), i_Height * (f_Var1 - 0.02f)));
+                vec_ControlPoints.push_back(Point(i_Width, i_Height * f_Var1));
+                break;
+            case 2: 
+                vec_ControlPoints.push_back(Point(i_Width, i_Height * (1.0f - f_Var1)));
+                vec_ControlPoints.push_back(Point(i_Width * 0.97f, i_Height * (1.0f - f_Var1 - f_Meander1)));
+                vec_ControlPoints.push_back(Point(i_Width * 0.92f, i_Height * (1.0f - f_Var1 + f_Meander2)));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 * 0.5f), i_Height * (1.0f - f_Var1 * 0.7f)));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 * 0.7f), i_Height * 0.97f));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1 + 0.02f), i_Height * (1.0f - f_Meander1)));
+                vec_ControlPoints.push_back(Point(i_Width * (1.0f - f_Var1), i_Height));
+                break;
+            case 3: 
+                vec_ControlPoints.push_back(Point(0, i_Height * (1.0f - f_Var1)));
+                vec_ControlPoints.push_back(Point(i_Width * 0.03f, i_Height * (1.0f - f_Var1 - f_Meander1)));
+                vec_ControlPoints.push_back(Point(i_Width * 0.08f, i_Height * (1.0f - f_Var1 + f_Meander2)));
+                vec_ControlPoints.push_back(Point(i_Width * (f_Var1 * 0.5f), i_Height * (1.0f - f_Var1 * 0.7f)));
+                vec_ControlPoints.push_back(Point(i_Width * (f_Var1 * 0.7f), i_Height * 0.97f));
+                vec_ControlPoints.push_back(Point(i_Width * (f_Var1 - 0.02f), i_Height * (1.0f - f_Meander1)));
+                vec_ControlPoints.push_back(Point(i_Width * f_Var1, i_Height));
+                break;
+        }
     }
+    
     return vec_ControlPoints;
 }
+
 
 std::vector<Point> GenerateRiverPath(const std::vector<Point>& vec_ControlPoints, int i_Segments) {
     std::vector<Point> vec_RiverPath;

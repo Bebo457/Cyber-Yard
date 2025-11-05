@@ -47,6 +47,16 @@ namespace ScotlandYard {
             return std::max(s.f_MinValue, std::min(s.f_MaxValue, v));
         }
 
+        void MapGeneratorState::RandomizeSeed() {
+            unsigned int ui_Seed = static_cast<unsigned int>(time(nullptr));
+            std::string s_NewSeed = std::to_string(ui_Seed);
+            
+            if (!m_vec_Fields.empty()) {
+                m_vec_Fields[0].s_Value = s_NewSeed;
+                std::cout << "[DEBUG] Randomized seed: " << s_NewSeed << std::endl;
+            }
+        }
+
 
         void MapGeneratorState::OnEnter() {
             m_s_InfoText.clear();
@@ -54,7 +64,7 @@ namespace ScotlandYard {
             m_vec_Sliders.clear();
 
             // text input for Seed
-            m_vec_Fields.push_back({ "Seed", "12345", {}, false, true, 16 });
+            m_vec_Fields.push_back({ "Seed", "", {}, false, true, 16 });
 
             // Sliders
             m_vec_Sliders.push_back({ "Nodes",         250.0f,  50.0f, 1000.0f, 10.0f });
@@ -152,12 +162,17 @@ namespace ScotlandYard {
             // Field (seed)
             const int shortW = std::min(cardW - 2 * pad, 520);
             const int seedW = shortW;
+            const int randomBtnW = 80; 
+            const int seedFieldW = shortW - randomBtnW - 8;
             const int seedX = cardX + (cardW - seedW) / 2;
 
             if (!m_vec_Fields.empty()) {
                 int seedY = y - fieldH;
                 y = seedY - gap;
                 m_vec_Fields[0].rect = SDL_Rect{ seedX, seedY, seedW, fieldH };
+
+                m_BtnRandomSeed = SDL_Rect{ seedX + seedFieldW + 8, seedY + (fieldH - 32) / 2, randomBtnW, 32 };
+
             }
 
             // Sliders
@@ -350,6 +365,7 @@ namespace ScotlandYard {
             DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App /*, isHovered*/);
             DrawMenuLikeButton(m_BtnBack, "BACK", p_App /*, isHovered*/);
 
+            DrawMenuLikeButton(m_BtnRandomSeed, "RANDOM", p_App);
 
 
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
@@ -421,7 +437,7 @@ namespace ScotlandYard {
             return 0.0f;
         };
 
-        const std::string seedStr = valOf("Seed");
+        std::string seedStr = valOf("Seed");
         const int nodes = (int)std::round(getS("Nodes"));
         const double dens = getS("Graph density");
 
@@ -434,6 +450,28 @@ namespace ScotlandYard {
             m_s_InfoText = "ERROR: Nodes too large for preview (<=5000).";
             return;
         }
+
+        unsigned int ui_Seed;
+        if (seedStr.empty()) {
+            ui_Seed = static_cast<unsigned int>(time(nullptr));
+            seedStr = std::to_string(ui_Seed);
+            
+            if (!m_vec_Fields.empty()) {
+                m_vec_Fields[0].s_Value = seedStr;
+            }
+            
+            std::cout << "[DEBUG] Generated random seed: " << seedStr << std::endl;
+        } else {
+            try {
+                ui_Seed = std::stoul(seedStr);
+            } catch (...) {
+                ui_Seed = static_cast<unsigned int>(time(nullptr));
+                seedStr = std::to_string(ui_Seed);
+                m_vec_Fields[0].s_Value = seedStr;
+            }
+        }
+        
+        srand(ui_Seed);
 
         m_s_InfoText = "Generating map...";
 
@@ -660,6 +698,11 @@ namespace ScotlandYard {
                     if (mx >= m_BtnBack.x && mx <= m_BtnBack.x + m_BtnBack.w &&
                         my >= m_BtnBack.y && my <= m_BtnBack.y + m_BtnBack.h) {
                         p_App->GetStateManager()->ChangeState("menu");
+                    }
+
+                    if (mx >= m_BtnRandomSeed.x && mx <= m_BtnRandomSeed.x + m_BtnRandomSeed.w &&
+                        my >= m_BtnRandomSeed.y && my <= m_BtnRandomSeed.y + m_BtnRandomSeed.h) {
+                        RandomizeSeed();
                     }
                 }
                 break;
