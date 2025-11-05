@@ -17,6 +17,7 @@
 #include <cmath>
 #include <tuple>
 #include <functional>
+#include <limits>
 
 namespace ScotlandYard {
 namespace Core {
@@ -1915,6 +1916,258 @@ static std::map<int, double> ComputeProbabilityMap(const GameStateData& gameStat
     return probabilityMap;
 }
 
+static double HeuristicDistance(int i_NodeA, int i_NodeB, const GraphManager* p_Graph)
+{
+    if (!p_Graph || !p_Graph->IsValidNode(i_NodeA) || !p_Graph->IsValidNode(i_NodeB)) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    const Node* p_NodeA = p_Graph->GetNode(i_NodeA);
+    const Node* p_NodeB = p_Graph->GetNode(i_NodeB);
+    if (!p_NodeA || !p_NodeB) {
+        int i_PathDistance = ShortestPathDistance(p_Graph, i_NodeA, i_NodeB);
+        return (i_PathDistance >= 0) ? static_cast<double>(i_PathDistance) : std::numeric_limits<double>::infinity();
+    }
+
+    double d_Dx = static_cast<double>(p_NodeA->i_X - p_NodeB->i_X);
+    double d_Dy = static_cast<double>(p_NodeA->i_Y - p_NodeB->i_Y);
+    double d_Distance = std::sqrt(d_Dx * d_Dx + d_Dy * d_Dy);
+
+    if (d_Distance > 0.0) {
+        return d_Distance;
+    }
+
+    int i_PathDistance = ShortestPathDistance(p_Graph, i_NodeA, i_NodeB);
+    return (i_PathDistance >= 0) ? static_cast<double>(i_PathDistance) : 0.0;
+}
+
+static std::vector<int> AStarShortestPathPolice(
+    int i_StartNode,
+    int i_TargetNode,
+    const GameStateData& gameState,
+    const PlayerInfo& playerInfo
+)
+{
+    std::vector<int> vec_Path;
+
+    const GraphManager* p_Graph = gameState.p_Graph;
+    if (!p_Graph || !p_Graph->IsValidNode(i_StartNode) || !p_Graph->IsValidNode(i_TargetNode)) {
+        return vec_Path;
+    }
+
+    struct QueueEntry {
+        double d_FScore;
+        int i_Node;
+
+        bool operator<(const QueueEntry& rhs) const {
+            return d_FScore > rhs.d_FScore;
+        }
+    };
+
+    std::priority_queue<QueueEntry> queue_Open;
+    std::set<int> set_Closed;
+    std::map<int, int> map_CameFrom;
+    std::map<int, double> map_GScore;
+
+    auto fn_HasTicketForTransport = [&](int i_TransportType) {
+        switch (i_TransportType) {
+            case k_TransportTypeTaxi:
+                return playerInfo.i_TaxiTickets > 0;
+            case k_TransportTypeBus:
+                return playerInfo.i_BusTickets > 0;
+            case k_TransportTypeMetro:
+                return playerInfo.i_MetroTickets > 0;
+            case k_TransportTypeWater:
+                return playerInfo.i_BlackTickets > 0;
+            default:
+                return false;
+        }
+    };
+
+    double d_StartHeuristic = HeuristicDistance(i_StartNode, i_TargetNode, p_Graph);
+    if (std::isinf(d_StartHeuristic)) {
+        return vec_Path;
+    }
+
+    map_GScore[i_StartNode] = 0.0;
+    queue_Open.push({ d_StartHeuristic, i_StartNode });
+
+    while (!queue_Open.empty()) {
+        QueueEntry entry = queue_Open.top();
+        queue_Open.pop();
+
+        int i_CurrentNode = entry.i_Node;
+        if (i_CurrentNode == i_TargetNode) {
+            int i_Reconstruct = i_CurrentNode;
+            vec_Path.push_back(i_Reconstruct);
+            while (map_CameFrom.find(i_Reconstruct) != map_CameFrom.end()) {
+                i_Reconstruct = map_CameFrom[i_Reconstruct];
+                vec_Path.push_back(i_Reconstruct);
+            }
+            std::reverse(vec_Path.begin(), vec_Path.end());
+            return vec_Path;
+        }
+
+        if (set_Closed.find(i_CurrentNode) != set_Closed.end()) {
+            continue;
+        }
+        set_Closed.insert(i_CurrentNode);
+
+        auto vec_Connections = p_Graph->GetConnections(i_CurrentNode);
+        for (const auto& conn : vec_Connections) {
+            int i_Neighbor = conn.i_NodeId;
+            int i_TransportType = conn.i_TransportType;
+
+            if (!fn_HasTicketForTransport(i_TransportType)) {
+                continue;
+            }
+
+            if (set_Closed.find(i_Neighbor) != set_Closed.end()) {
+                continue;
+            }
+
+            auto it_CurrentG = map_GScore.find(i_CurrentNode);
+            if (it_CurrentG == map_GScore.end()) {
+                continue;
+            }
+
+            double d_CurrentG = it_CurrentG->second;
+            double d_TentativeG = d_CurrentG + 1.0;
+
+            auto it_GNeighbor = map_GScore.find(i_Neighbor);
+            if (it_GNeighbor != map_GScore.end() && d_TentativeG >= it_GNeighbor->second) {
+                continue;
+            }
+
+            double d_Heuristic = HeuristicDistance(i_Neighbor, i_TargetNode, p_Graph);
+            if (std::isinf(d_Heuristic)) {
+                continue;
+            }
+
+            map_CameFrom[i_Neighbor] = i_CurrentNode;
+            map_GScore[i_Neighbor] = d_TentativeG;
+            double d_FScore = d_TentativeG + d_Heuristic;
+            queue_Open.push({ d_FScore, i_Neighbor });
+        }
+    }
+
+    return vec_Path;
+}
+
+// Greedy police AI: chase the most probable Mr. X position via A* pathing.
+static MoveDecision GreedyShortestPathPoliceAlgorithm(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState
+)
+{
+    MoveDecision decision;
+    decision.b_HasDecision = false;
+
+    if (vec_PossibleMoves.empty()) {
+        return decision;
+    }
+
+    auto fn_SelectRandomMove = [&]() -> MoveDecision {
+        MoveDecision randomDecision;
+        randomDecision.b_HasDecision = true;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, static_cast<int>(vec_PossibleMoves.size()) - 1);
+        const auto& move = vec_PossibleMoves[dis(gen)];
+        randomDecision.i_DestinationNode = move.i_DestinationNode;
+        randomDecision.i_TransportType = move.i_TransportType;
+        return randomDecision;
+    };
+
+    const GraphManager* p_Graph = gameState.p_Graph;
+    if (!p_Graph) {
+        return fn_SelectRandomMove();
+    }
+
+    if (gameState.i_CurrentPlayerIndex < 0 || gameState.i_CurrentPlayerIndex >= static_cast<int>(gameState.vec_AllPlayers.size())) {
+        return fn_SelectRandomMove();
+    }
+
+    const PlayerInfo& playerInfo = gameState.vec_AllPlayers[gameState.i_CurrentPlayerIndex];
+    if (playerInfo.b_IsMisterX) {
+        return fn_SelectRandomMove();
+    }
+
+    std::map<int, double> map_Probabilities = ComputeProbabilityMap(gameState, p_Player);
+    if (map_Probabilities.empty()) {
+        return fn_SelectRandomMove();
+    }
+
+    double d_MaxProbability = -std::numeric_limits<double>::infinity();
+    for (const auto& entry : map_Probabilities) {
+        d_MaxProbability = std::max(d_MaxProbability, entry.second);
+    }
+
+    if (!std::isfinite(d_MaxProbability)) {
+        return fn_SelectRandomMove();
+    }
+
+    constexpr double d_kProbabilityEpsilon = 1e-9;
+    std::vector<int> vec_TargetCandidates;
+    vec_TargetCandidates.reserve(map_Probabilities.size());
+    for (const auto& entry : map_Probabilities) {
+        if (std::fabs(entry.second - d_MaxProbability) <= d_kProbabilityEpsilon) {
+            vec_TargetCandidates.push_back(entry.first);
+        }
+    }
+
+    if (vec_TargetCandidates.empty()) {
+        return fn_SelectRandomMove();
+    }
+
+    int i_TargetNode = -1;
+    double d_BestHeuristic = std::numeric_limits<double>::infinity();
+    for (int i_Candidate : vec_TargetCandidates) {
+        double d_Distance = HeuristicDistance(playerInfo.i_Position, i_Candidate, p_Graph);
+        if (d_Distance < d_BestHeuristic) {
+            d_BestHeuristic = d_Distance;
+            i_TargetNode = i_Candidate;
+        }
+    }
+
+    if (i_TargetNode <= 0 || std::isinf(d_BestHeuristic)) {
+        return fn_SelectRandomMove();
+    }
+
+    std::vector<int> vec_Path = AStarShortestPathPolice(playerInfo.i_Position, i_TargetNode, gameState, playerInfo);
+    if (vec_Path.size() > 1U) {
+        int i_NextNode = vec_Path[1];
+        for (const auto& move : vec_PossibleMoves) {
+            if (move.i_DestinationNode == i_NextNode) {
+                decision.b_HasDecision = true;
+                decision.i_DestinationNode = move.i_DestinationNode;
+                decision.i_TransportType = move.i_TransportType;
+                return decision;
+            }
+        }
+    }
+
+    const PossibleMove* p_BestMove = nullptr;
+    double d_BestMoveScore = std::numeric_limits<double>::infinity();
+    for (const auto& move : vec_PossibleMoves) {
+        double d_Distance = HeuristicDistance(move.i_DestinationNode, i_TargetNode, p_Graph);
+        if (d_Distance < d_BestMoveScore) {
+            d_BestMoveScore = d_Distance;
+            p_BestMove = &move;
+        }
+    }
+
+    if (p_BestMove) {
+        decision.b_HasDecision = true;
+        decision.i_DestinationNode = p_BestMove->i_DestinationNode;
+        decision.i_TransportType = p_BestMove->i_TransportType;
+        return decision;
+    }
+
+    return fn_SelectRandomMove();
+}
+
 static MoveDecision MonteCarloPoliceAlgorithm(
     const Player* p_Player,
     const std::vector<PossibleMove>& vec_PossibleMoves,
@@ -2650,20 +2903,6 @@ MoveDecision AIPlayerController::CalculateBestMove(
             decision = { true, sel.i_DestinationNode, sel.i_TransportType };
             break;
         }
-        // case Core::AIAlgorithm::GreedyShortestPathPolice:
-        // // TODO implementing algorithm here, rn fallback to distance maximization
-        // decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
-        //     break;    
-        // decision = GreedyShortestPathPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
-            // break;
-// TODO implementing algorithm here, rn fallback to Random
-            //[[fallthrough]];
-            // decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
-            //decision = MonteCarloMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
-// TODO implementing algorithm here, rn fallback to Random
-            //[[fallthrough]];
-            // decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
-            //decision = MonteCarloMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
         case Core::AIAlgorithm::DistanceMaximizationMrX:
             decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
@@ -2681,9 +2920,9 @@ MoveDecision AIPlayerController::CalculateBestMove(
             break;
         case Core::AIAlgorithm::MinimaxPolice:
             decision = MinimaxPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            break;
         case Core::AIAlgorithm::GreedyShortestPathPolice:
-            // TODO implementing algorithm here, rn fallback to monte carlo
-            decision = MonteCarloPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            decision = GreedyShortestPathPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
         case Core::AIAlgorithm::FrontSearchEncirclementPolice:
             // TODO implementing algorithm here, rn fallback to monte carlo
