@@ -2,18 +2,17 @@
 #include "Application.h"
 #include "StateManager.h"
 #include "HUDOverlay.h"
-#include "MapGenerator.h"
-#include "MapPreviewState.h"
 
-#include<iostream>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/glm.hpp>
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>  
 #include <algorithm>
+#include <iostream>
 
 namespace ScotlandYard {
     namespace States {
@@ -47,35 +46,40 @@ namespace ScotlandYard {
             return std::max(s.f_MinValue, std::min(s.f_MaxValue, v));
         }
 
-        void MapGeneratorState::RandomizeSeed() {
-            unsigned int ui_Seed = static_cast<unsigned int>(time(nullptr));
-            std::string s_NewSeed = std::to_string(ui_Seed);
-            
-            if (!m_vec_Fields.empty()) {
-                m_vec_Fields[0].s_Value = s_NewSeed;
-                std::cout << "[DEBUG] Randomized seed: " << s_NewSeed << std::endl;
-            }
-        }
-
 
         void MapGeneratorState::OnEnter() {
-            m_s_InfoText.clear();
+            // CLEAR existing elements before adding new ones
             m_vec_Fields.clear();
             m_vec_Sliders.clear();
+            
+            // Initialize fields for parameters
+            m_vec_Fields.push_back({"Map Width", "1200", {}, false, true, 5});
+            m_vec_Fields.push_back({"Map Height", "900", {}, false, true, 5});
+            m_vec_Fields.push_back({"Num Parks", "3", {}, false, true, 2});
+            m_vec_Fields.push_back({"Ferry Stops", "4", {}, false, true, 2}); // Changed label
+            
+            // Initialize sliders - parks
+            m_vec_Sliders.push_back({"Park Min Size", 60.0f, 30.0f, 150.0f, 5.0f, {}, false});
+            m_vec_Sliders.push_back({"Park Max Size", 100.0f, 50.0f, 200.0f, 5.0f, {}, false});
+            m_vec_Sliders.push_back({"Min Park Distance", 150.0f, 50.0f, 300.0f, 10.0f, {}, false});
+            
+            // River curviness
+            m_vec_Sliders.push_back({"River Curviness", 0.5f, 0.0f, 1.0f, 0.1f, {}, false});
+            
+            // Transport densities
+            m_vec_Sliders.push_back({"Taxi Density", 1.0f, 0.5f, 2.0f, 0.1f, {}, false});
+            m_vec_Sliders.push_back({"Bus Density", 0.6f, 0.3f, 1.5f, 0.1f, {}, false});
+            m_vec_Sliders.push_back({"Metro Density", 0.3f, 0.1f, 1.0f, 0.1f, {}, false});
+            
+            m_s_InfoText = "Configure map generation parameters";
 
-            // text input for Seed
-            m_vec_Fields.push_back({ "Seed", "", {}, false, true, 16 });
+            m_i_FocusedFieldIndex = -1;
+            m_b_HasPreview = false;
+            SDL_StartTextInput();
 
-            // Sliders
-            m_vec_Sliders.push_back({ "Nodes",         250.0f,  50.0f, 1000.0f, 10.0f });
-            m_vec_Sliders.push_back({ "Graph density",   0.35f,  0.05f,   1.00f, 0.01f });
-            m_vec_Sliders.push_back({ "Zones",           8.0f,    2.0f,   20.0f, 1.0f });
-
-            // sliders for city route generating (bus dependance etc)
-            m_vec_Sliders.push_back({ "Taxi",            0.70f,   0.0f,    1.0f, 0.01f });
-            m_vec_Sliders.push_back({ "Bus",             0.50f,   0.0f,    1.0f, 0.01f });
-            m_vec_Sliders.push_back({ "Tube",            0.25f,   0.0f,    1.0f, 0.01f });
-
+            CreatePreviewQuad();
+    
+            m_s_InfoText = "Configure map generation parameters";
             m_i_FocusedFieldIndex = -1;
             m_b_HasPreview = false;
             SDL_StartTextInput();
@@ -162,17 +166,12 @@ namespace ScotlandYard {
             // Field (seed)
             const int shortW = std::min(cardW - 2 * pad, 520);
             const int seedW = shortW;
-            const int randomBtnW = 80; 
-            const int seedFieldW = shortW - randomBtnW - 8;
             const int seedX = cardX + (cardW - seedW) / 2;
 
             if (!m_vec_Fields.empty()) {
                 int seedY = y - fieldH;
                 y = seedY - gap;
                 m_vec_Fields[0].rect = SDL_Rect{ seedX, seedY, seedW, fieldH };
-
-                m_BtnRandomSeed = SDL_Rect{ seedX + seedFieldW + 8, seedY + (fieldH - 32) / 2, randomBtnW, 32 };
-
             }
 
             // Sliders
@@ -196,26 +195,28 @@ namespace ScotlandYard {
             int y = startY;
 
             // 3 main sliders
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < 3 && i < (int)m_vec_Sliders.size(); ++i) {
                 auto& s = m_vec_Sliders[i];
                 y -= rowH;
                 s.track = SDL_Rect{ x, y + 16, shortW, 12 };
                 y -= gap;
             }
 
-            // „Taxi/Bus/Metro"
-            y -= rowH;
-            int gapX = 12;
-            int smallW = (shortW - 2 * gapX) / 3;
-            for (int i = 3; i < 6; ++i) {
-                int col = i - 3;
-                auto& s = m_vec_Sliders[i];
-                s.track = SDL_Rect{ x + col * (smallW + gapX), y + 16, smallW, 12 };
+            // Additional sliders if any
+            if (m_vec_Sliders.size() > 3) {
+                y -= rowH;
+                int gapX = 12;
+                int remaining = (int)m_vec_Sliders.size() - 3;
+                int smallW = (shortW - (remaining - 1) * gapX) / remaining;
+                for (int i = 3; i < (int)m_vec_Sliders.size(); ++i) {
+                    int col = i - 3;
+                    auto& s = m_vec_Sliders[i];
+                    s.track = SDL_Rect{ x + col * (smallW + gapX), y + 16, smallW, 12 };
+                }
             }
         }
 
         void MapGeneratorState::Render(Core::Application* p_App) {
-            m_pApp = p_App;
             glDisable(GL_DEPTH_TEST);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -229,70 +230,14 @@ namespace ScotlandYard {
             // layout
             LayoutUI(W, H, p_App);
 
-            // preview (placeholder)
+            // preview background
             DrawTextCenteredPx("Preview", (float)m_rect_PreviewArea.x, (float)m_rect_PreviewArea.y - 26,
                 (float)(m_rect_PreviewArea.x + m_rect_PreviewArea.w), (float)m_rect_PreviewArea.y - 2, col_mut, p_App, -2.0f);
             DrawRoundedRectScreen((float)m_rect_PreviewArea.x, (float)m_rect_PreviewArea.y,
                 (float)(m_rect_PreviewArea.x + m_rect_PreviewArea.w), (float)(m_rect_PreviewArea.y + m_rect_PreviewArea.h),
                 col_fld, 10, p_App);
-
-            if (m_b_HasPreview && m_GLuint_PreviewTexture) {
-            std::cout << "[DEBUG RENDER] Drawing texture ID: " << m_GLuint_PreviewTexture << std::endl;
-            
-            glPushAttrib(GL_ALL_ATTRIB_BITS);
-            
-            glDisable(GL_DEPTH_TEST);
-            glDisable(GL_LIGHTING);
-            glDisable(GL_CULL_FACE);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            
-            glMatrixMode(GL_PROJECTION);
-            glPushMatrix();
-            glLoadIdentity();
-            glOrtho(0, W, H, 0, -1, 1);  // UWAGA: H, 0 dla SDL (Y w dół)
-            
-            glMatrixMode(GL_MODELVIEW);
-            glPushMatrix();
-            glLoadIdentity();
-
-            // Włącz teksturowanie
-            glEnable(GL_TEXTURE_2D);
-            glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
-            glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-            // Oblicz współrzędne
-            float x0 = (float)m_rect_PreviewArea.x;
-            float y0 = (float)m_rect_PreviewArea.y;
-            float x1 = x0 + (float)m_rect_PreviewArea.w;
-            float y1 = y0 + (float)m_rect_PreviewArea.h;
-
-            std::cout << "[DEBUG] Drawing quad at: " << x0 << "," << y0 << " to " << x1 << "," << y1 << std::endl;
-
-            // Narysuj quad
-            glBegin(GL_QUADS);
-                glTexCoord2f(0.0f, 0.0f); glVertex2f(x0, y0);  // lewy górny
-                glTexCoord2f(1.0f, 0.0f); glVertex2f(x1, y0);  // prawy górny
-                glTexCoord2f(1.0f, 1.0f); glVertex2f(x1, y1);  // prawy dolny
-                glTexCoord2f(0.0f, 1.0f); glVertex2f(x0, y1);  // lewy dolny
-            glEnd();
-
-            GLenum err = glGetError();
-            if (err != GL_NO_ERROR) {
-                std::cout << "[DEBUG RENDER ERROR] OpenGL error: " << err << std::endl;
-            } else {
-                std::cout << "[DEBUG RENDER] Success!" << std::endl;
-            }
-
-            // Przywróć stan
-            glPopMatrix();
-            glMatrixMode(GL_PROJECTION);
-            glPopMatrix();
-            glMatrixMode(GL_MODELVIEW);
-            
-            glPopAttrib();
-        }
-
+            // preview texture
+            RenderPreviewTexture(p_App);
 
             // fields
             for (size_t i = 0; i < m_vec_Fields.size(); ++i) {
@@ -360,14 +305,9 @@ namespace ScotlandYard {
                     col_txt, p_App, -2.0f);
             }
 
-
             // Buttons
-            DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App /*, isHovered*/);
-            DrawMenuLikeButton(m_BtnBack, "BACK", p_App /*, isHovered*/);
-
-            DrawMenuLikeButton(m_BtnRandomSeed, "RANDOM", p_App);
-
-
+            DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App);
+            DrawMenuLikeButton(m_BtnBack, "BACK", p_App);
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
         }
 
@@ -377,7 +317,9 @@ namespace ScotlandYard {
             if (m_i_FocusedFieldIndex >= 0) m_vec_Fields[m_i_FocusedFieldIndex].b_Focused = true;
         }
 
-        void MapGeneratorState::BlurAllFields() { FocusField(-1); }
+        void MapGeneratorState::BlurAllFields() { 
+            FocusField(-1); 
+        }
 
         void MapGeneratorState::AppendTextToFocusedField(const char* utf8) {
             if (m_i_FocusedFieldIndex < 0) return;
@@ -391,7 +333,6 @@ namespace ScotlandYard {
                     if ((c >= '0' && c <= '9') || c == '.' || c == '-') f.s_Value.push_back(c);
                 }
                 else {
-                    // block
                     if ((unsigned char)c >= 32 && (unsigned char)c < 127) f.s_Value.push_back(c);
                 }
             }
@@ -421,225 +362,115 @@ namespace ScotlandYard {
         }
 
         void MapGeneratorState::TryGenerateMap() {
-        std::cout << "[DEBUG] TryGenerateMap() called" << std::endl;
-        
-        auto valOf = [&](const char* name)->std::string {
-            for (auto& f : m_vec_Fields)
-                if (f.s_Label == name)
-                    return f.s_Value;
-            return "";
-        };
-
-        auto getS = [&](const char* name)->float {
-            for (auto& s : m_vec_Sliders)
-                if (s.s_Label == name)
-                    return s.f_Value;
-            return 0.0f;
-        };
-
-        std::string seedStr = valOf("Seed");
-        const int nodes = (int)std::round(getS("Nodes"));
-        const double dens = getS("Graph density");
-
-        if (dens <= 0.0 || dens > 1.0) {
-            m_s_InfoText = "ERROR: Graph density must be in (0,1].";
-            return;
-        }
-
-        if (nodes > 5000) {
-            m_s_InfoText = "ERROR: Nodes too large for preview (<=5000).";
-            return;
-        }
-
-        unsigned int ui_Seed;
-        if (seedStr.empty()) {
-            ui_Seed = static_cast<unsigned int>(time(nullptr));
-            seedStr = std::to_string(ui_Seed);
-            
-            if (!m_vec_Fields.empty()) {
-                m_vec_Fields[0].s_Value = seedStr;
-            }
-            
-            std::cout << "[DEBUG] Generated random seed: " << seedStr << std::endl;
-        } else {
             try {
-                ui_Seed = std::stoul(seedStr);
-            } catch (...) {
-                ui_Seed = static_cast<unsigned int>(time(nullptr));
-                seedStr = std::to_string(ui_Seed);
-                m_vec_Fields[0].s_Value = seedStr;
+                m_GenerationParams.i_MapWidth = std::stoi(m_vec_Fields[0].s_Value);
+                m_GenerationParams.i_MapHeight = std::stoi(m_vec_Fields[1].s_Value);
+                m_GenerationParams.i_NumParks = std::stoi(m_vec_Fields[2].s_Value);
+                m_GenerationParams.i_NumFerries = std::stoi(m_vec_Fields[3].s_Value);
+                
+                m_GenerationParams.f_ParkMinSize = m_vec_Sliders[0].f_Value;
+                m_GenerationParams.f_ParkMaxSize = m_vec_Sliders[1].f_Value;
+                m_GenerationParams.f_MinParkDistance = m_vec_Sliders[2].f_Value;
+                m_GenerationParams.f_RiverCurviness = m_vec_Sliders[3].f_Value;
+                m_GenerationParams.f_TaxiDensity = m_vec_Sliders[4].f_Value;
+                m_GenerationParams.f_BusDensity = m_vec_Sliders[5].f_Value;
+                m_GenerationParams.f_MetroDensity = m_vec_Sliders[6].f_Value;
+                
+                std::cout << "Generating map: " << m_GenerationParams.i_MapWidth << "x" 
+                          << m_GenerationParams.i_MapHeight 
+                          << ", parks: " << m_GenerationParams.i_NumParks 
+                          << ", ferries: " << m_GenerationParams.i_NumFerries << std::endl;
+                
+                GenerateAndRenderMap();
+            }
+            catch (const std::exception& e) {
+                std::cout << "Error parsing parameters: " << e.what() << std::endl;
+                m_s_InfoText = "ERROR: Invalid parameters";
             }
         }
-        
-        srand(ui_Seed);
 
-        m_s_InfoText = "Generating map...";
-
-        int mapW = 1200;
-        int mapH = 900;
-
-        // seed initialisation
-        if (!seedStr.empty()) {
+        void MapGeneratorState::GenerateAndRenderMap() {
             try {
-                unsigned int ui_Seed = std::stoul(seedStr);
-                srand(ui_Seed);
-            } catch (...) {
-                srand(static_cast<unsigned>(time(nullptr)));
+                std::cout << "Generating grid points..." << std::endl;
+                // Generate grid
+                m_vec_GridPoints = MapGen::GenerateGridPoints(m_GenerationParams.i_MapWidth, 
+                                                              m_GenerationParams.i_MapHeight);
+                
+                std::cout << "Generating river..." << std::endl;
+                // Generate river with curviness
+                std::vector<MapGen::Point> controlPoints = 
+                    MapGen::GenerateRiverControlPoints(&m_i_CurrentCorner, 
+                                                       m_GenerationParams.i_MapWidth, 
+                                                       m_GenerationParams.i_MapHeight,
+                                                       m_GenerationParams.f_RiverCurviness);
+                m_vec_RiverPath = MapGen::GenerateRiverPath(controlPoints, 150);
+                
+                std::cout << "Generating parks..." << std::endl;
+                // Generate parks
+                m_vec_Parks = MapGen::GenerateParks(m_vec_GridPoints, m_vec_RiverPath, 
+                                                    m_i_CurrentCorner, m_GenerationParams);
+                
+                std::cout << "Generating graph nodes..." << std::endl;
+                // Generate graph with connections
+                m_vec_GraphNodes = MapGen::GenerateGraph(m_vec_GridPoints, m_vec_RiverPath,
+                                                         m_vec_Parks, m_GenerationParams);
+                
+                // Count connections
+                std::cout << "Counting connections..." << std::endl;
+                int totalConnections = 0;
+                for (const auto& node : m_vec_GraphNodes) {
+                    totalConnections += (int)(node.set_TaxiConnections.size() 
+                                     + node.set_BusConnections.size()
+                                     + node.set_MetroConnections.size()
+                                     + node.set_FerryConnections.size());
+                }
+                
+                m_s_InfoText = "Generated: " + std::to_string(m_vec_Parks.size()) + " parks, "
+                             + std::to_string(m_vec_GraphNodes.size()) + " nodes, "
+                             + std::to_string(totalConnections / 2) + " connections";
+                
+                std::cout << m_s_InfoText << std::endl;
+                
+                // Export to files
+                std::cout << "Exporting files..." << std::endl;
+                ExportMapToFile();
+                
+                // Load the generated image as preview
+                std::cout << "Loading preview..." << std::endl;
+                UpdatePreviewTexture();
+                
+                std::cout << "Generation complete!" << std::endl;
+            }
+            catch (const std::exception& e) {
+                std::cout << "ERROR in GenerateAndRenderMap: " << e.what() << std::endl;
+                m_s_InfoText = "ERROR: " + std::string(e.what());
+            }
+            catch (...) {
+                std::cout << "UNKNOWN ERROR in GenerateAndRenderMap" << std::endl;
+                m_s_InfoText = "ERROR: Unknown exception";
             }
         }
 
-        // Generate
-        m_vec_GridPoints = MapGen::GenerateGridPoints(mapW, mapH);
-        m_vec_ControlPoints = MapGen::GenerateRiverControlPoints(&m_i_CurrentCorner, mapW, mapH);
-        m_vec_RiverPath = MapGen::GenerateRiverPath(m_vec_ControlPoints, 150);
-        m_vec_Parks = MapGen::GenerateParks(m_vec_GridPoints, m_vec_RiverPath,
-                                            m_i_CurrentCorner, MapGen::Config::NUM_PARKS);
-
-        ShowMapInNewWindow(mapW, mapH);
-
-        m_s_InfoText = "Map generated and displayed!";
-    }
-
-
-    void MapGeneratorState::ShowMapInNewWindow(int i_Width, int i_Height) {
-        std::cout << "[MapPreview] Creating preview window..." << std::endl;
-        
-        SDL_Surface* surface = SDL_CreateRGBSurface(0, i_Width, i_Height, 24,
-                                                    0xFF0000, 0x00FF00, 0x0000FF, 0);
-        
-        if (!surface) {
-            std::cout << "[ERROR] Failed to create surface!" << std::endl;
-            return;
-        }
-        
-        SDL_LockSurface(surface);
-        
-        SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
-        
-        auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b) {
-            if (x >= 0 && x < i_Width && y >= 0 && y < i_Height) {
-                Uint8* pixels = (Uint8*)surface->pixels;
-                int offset = (y * surface->pitch) + (x * 3);
-                pixels[offset + 0] = b;
-                pixels[offset + 1] = g;
-                pixels[offset + 2] = r;
+        void MapGeneratorState::ExportMapToFile() {
+            // Export PNG with connections
+            std::string pngFile = "generated_map.bmp";
+            bool success = MapGen::ExportMapToPNG(pngFile, 
+                                                  m_GenerationParams.i_MapWidth, 
+                                                  m_GenerationParams.i_MapHeight,
+                                                  m_vec_GridPoints, m_vec_RiverPath, 
+                                                  m_vec_Parks, &m_vec_GraphNodes);
+            if (success) {
+                std::cout << "Map exported to: " << pngFile << std::endl;
             }
-        };
-        
-        for (const auto& park : m_vec_Parks) {
-            int i_MinX = static_cast<int>(park.center.x - park.f_BaseRadius * 1.5f);
-            int i_MaxX = static_cast<int>(park.center.x + park.f_BaseRadius * 1.5f);
-            int i_MinY = static_cast<int>(park.center.y - park.f_BaseRadius * 1.5f);
-            int i_MaxY = static_cast<int>(park.center.y + park.f_BaseRadius * 1.5f);
             
-            for (int y = i_MinY; y <= i_MaxY; ++y) {
-                for (int x = i_MinX; x <= i_MaxX; ++x) {
-                    if (park.ContainsPoint(static_cast<float>(x), static_cast<float>(y))) {
-                        SetPixel(x, y, 34, 139, 34);
-                    }
-                }
+            // Export JSON data
+            std::string jsonFile = "generated_map.json";
+            success = MapGen::ExportMapToJSON(jsonFile, m_GenerationParams,
+                                             m_vec_GraphNodes, m_vec_RiverPath, m_vec_Parks);
+            if (success) {
+                std::cout << "Data exported to: " << jsonFile << std::endl;
             }
         }
-        
-        for (const auto& rp : m_vec_RiverPath) {
-            int cx = static_cast<int>(rp.x);
-            int cy = static_cast<int>(rp.y);
-            for (int dx = -20; dx <= 20; dx++) {
-                for (int dy = -20; dy <= 20; dy++) {
-                    if (dx*dx + dy*dy <= 400) {
-                        SetPixel(cx + dx, cy + dy, 50, 150, 255);
-                    }
-                }
-            }
-        }
-        
-        for (const auto& p : m_vec_GridPoints) {
-            for (int dx = -3; dx <= 3; dx++) {
-                for (int dy = -3; dy <= 3; dy++) {
-                    if (dx*dx + dy*dy <= 9) {
-                        SetPixel(static_cast<int>(p.x) + dx, static_cast<int>(p.y) + dy, 255, 255, 255);
-                    }
-                }
-            }
-        }
-        
-        SDL_UnlockSurface(surface);
-        
-        SDL_Window* previewWindow = SDL_CreateWindow(
-            "Generated Map Preview",
-            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-            i_Width, i_Height,
-            SDL_WINDOW_SHOWN
-        );
-        
-        if (!previewWindow) {
-            std::cout << "[ERROR] Failed to create window!" << std::endl;
-            SDL_FreeSurface(surface);
-            return;
-        }
-        
-        SDL_Surface* windowSurface = SDL_GetWindowSurface(previewWindow);
-        SDL_BlitSurface(surface, nullptr, windowSurface, nullptr);
-        SDL_UpdateWindowSurface(previewWindow);
-        
-        std::cout << "[MapPreview] Window created." << std::endl;
-        std::cout << "[MapPreview] Controls:" << std::endl;
-        std::cout << "  - Press S to save map to file" << std::endl;
-        std::cout << "  - Press ESC or click X to close" << std::endl;
-        
-        auto GenerateFilename = []() -> std::string {
-            time_t now = time(nullptr);
-            struct tm timeinfo;
-            
-            #ifdef _WIN32
-            localtime_s(&timeinfo, &now);
-            #else
-            localtime_r(&now, &timeinfo);
-            #endif
-            
-            char buffer[100];
-            strftime(buffer, sizeof(buffer), "map_%Y%m%d_%H%M%S.bmp", &timeinfo);
-            return std::string(buffer);
-        };
-        
-        bool running = true;
-        SDL_Event ev;
-        while (running) {
-            while (SDL_PollEvent(&ev)) {
-                if (ev.type == SDL_QUIT) {
-                    running = false;
-                }
-                else if (ev.type == SDL_WINDOWEVENT) {
-                    if (ev.window.event == SDL_WINDOWEVENT_CLOSE) {
-                        if (SDL_GetWindowID(previewWindow) == ev.window.windowID) {
-                            running = false;
-                        }
-                    }
-                }
-                else if (ev.type == SDL_KEYDOWN) {
-                    if (ev.key.keysym.sym == SDLK_ESCAPE) {
-                        running = false;
-                    }
-                    else if (ev.key.keysym.sym == SDLK_s) {
-                        std::string filename = GenerateFilename();
-                        if (SDL_SaveBMP(surface, filename.c_str()) == 0) {
-                            std::cout << "[MapPreview] Map saved to: " << filename << std::endl;
-                            std::string newTitle = "Map saved to " + filename + " - Press S to save again";
-                            SDL_SetWindowTitle(previewWindow, newTitle.c_str());
-                        } else {
-                            std::cout << "[MapPreview ERROR] Failed to save map: " << SDL_GetError() << std::endl;
-                        }
-                    }
-                }
-            }
-            SDL_Delay(16);
-        }
-        
-        SDL_DestroyWindow(previewWindow);
-        SDL_FreeSurface(surface);
-        
-        std::cout << "[MapPreview] Preview window closed." << std::endl;
-    }
 
         void MapGeneratorState::HandleEvent(const SDL_Event& ev, Core::Application* p_App) {
             switch (ev.type) {
@@ -690,19 +521,15 @@ namespace ScotlandYard {
                         }
                     }
 
+                    // Generate button
                     if (mx >= m_BtnGenerate.x && mx <= m_BtnGenerate.x + m_BtnGenerate.w &&
                         my >= m_BtnGenerate.y && my <= m_BtnGenerate.y + m_BtnGenerate.h) {
-                        std::cout << "[DEBUG] Generate button clicked!" << std::endl;
                         TryGenerateMap();
                     }
+                    // Back button
                     if (mx >= m_BtnBack.x && mx <= m_BtnBack.x + m_BtnBack.w &&
                         my >= m_BtnBack.y && my <= m_BtnBack.y + m_BtnBack.h) {
                         p_App->GetStateManager()->ChangeState("menu");
-                    }
-
-                    if (mx >= m_BtnRandomSeed.x && mx <= m_BtnRandomSeed.x + m_BtnRandomSeed.w &&
-                        my >= m_BtnRandomSeed.y && my <= m_BtnRandomSeed.y + m_BtnRandomSeed.h) {
-                        RandomizeSeed();
                     }
                 }
                 break;
@@ -710,8 +537,11 @@ namespace ScotlandYard {
             case SDL_MOUSEMOTION:
                 if (ev.motion.state & SDL_BUTTON_LMASK) {
                     int mx = ev.motion.x, my = p_App->GetHeight() - ev.motion.y;
-                    for (auto& s : m_vec_Sliders) if (s.b_Dragging)
-                        s.f_Value = XPositionToValue(s, mx);
+                    for (auto& s : m_vec_Sliders) {
+                        if (s.b_Dragging) {
+                            s.f_Value = XPositionToValue(s, mx);
+                        }
+                    }
                 }
                 break;
 
@@ -724,102 +554,208 @@ namespace ScotlandYard {
             default: break;
             }
         }
-
-    void MapGeneratorState::GenerateMapPreview(int i_Width, int i_Height) {
-            std::cout << "[DEBUG] GenerateMapPreview() called with size: " 
-              << i_Width << "x" << i_Height << std::endl;
-        if (!m_vec_Fields.empty() && !m_vec_Fields[0].s_Value.empty()) {
-            try {
-                unsigned int ui_Seed = std::stoul(m_vec_Fields[0].s_Value);
-                srand(ui_Seed);
-            } catch (...) {
-                srand(static_cast<unsigned>(time(nullptr)));
-            }
-        }
-        
-        m_vec_GridPoints = MapGen::GenerateGridPoints(i_Width, i_Height);
-        
-        m_vec_ControlPoints = MapGen::GenerateRiverControlPoints(&m_i_CurrentCorner, i_Width, i_Height);
-        m_vec_RiverPath = MapGen::GenerateRiverPath(m_vec_ControlPoints, 150);
-        
-        m_vec_Parks = MapGen::GenerateParks(m_vec_GridPoints, m_vec_RiverPath, 
-                                            m_i_CurrentCorner, MapGen::Config::NUM_PARKS);
-        
-        RenderMapToTexture(i_Width, i_Height);
-    }
-
-    void MapGeneratorState::RenderMapToTexture(int i_Width, int i_Height) {
-        std::cout << "[DEBUG] RenderMapToTexture() called" << std::endl;
-        std::vector<unsigned char> vec_Image(i_Width * i_Height * 3, 0);
-        
-        for (int i = 0; i < i_Width * i_Height * 3; i += 3) {
-            vec_Image[i + 0] = 220; // R
-            vec_Image[i + 1] = 220; // G
-            vec_Image[i + 2] = 220; // B
-        }
-        
-        auto SetPixel = [&](int x, int y, unsigned char r, unsigned char g, unsigned char b) {
-            if (x >= 0 && x < i_Width && y >= 0 && y < i_Height) {
-                int idx = (y * i_Width + x) * 3;
-                vec_Image[idx + 0] = r;
-                vec_Image[idx + 1] = g;
-                vec_Image[idx + 2] = b;
-            }
-        };
-        
-        std::cout << "[DEBUG] Drawing " << m_vec_Parks.size() << " parks..." << std::endl;
-        for (const auto& park : m_vec_Parks) {
-            int i_MinX = static_cast<int>(park.center.x - park.f_BaseRadius * 1.5f);
-            int i_MaxX = static_cast<int>(park.center.x + park.f_BaseRadius * 1.5f);
-            int i_MinY = static_cast<int>(park.center.y - park.f_BaseRadius * 1.5f);
-            int i_MaxY = static_cast<int>(park.center.y + park.f_BaseRadius * 1.5f);
+        void MapGeneratorState::UpdatePreviewTexture() {
+            std::string s_PreviewPath = "generated_map.bmp";
             
-            for (int y = i_MinY; y <= i_MaxY; ++y) {
-                for (int x = i_MinX; x <= i_MaxX; ++x) {
-                    if (park.ContainsPoint(static_cast<float>(x), static_cast<float>(y))) {
-                        SetPixel(x, y, 34, 139, 34); 
-                    }
-                }
+            // Delete old texture if exists
+            if (m_GLuint_PreviewTexture) {
+                glDeleteTextures(1, &m_GLuint_PreviewTexture);
+                m_GLuint_PreviewTexture = 0;
             }
-        }
-        
-        for (size_t i = 0; i < m_vec_RiverPath.size(); ++i) {
-            int i_CenterX = static_cast<int>(m_vec_RiverPath[i].x);
-            int i_CenterY = static_cast<int>(m_vec_RiverPath[i].y);
             
-            for (int i_OffsetX = -MapGen::Config::RIVER_WIDTH/2; i_OffsetX <= MapGen::Config::RIVER_WIDTH/2; ++i_OffsetX) {
-                for (int i_OffsetY = -MapGen::Config::RIVER_WIDTH/2; i_OffsetY <= MapGen::Config::RIVER_WIDTH/2; ++i_OffsetY) {
-                    if (i_OffsetX*i_OffsetX + i_OffsetY*i_OffsetY <= (MapGen::Config::RIVER_WIDTH/2)*(MapGen::Config::RIVER_WIDTH/2)) {
-                        SetPixel(i_CenterX + i_OffsetX, i_CenterY + i_OffsetY, 50, 150, 255); // Niebieski
-                    }
-                }
+            // Load BMP file
+            SDL_Surface* p_Surface = SDL_LoadBMP(s_PreviewPath.c_str());
+            
+            if (!p_Surface) {
+                std::cerr << "[MapGeneratorState] Failed to load " << s_PreviewPath << ": " 
+                        << SDL_GetError() << std::endl;
+                m_b_HasPreview = false;
+                return;
             }
-        }
-        
-        const int POINT_RADIUS = 3;
-        for (const auto& p : m_vec_GridPoints) {
-            for (int i_Dx = -POINT_RADIUS; i_Dx <= POINT_RADIUS; ++i_Dx) {
-                for (int i_Dy = -POINT_RADIUS; i_Dy <= POINT_RADIUS; ++i_Dy) {
-                    if (i_Dx*i_Dx + i_Dy*i_Dy <= POINT_RADIUS * POINT_RADIUS) {
-                        SetPixel(static_cast<int>(p.x) + i_Dx, 
-                            static_cast<int>(p.y) + i_Dy, 
-                            255, 255, 255); // Biały
-                    }
-                }
-            }
-        }
-        
-        if (!m_GLuint_PreviewTexture) {
+            
+            // Create OpenGL texture
             glGenTextures(1, &m_GLuint_PreviewTexture);
+            glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
+            
+            GLenum format = (p_Surface->format->BytesPerPixel == 4) ? GL_RGBA : GL_RGB;
+            
+            glTexImage2D(GL_TEXTURE_2D, 0, format, 
+                        p_Surface->w, p_Surface->h, 0, 
+                        format, GL_UNSIGNED_BYTE, p_Surface->pixels);
+            
+            // Texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            
+            glBindTexture(GL_TEXTURE_2D, 0);
+            
+            m_i_PreviewWidth = p_Surface->w;
+            m_i_PreviewHeight = p_Surface->h;
+            m_b_HasPreview = true;
+            
+            SDL_FreeSurface(p_Surface);   
         }
-        glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, i_Width, i_Height, 0, GL_RGB, GL_UNSIGNED_BYTE, vec_Image.data());
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
-        m_b_HasPreview = true;
-        std::cout << "[DEBUG] m_b_HasPreview = true, TextureID = " << m_GLuint_PreviewTexture << std::endl;
-    }
+
+        void MapGeneratorState::RenderPreviewTexture(Core::Application* p_App) {
+            if (!m_b_HasPreview || !m_GLuint_PreviewTexture) {
+                return;
+            }
+            
+            // Save and setup render state
+            GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
+            if (b_DepthWas) glDisable(GL_DEPTH_TEST);
+            
+            GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+            if (!b_BlendWas) glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            
+            glUseProgram(m_ShaderProgram_Preview);
+            
+            // Orthographic projection in screen pixel coordinates
+            int i_WindowWidth = p_App->GetWidth();
+            int i_WindowHeight = p_App->GetHeight();
+            
+            glm::mat4 projection = glm::ortho(
+                0.0f, (float)i_WindowWidth,
+                0.0f, (float)i_WindowHeight,
+                -1.0f, 1.0f
+            );
+            
+            // Model matrix: position and scale quad to preview area
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(
+                (float)m_rect_PreviewArea.x, 
+                (float)m_rect_PreviewArea.y, 
+                0.0f
+            ));
+            model = glm::scale(model, glm::vec3(
+                (float)m_rect_PreviewArea.w, 
+                (float)m_rect_PreviewArea.h, 
+                1.0f
+            ));
+            
+            glm::mat4 mvp = projection * model;
+            
+            // Set uniforms
+            GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Preview, "MVP");
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
+            
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
+            
+            GLuint texLoc = glGetUniformLocation(m_ShaderProgram_Preview, "ourTexture");
+            glUniform1i(texLoc, 0);
+            
+            // Draw quad
+            glBindVertexArray(m_VAO_PreviewQuad);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            
+            glBindTexture(GL_TEXTURE_2D, 0);
+            
+            // Restore state
+            if (!b_BlendWas) glDisable(GL_BLEND);
+            if (b_DepthWas) glEnable(GL_DEPTH_TEST);
+        }
+
+        void MapGeneratorState::CreatePreviewQuad() {
+            // Quad geometry with UV coordinates
+            float quadVertices[] = {
+                // Position (x, y)    // UV (u, v)
+                0.0f, 0.0f,          0.0f, 1.0f,
+                1.0f, 0.0f,          1.0f, 1.0f,
+                1.0f, 1.0f,          1.0f, 0.0f,
+                
+                0.0f, 0.0f,          0.0f, 1.0f,
+                1.0f, 1.0f,          1.0f, 0.0f,
+                0.0f, 1.0f,          0.0f, 0.0f
+            };
+            
+            glGenVertexArrays(1, &m_VAO_PreviewQuad);
+            glGenBuffers(1, &m_VBO_PreviewQuad);
+            
+            glBindVertexArray(m_VAO_PreviewQuad);
+            glBindBuffer(GL_ARRAY_BUFFER, m_VBO_PreviewQuad);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+            
+            // Attribute 0: Position
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            
+            // Attribute 1: UV
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            
+            glBindVertexArray(0);
+            
+            // Compile shaders
+            const char* vertexShaderSrc = R"(
+                #version 330 core
+                layout(location = 0) in vec2 aPos;
+                layout(location = 1) in vec2 aTexCoord;
+                
+                uniform mat4 MVP;
+                
+                out vec2 TexCoord;
+                
+                void main() {
+                    TexCoord = aTexCoord;
+                    gl_Position = MVP * vec4(aPos, 0.0, 1.0);
+                }
+            )";
+            
+            const char* fragmentShaderSrc = R"(
+                #version 330 core
+                in vec2 TexCoord;
+                
+                uniform sampler2D ourTexture;
+                
+                out vec4 FragColor;
+                
+                void main() {
+                    FragColor = texture(ourTexture, TexCoord);
+                }
+            )";
+            
+            GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+            glShaderSource(vertexShader, 1, &vertexShaderSrc, nullptr);
+            glCompileShader(vertexShader);
+            
+            GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+            glShaderSource(fragmentShader, 1, &fragmentShaderSrc, nullptr);
+            glCompileShader(fragmentShader);
+            
+            m_ShaderProgram_Preview = glCreateProgram();
+            glAttachShader(m_ShaderProgram_Preview, vertexShader);
+            glAttachShader(m_ShaderProgram_Preview, fragmentShader);
+            glLinkProgram(m_ShaderProgram_Preview);
+            
+            glDeleteShader(vertexShader);
+            glDeleteShader(fragmentShader);        
+        }
+
+        void MapGeneratorState::OnExit() {
+            if (m_VAO_PreviewQuad) {
+                glDeleteVertexArrays(1, &m_VAO_PreviewQuad);
+                m_VAO_PreviewQuad = 0;
+            }
+            if (m_VBO_PreviewQuad) {
+                glDeleteBuffers(1, &m_VBO_PreviewQuad);
+                m_VBO_PreviewQuad = 0;
+            }
+            if (m_ShaderProgram_Preview) {
+                glDeleteProgram(m_ShaderProgram_Preview);
+                m_ShaderProgram_Preview = 0;
+            }
+            if (m_GLuint_PreviewTexture) {
+                glDeleteTextures(1, &m_GLuint_PreviewTexture);
+                m_GLuint_PreviewTexture = 0;
+            }
+            
+            SDL_StopTextInput();
+        }
 
     }
 } // namespaces

@@ -57,6 +57,22 @@ namespace UI {
     float g_f_PauseBtnNdcX1 = 0.0f;
     float g_f_PauseBtnNdcY1 = 0.0f;
 
+        std::atomic_bool g_b_ShowMrXButtons{false};
+        float g_f_MrXBlackX0 = 0.0f, g_f_MrXBlackY0 = 0.0f, g_f_MrXBlackX1 = 0.0f, g_f_MrXBlackY1 = 0.0f;
+        float g_f_MrXDoubleX0 = 0.0f, g_f_MrXDoubleY0 = 0.0f, g_f_MrXDoubleX1 = 0.0f, g_f_MrXDoubleY1 = 0.0f;
+
+    int g_i_MrXPanelX0 = 0, g_i_MrXPanelY0 = 0, g_i_MrXPanelX1 = 0, g_i_MrXPanelY1 = 0;
+    int g_i_MrXBlackBtnX0 = 0, g_i_MrXBlackBtnY0 = 0, g_i_MrXBlackBtnX1 = 0, g_i_MrXBlackBtnY1 = 0;
+    int g_i_MrXDoubleBtnX0 = 0, g_i_MrXDoubleBtnY0 = 0, g_i_MrXDoubleBtnX1 = 0, g_i_MrXDoubleBtnY1 = 0;
+
+    std::atomic_bool g_b_MrXBlackHover{false};
+    std::atomic_bool g_b_MrXDoubleHover{false};
+    std::atomic_bool g_b_MrXBlackSelected{false};
+    std::atomic_bool g_b_MrXDoubleSelected{false};
+
+    std::atomic_bool g_b_MrXBlackEnabled{true};
+    std::atomic_bool g_b_MrXDoubleEnabled{true};
+
         int g_i_Round = 1;
 
         std::vector<TicketSlot> g_vec_TicketSlots(k_TicketSlotCount);
@@ -292,8 +308,8 @@ namespace UI {
                 f_CapAreaRight = f_BtnX0 - f_Gap;
                 }
 
-            // Tickets layout
-            float f_CurRight = f_CapAreaRight;
+                // Tickets layout
+                float f_CurRight = f_CapAreaRight;
             g_vec_PillRectNDC.clear();
             for (int i = int(g_vec_PillLabels.size()) - 1; i >= 1; --i) {
                 const std::string& s_Label = g_vec_PillLabels[i];
@@ -423,34 +439,51 @@ namespace UI {
 
     // API
 
-    void DrawMenuLikeButton(const SDL_Rect& r, const char* text,
+    void DrawColoredButton(const SDL_Rect& r, const char* text,
         Core::Application* app,
-        bool highlighted) {
-        ScotlandYard::UI::Color shadow{ 0.12f, 0.14f, 0.16f, 1.0f };
-        ScotlandYard::UI::Color btn{ 0.25f, 0.27f, 0.30f, 0.98f };
-        ScotlandYard::UI::Color border{ 0.08f, 0.08f, 0.08f, 1.0f };
+        Color bg,
+        bool hovered,
+        bool selected,
+        bool enabled) {
         ScotlandYard::UI::Color white{ 1,1,1,1 };
-
-        if (highlighted) { btn.r *= 1.06f; btn.g *= 1.06f; btn.b *= 1.06f; }
-
         const float rad = 12.0f;
-        const float shadowOffset = 6.0f;
-        const float px = 3.0f;
 
-        DrawRoundedRectScreen(r.x, r.y - (int)shadowOffset,
-            r.x + r.w, r.y - (int)shadowOffset + r.h,
-            shadow, rad, app);
+        // highlight border first (behind the button)
+        if (enabled && (hovered || selected)) {
+            float pad = 3.0f; // smaller to stay within panel and not spill over
+            Color hilite = selected ? Color{1.0f,1.0f,1.0f,0.18f} : Color{1.0f,1.0f,1.0f,0.10f};
+            DrawRoundedRectScreen(r.x - pad, r.y - pad, r.x + r.w + pad, r.y + r.h + pad, hilite, (int)(rad + 2), app);
+        }
 
-        DrawRoundedRectScreen(r.x, r.y, r.x + r.w, r.y + r.h,
-            btn, rad, app);
-
-        DrawRoundedRectScreen(r.x - px / 2, r.y - px / 2,
-            r.x + r.w + px / 2, r.y + r.h + px / 2,
-            border, rad, app);
+        // base button on top (dim if disabled)
+        Color base = bg;
+        if (!enabled) {
+            // desaturate/gray and lower alpha to communicate disabled state
+            base = Color{0.35f, 0.37f, 0.40f, 0.65f};
+        }
+        DrawRoundedRectScreen(r.x, r.y, r.x + r.w, r.y + r.h, base, (int)rad, app);
 
         DrawTextCenteredPx(text, (float)r.x, (float)r.y,
             (float)(r.x + r.w), (float)(r.y + r.h),
-            white, app, -4.0f);
+            white, app, -3.0f);
+    }
+
+    // Backward-compatible wrapper used by other UI states (menus, setup)
+    void DrawMenuLikeButton(const SDL_Rect& r, const char* text,
+        Core::Application* app,
+        bool highlighted) {
+        // Slight shadow to match previous look
+        const float rad = 12.0f;
+        const float shadowOffset = 6.0f;
+        Color shadow{ 0.12f, 0.14f, 0.16f, 1.0f };
+        DrawRoundedRectScreen(r.x, r.y - (int)shadowOffset,
+            r.x + r.w, r.y - (int)shadowOffset + r.h,
+            shadow, (int)rad, app);
+
+        // Base grey button, a bit brighter when highlighted
+        Color btn{ 0.25f, 0.27f, 0.30f, 0.98f };
+        if (highlighted) { btn.r *= 1.06f; btn.g *= 1.06f; btn.b *= 1.06f; }
+    DrawColoredButton(r, text, app, btn, highlighted, false, true);
     }
 
     void LoadCameraIconPNG(const char* p_Path, Core::Application* p_App) {
@@ -502,18 +535,34 @@ namespace UI {
     }
 
     void HandleMouseMotion(int i_XPx, int i_YPx) {
-        if (!g_b_ShowPausedModal.load()) return;
         int i_H = g_i_ViewportHeight;
         int i_FlippedY = i_H - i_YPx;
-        bool b_Resume = (i_XPx >= g_i_PausedResumeBtnX0 && i_XPx <= g_i_PausedResumeBtnX1 &&
-                         i_FlippedY >= g_i_PausedResumeBtnY0 && i_FlippedY <= g_i_PausedResumeBtnY1);
-        bool b_Debug = (i_XPx >= g_i_PausedDebugBtnX0 && i_XPx <= g_i_PausedDebugBtnX1 &&
-                        i_FlippedY >= g_i_PausedDebugBtnY0 && i_FlippedY <= g_i_PausedDebugBtnY1);
-        bool b_Menu = (i_XPx >= g_i_PausedModalBtnX0 && i_XPx <= g_i_PausedModalBtnX1 &&
-                       i_FlippedY >= g_i_PausedModalBtnY0 && i_FlippedY <= g_i_PausedModalBtnY1);
-        g_b_PausedResumeBtnHover.store(b_Resume);
-        g_b_PausedDebugBtnHover.store(b_Debug);
-        g_b_PausedModalBtnHover.store(b_Menu);
+
+        if (g_b_ShowPausedModal.load()) {
+            bool b_Resume = (i_XPx >= g_i_PausedResumeBtnX0 && i_XPx <= g_i_PausedResumeBtnX1 &&
+                             i_FlippedY >= g_i_PausedResumeBtnY0 && i_FlippedY <= g_i_PausedResumeBtnY1);
+            bool b_Debug = (i_XPx >= g_i_PausedDebugBtnX0 && i_XPx <= g_i_PausedDebugBtnX1 &&
+                            i_FlippedY >= g_i_PausedDebugBtnY0 && i_FlippedY <= g_i_PausedDebugBtnY1);
+            bool b_Menu = (i_XPx >= g_i_PausedModalBtnX0 && i_XPx <= g_i_PausedModalBtnX1 &&
+                           i_FlippedY >= g_i_PausedModalBtnY0 && i_FlippedY <= g_i_PausedModalBtnY1);
+            g_b_PausedResumeBtnHover.store(b_Resume);
+            g_b_PausedDebugBtnHover.store(b_Debug);
+            g_b_PausedModalBtnHover.store(b_Menu);
+            return;
+        }
+
+        // Update Mr X panel hover (only if enabled)
+        if (g_b_ShowMrXButtons.load()) {
+            bool b_Black = (i_XPx >= g_i_MrXBlackBtnX0 && i_XPx <= g_i_MrXBlackBtnX1 &&
+                            i_FlippedY >= g_i_MrXBlackBtnY0 && i_FlippedY <= g_i_MrXBlackBtnY1);
+            bool b_Double = (i_XPx >= g_i_MrXDoubleBtnX0 && i_XPx <= g_i_MrXDoubleBtnX1 &&
+                             i_FlippedY >= g_i_MrXDoubleBtnY0 && i_FlippedY <= g_i_MrXDoubleBtnY1);
+            g_b_MrXBlackHover.store(b_Black && g_b_MrXBlackEnabled.load());
+            g_b_MrXDoubleHover.store(b_Double && g_b_MrXDoubleEnabled.load());
+        } else {
+            g_b_MrXBlackHover.store(false);
+            g_b_MrXDoubleHover.store(false);
+        }
     }
 
     void SetPausedDebugState(bool enabled) {
@@ -553,6 +602,27 @@ namespace UI {
                 return;
             }
             return;
+        }
+
+        if (g_b_ShowMrXButtons.load()) {
+            int i_H = g_i_ViewportHeight;
+            int i_FlippedY = i_H - i_YPx;
+            bool inBlack = (i_XPx >= g_i_MrXBlackBtnX0 && i_XPx <= g_i_MrXBlackBtnX1 &&
+                            i_FlippedY >= g_i_MrXBlackBtnY0 && i_FlippedY <= g_i_MrXBlackBtnY1);
+            bool inDouble = (i_XPx >= g_i_MrXDoubleBtnX0 && i_XPx <= g_i_MrXDoubleBtnX1 &&
+                             i_FlippedY >= g_i_MrXDoubleBtnY0 && i_FlippedY <= g_i_MrXDoubleBtnY1);
+            if (inBlack) {
+                if (!g_b_MrXBlackEnabled.load()) return; 
+                bool cur = g_b_MrXBlackSelected.load();
+                g_b_MrXBlackSelected.store(!cur);
+                return;
+            }
+            if (inDouble) {
+                if (!g_b_MrXDoubleEnabled.load()) return; 
+                bool cur = g_b_MrXDoubleSelected.load();
+                g_b_MrXDoubleSelected.store(!cur);
+                return;
+            }
         }
 
         // Camera button
@@ -601,6 +671,34 @@ namespace UI {
 
     void SetHUDStyle(const HUDStyle& style) {
         g_HUDStyle = style;
+    }
+
+    void SetMrXButtonsVisible(bool b_Visible) {
+        g_b_ShowMrXButtons.store(b_Visible);
+        if (!b_Visible) {
+            g_b_MrXBlackHover.store(false);
+            g_b_MrXDoubleHover.store(false);
+            g_b_MrXBlackSelected.store(false);
+            g_b_MrXDoubleSelected.store(false);
+        }
+    }
+
+    bool IsMrXBlackSelected() { return g_b_MrXBlackSelected.load(); }
+    bool IsMrXDoubleSelected() { return g_b_MrXDoubleSelected.load(); }
+    void ClearMrXSelections() {
+        g_b_MrXBlackSelected.store(false);
+        g_b_MrXDoubleSelected.store(false);
+    }
+
+    void SetMrXButtonsEnabled(bool b_BlackEnabled, bool b_DoubleEnabled) {
+        g_b_MrXBlackEnabled.store(b_BlackEnabled);
+        g_b_MrXDoubleEnabled.store(b_DoubleEnabled);
+        if (!b_BlackEnabled) g_b_MrXBlackSelected.store(false);
+        if (!b_DoubleEnabled) g_b_MrXDoubleSelected.store(false);
+        if (!g_b_ShowMrXButtons.load()) {
+            g_b_MrXBlackHover.store(false);
+            g_b_MrXDoubleHover.store(false);
+        }
     }
 
     void SetSlotMark(int round_1_to_24, TicketMark mark, bool markUsed) {
@@ -661,6 +759,66 @@ namespace UI {
 
         drawTopBar(f_TX0, f_TY0, f_TX1, f_TY1, p_App);
         drawBottomBar(f_BX0, f_BY0, f_BX1, f_BY1, p_App);
+
+        if (g_b_ShowMrXButtons.load()) {
+            int i_W = p_App->GetWidth();
+            int i_H = p_App->GetHeight();
+
+            float f_TopBarBottomPx = ndcY_to_px(f_TY0);
+
+            float f_PanelW = std::min(320.0f, float(i_W) * 0.28f);
+            float f_Pad = 12.0f;
+            float f_TitleH = 28.0f;
+            float f_BtnH = 30.0f;
+            float f_Sp = 8.0f;
+            float f_PanelH = f_Pad + f_TitleH + f_Sp + f_BtnH + f_Sp + f_BtnH + f_Pad;
+
+            float f_Left = 16.0f;
+            float f_Top = std::min(float(i_H) - 16.0f, f_TopBarBottomPx - 10.0f);
+            float f_Bottom = f_Top - f_PanelH;
+            if (f_Bottom < 10.0f) {
+                f_Bottom = 10.0f;
+                f_Top = f_Bottom + f_PanelH;
+            }
+            float f_Right = f_Left + f_PanelW;
+
+            DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, g_HUDStyle.barColor, 12, p_App);
+
+            ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
+            float f_TitleY1 = f_Top - f_Pad;
+            float f_TitleY0 = f_TitleY1 - f_TitleH;
+            float f_MidY = f_TitleY0 + (f_TitleH * 0.5f);
+            DrawTextCenteredPx("Choose a special ticket", f_Left + f_Pad, f_MidY, f_Right - f_Pad, f_TitleY1, white, p_App, -4.0f);
+            DrawTextCenteredPx("you want to use", f_Left + f_Pad, f_TitleY0, f_Right - f_Pad, f_MidY, white, p_App, -4.0f);
+
+            float f_BtnW = (f_PanelW - 2.0f * f_Pad) * 0.80f;
+            float f_BtnX = f_Left + (f_PanelW - f_BtnW) * 0.5f;
+            float f_FirstBtnY0 = f_TitleY0 - f_Sp - f_BtnH;
+            float f_FirstBtnY1 = f_FirstBtnY0 + f_BtnH;
+            float f_SecondBtnY0 = f_FirstBtnY0 - f_Sp - f_BtnH;
+            float f_SecondBtnY1 = f_SecondBtnY0 + f_BtnH;
+
+            SDL_Rect rBlack{ (int)f_BtnX, (int)f_SecondBtnY0, (int)f_BtnW, (int)f_BtnH };
+            Color colBlack = (g_vec_PillColors.size() > 0) ? g_vec_PillColors[0] : Color{ 0,0,0,1 };
+            DrawColoredButton(rBlack, "BLACK", p_App, colBlack, g_b_MrXBlackHover.load(), g_b_MrXBlackSelected.load(), g_b_MrXBlackEnabled.load());
+
+            SDL_Rect rDouble{ (int)f_BtnX, (int)f_FirstBtnY0, (int)f_BtnW, (int)f_BtnH };
+            Color colDouble = (g_vec_PillColors.size() > 1) ? g_vec_PillColors[1] : Color{ 0.92f,0.82f,0.12f,1 };
+            DrawColoredButton(rDouble, "2x", p_App, colDouble, g_b_MrXDoubleHover.load(), g_b_MrXDoubleSelected.load(), g_b_MrXDoubleEnabled.load());
+
+            g_i_MrXPanelX0 = (int)f_Left; g_i_MrXPanelY0 = (int)f_Bottom;
+            g_i_MrXPanelX1 = (int)f_Right; g_i_MrXPanelY1 = (int)f_Top;
+
+            g_i_MrXBlackBtnX0 = rBlack.x;
+            g_i_MrXBlackBtnY0 = rBlack.y;
+            g_i_MrXBlackBtnX1 = rBlack.x + rBlack.w;
+            g_i_MrXBlackBtnY1 = rBlack.y + rBlack.h;
+
+            g_i_MrXDoubleBtnX0 = rDouble.x;
+            g_i_MrXDoubleBtnY0 = rDouble.y;
+            g_i_MrXDoubleBtnX1 = rDouble.x + rDouble.w;
+            g_i_MrXDoubleBtnY1 = rDouble.y + rDouble.h;
+        }
 
         // Draw paused modal on top of HUD if requested
         if (g_b_ShowPausedModal.load()) {
