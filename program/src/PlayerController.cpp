@@ -2,6 +2,7 @@
 #include "Player.h"
 #include "Application.h"
 #include "GameSettings.h"
+#include "ThreadPool.h"
 #include <iostream>
 #include <random>
 #include "GraphManager.h"
@@ -9,11 +10,11 @@
 #include <queue>
 #include <set>
 #include <map>
-#include <algorithm>            
-#include <vector>      
-#include <numeric>             
-#include <utility>           
-#include <cmath> 
+#include <algorithm>
+#include <vector>
+#include <numeric>
+#include <utility>
+#include <cmath>
 #include <tuple>
 #include <functional>
 
@@ -35,6 +36,7 @@ AIPlayerController::AIPlayerController(float f_MinTurnTime)
     , m_f_ElapsedTime(0.0f)
     , m_b_MoveRequested(false)
     , m_MoveDecision()
+    , m_b_CalculationInProgress(false)
 {
 }
 
@@ -45,12 +47,21 @@ void AIPlayerController::RequestMove(
     Application* p_App
 ) {
     if (vec_PossibleMoves.empty()) {
+        std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
         m_MoveDecision.b_HasDecision = false;
         m_b_MoveRequested = false;
+        m_b_CalculationInProgress = false;
         return;
     }
 
-    m_MoveDecision = CalculateBestMove(p_Player, vec_PossibleMoves, gameState);
+    // Submit AI calculation to ThreadPool
+    m_b_CalculationInProgress = true;
+    m_Future_MoveCalculation = Threading::ThreadPool::Submit(
+        [this, vec_PossibleMoves, gameState]() -> MoveDecision {
+            //don't capture p_Player pointer to avoid thread-safety issues position, which is already in gameState.
+            return CalculateBestMove(nullptr, vec_PossibleMoves, gameState);
+        }
+    );
 
     // Reset timer
     m_f_ElapsedTime = 0.0f;
@@ -58,6 +69,15 @@ void AIPlayerController::RequestMove(
 }
 
 bool AIPlayerController::HasPendingMove() const {
+    if (m_b_CalculationInProgress && m_Future_MoveCalculation.valid()) {
+        if (m_Future_MoveCalculation.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+            //retrieve the result
+            std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
+            m_MoveDecision = m_Future_MoveCalculation.get();
+            m_b_CalculationInProgress = false;
+        }
+    }
+
     return m_b_MoveRequested && m_MoveDecision.b_HasDecision && (m_f_ElapsedTime >= m_f_MinTurnTime);
 }
 
@@ -66,6 +86,7 @@ MoveDecision AIPlayerController::GetMove() {
         return MoveDecision{};
     }
 
+    std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
     MoveDecision decision = m_MoveDecision;
     m_MoveDecision = MoveDecision{};
     m_b_MoveRequested = false;
@@ -81,9 +102,15 @@ void AIPlayerController::Update(float f_DeltaTime) {
 }
 
 void AIPlayerController::Reset() {
+    if (m_b_CalculationInProgress && m_Future_MoveCalculation.valid()) {
+        m_Future_MoveCalculation.wait();
+    }
+
+    std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
     m_MoveDecision = MoveDecision{};
     m_b_MoveRequested = false;
     m_f_ElapsedTime = 0.0f;
+    m_b_CalculationInProgress = false;
 }
 
 static MoveDecision DistanceMaximizationAlgorithm(
@@ -206,6 +233,8 @@ static MoveDecision DecoyMovementAlgorithm(
         }
     }
 
+    int i_CurrentPlayerPos = gameState.vec_AllPlayers[gameState.i_CurrentPlayerIndex].i_Position;
+
     auto fn_BFS = [&](int i_Start) {
         std::map<int, int> map_Dist;
         std::queue<int> queue_Nodes;
@@ -294,7 +323,7 @@ static MoveDecision DecoyMovementAlgorithm(
 
     auto fn_DeceptionScore = [&](int i_dest) {
         double d_f_Score = 0.0;
-        int i_currentPos = p_Player ? p_Player->GetOccupiedNode() : 0;
+        int i_currentPos = i_CurrentPlayerPos;
         int i_lastKnown = gameState.i_MrXLastKnownPosition;
 
         if (i_lastKnown != 0 && i_lastKnown != i_currentPos && i_lastKnown != i_dest) {
@@ -801,6 +830,7 @@ static MoveDecision DFSMrXAlgorithm(
     static std::map<std::tuple<int, int, std::string>, std::map<int, int>> s_ReachableCache;
     static std::map<std::tuple<int, int>, std::vector<int>> s_PolicePredictions;
     static std::vector<int> s_LastPolicePositions;
+    static std::mutex s_CacheMutex;
 
     // Local caches for this turn
     std::map<int, std::map<int, int>> local_DistanceCache;
@@ -815,12 +845,31 @@ static MoveDecision DFSMrXAlgorithm(
         }
     }
 
+    const PlayerInfo* p_MrXInfo = nullptr;
+    for (const auto& info : gameState.vec_AllPlayers) {
+        if (info.b_IsMisterX) {
+            p_MrXInfo = &info;
+            break;
+        }
+    }
+
+    if (!p_MrXInfo) {
+        decision.b_HasDecision = false;
+        return decision;
+    }
+
+    int i_MrXPos = p_MrXInfo->i_Position;
+    int i_CurrentTurn = gameState.i_CurrentRound;
+
     // === HELPER FUNCTIONS ===
 
     // Get neighbors with caching
     auto fn_GetNeighbors = [&](int i_Node) -> std::vector<std::pair<int, int>> {
-        if (s_NeighborsCache.count(i_Node)) {
-            return s_NeighborsCache[i_Node];
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            if (s_NeighborsCache.count(i_Node)) {
+                return s_NeighborsCache[i_Node];
+            }
         }
 
         std::vector<std::pair<int, int>> vec_Neighbors;
@@ -828,14 +877,20 @@ static MoveDecision DFSMrXAlgorithm(
             vec_Neighbors = map_Graph[i_Node];
         }
 
-        s_NeighborsCache[i_Node] = vec_Neighbors;
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            s_NeighborsCache[i_Node] = vec_Neighbors;
+        }
         return vec_Neighbors;
     };
 
     // BFS distances with caching
     auto fn_BFSDistances = [&](int i_Start) -> std::map<int, int> {
-        if (s_DistanceCache.count(i_Start)) {
-            return s_DistanceCache[i_Start];
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            if (s_DistanceCache.count(i_Start)) {
+                return s_DistanceCache[i_Start];
+            }
         }
 
         if (local_DistanceCache.count(i_Start)) {
@@ -860,36 +915,49 @@ static MoveDecision DFSMrXAlgorithm(
             }
         }
 
-        s_DistanceCache[i_Start] = map_Distances;
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            s_DistanceCache[i_Start] = map_Distances;
+        }
         local_DistanceCache[i_Start] = map_Distances;
         return map_Distances;
     };
 
     // Get connectivity with caching
     auto fn_GetConnectivity = [&](int i_Node) -> int {
-        if (s_ConnectivityCache.count(i_Node)) {
-            return s_ConnectivityCache[i_Node];
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            if (s_ConnectivityCache.count(i_Node)) {
+                return s_ConnectivityCache[i_Node];
+            }
         }
 
         int i_Connectivity = static_cast<int>(fn_GetNeighbors(i_Node).size());
-        s_ConnectivityCache[i_Node] = i_Connectivity;
+
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            s_ConnectivityCache[i_Node] = i_Connectivity;
+        }
         return i_Connectivity;
     };
 
     // Get all reachable positions
-    auto fn_GetAllReachablePositions = [&](int i_Start, int i_MaxSteps, 
-                                            const std::map<int, int>& map_Tickets) 
+    auto fn_GetAllReachablePositions = [&](int i_Start, int i_MaxSteps,
+                                            const std::map<int, int>& map_Tickets)
         -> std::map<int, int> {
-        
+
         std::string str_TicketKey;
         for (const auto& [k, v] : map_Tickets) {
             str_TicketKey += std::to_string(k) + ":" + std::to_string(v) + ",";
         }
-        
+
         auto cache_Key = std::make_tuple(i_Start, i_MaxSteps, str_TicketKey);
-        
-        if (s_ReachableCache.count(cache_Key)) {
-            return s_ReachableCache[cache_Key];
+
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            if (s_ReachableCache.count(cache_Key)) {
+                return s_ReachableCache[cache_Key];
+            }
         }
 
         std::map<int, int> map_Reachable;
@@ -934,7 +1002,10 @@ static MoveDecision DFSMrXAlgorithm(
             }
         }
 
-        s_ReachableCache[cache_Key] = map_Reachable;
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            s_ReachableCache[cache_Key] = map_Reachable;
+        }
         return map_Reachable;
     };
 
@@ -1016,31 +1087,40 @@ static MoveDecision DFSMrXAlgorithm(
 
     // Update police predictions with caching
     auto fn_UpdatePolicePredictions = [&](const std::vector<const PlayerInfo*>& vec_Police,
-                                          int i_MrXPosition) 
+                                          int i_MrXPosition)
         -> std::vector<int> {
-        
+
         std::vector<int> vec_CurrentPositions;
         for (const auto* p : vec_Police) {
             vec_CurrentPositions.push_back(p->i_Position);
         }
 
-        if (s_LastPolicePositions.empty() || s_LastPolicePositions == vec_CurrentPositions) {
-            s_LastPolicePositions = vec_CurrentPositions;
-            return fn_SimulateDetectiveMovesAdvanced(vec_Police, i_MrXPosition);
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            if (s_LastPolicePositions.empty() || s_LastPolicePositions == vec_CurrentPositions) {
+                s_LastPolicePositions = vec_CurrentPositions;
+            } else {
+                auto cache_Key = std::make_tuple(i_MrXPosition,
+                                                 std::accumulate(vec_CurrentPositions.begin(),
+                                                                vec_CurrentPositions.end(), 0));
+
+                if (s_PolicePredictions.count(cache_Key)) {
+                    s_LastPolicePositions = vec_CurrentPositions;
+                    return s_PolicePredictions[cache_Key];
+                }
+                s_LastPolicePositions = vec_CurrentPositions;
+            }
         }
 
-        auto cache_Key = std::make_tuple(i_MrXPosition, 
-                                         std::accumulate(vec_CurrentPositions.begin(), 
-                                                        vec_CurrentPositions.end(), 0));
-
-        if (s_PolicePredictions.count(cache_Key)) {
-            s_LastPolicePositions = vec_CurrentPositions;
-            return s_PolicePredictions[cache_Key];
-        }
-
-        s_LastPolicePositions = vec_CurrentPositions;
         auto vec_NewPredictions = fn_SimulateDetectiveMovesAdvanced(vec_Police, i_MrXPosition);
-        s_PolicePredictions[cache_Key] = vec_NewPredictions;
+
+        {
+            std::lock_guard<std::mutex> lock(s_CacheMutex);
+            auto cache_Key = std::make_tuple(i_MrXPosition,
+                                             std::accumulate(vec_CurrentPositions.begin(),
+                                                            vec_CurrentPositions.end(), 0));
+            s_PolicePredictions[cache_Key] = vec_NewPredictions;
+        }
 
         return vec_NewPredictions;
     };
@@ -1490,40 +1570,27 @@ static MoveDecision DFSMrXAlgorithm(
 
     // === MAIN LOGIC ===
 
-    int i_MrXPos = p_Player->GetOccupiedNode();
-    int i_CurrentTurn = gameState.i_CurrentRound;
-
-    // Get Mr. X tickets
-    const PlayerInfo* p_MrXInfo = nullptr;
-    for (const auto& info : gameState.vec_AllPlayers) {
-        if (info.b_IsMisterX) {
-            p_MrXInfo = &info;
-            break;
-        }
-    }
-
-    if (!p_MrXInfo) {
-        decision.b_HasDecision = false;
-        return decision;
-    }
-
+    // Build Mr. X tickets map
     std::map<int, int> map_MrXTickets;
     map_MrXTickets[Core::k_TransportTypeTaxi] = p_MrXInfo->i_TaxiTickets;
     map_MrXTickets[Core::k_TransportTypeBus] = p_MrXInfo->i_BusTickets;
     map_MrXTickets[Core::k_TransportTypeMetro] = p_MrXInfo->i_MetroTickets;
     map_MrXTickets[Core::k_TransportTypeWater] = p_MrXInfo->i_BlackTickets;
 
-    // Clean old cache entries
-    if (s_DistanceCache.size() > 500) {
-        auto it = s_DistanceCache.begin();
-        std::advance(it, 200);
-        s_DistanceCache.erase(s_DistanceCache.begin(), it);
-    }
+    // Clean old cache entries with lock
+    {
+        std::lock_guard<std::mutex> lock(s_CacheMutex);
+        if (s_DistanceCache.size() > 500) {
+            auto it = s_DistanceCache.begin();
+            std::advance(it, 200);
+            s_DistanceCache.erase(s_DistanceCache.begin(), it);
+        }
 
-    if (s_ReachableCache.size() > 200) {
-        auto it = s_ReachableCache.begin();
-        std::advance(it, 100);
-        s_ReachableCache.erase(s_ReachableCache.begin(), it);
+        if (s_ReachableCache.size() > 200) {
+            auto it = s_ReachableCache.begin();
+            std::advance(it, 100);
+            s_ReachableCache.erase(s_ReachableCache.begin(), it);
+        }
     }
 
     // Initial move evaluation
@@ -2478,11 +2545,13 @@ static MoveDecision MinimaxPoliceAlgorithm(
         map_MrXTickets[Core::k_TransportTypeWater] = 3;
     }
 
+    int i_CurrentPlayerPos = gameState.vec_AllPlayers[gameState.i_CurrentPlayerIndex].i_Position;
+
     // Find current player index
     int i_PlayerIndex = -1;
     for (size_t i = 0; i < gameState.vec_AllPlayers.size(); ++i) {
         if (!gameState.vec_AllPlayers[i].b_IsMisterX) {
-            if (gameState.vec_AllPlayers[i].i_Position == p_Player->GetOccupiedNode()) {
+            if (gameState.vec_AllPlayers[i].i_Position == i_CurrentPlayerPos) {
                 i_PlayerIndex = static_cast<int>(i) - 1; // Subtract 1 because Mr. X is at index 0
                 for (size_t j = 0; j <= i; ++j) {
                     if (gameState.vec_AllPlayers[j].b_IsMisterX) {
@@ -2498,7 +2567,7 @@ static MoveDecision MinimaxPoliceAlgorithm(
     if (i_PlayerIndex < 0 || i_PlayerIndex >= static_cast<int>(vec_PolicePositions.size())) {
         // Fallback: find by position matching
         for (size_t i = 0; i < vec_PolicePositions.size(); ++i) {
-            if (vec_PolicePositions[i] == p_Player->GetOccupiedNode()) {
+            if (vec_PolicePositions[i] == i_CurrentPlayerPos) {
                 i_PlayerIndex = static_cast<int>(i);
                 break;
             }

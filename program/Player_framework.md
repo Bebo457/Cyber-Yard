@@ -48,6 +48,35 @@ MoveDecision AIPlayerController::CalculateBestMove(
 }
 ```
 
+### Thread Safety for AI Algorithms
+
+**IMPORTANT**: AI calculations run on background threads to prevent UI freezing.
+
+**Thread-Safety Rules:**
+1. **Never use static variables without mutex protection** - They're shared across all AI threads
+2. **Don't use `p_Player` pointer** - It may become invalid. Use `gameState.vec_AllPlayers[gameState.i_CurrentPlayerIndex]` instead
+3. **Capture by value in lambdas** - Use `[this, vec_PossibleMoves, gameState]` not `[&]`
+
+**Example: Thread-safe static cache**
+```cpp
+static std::map<int, int> s_Cache;
+static std::mutex s_CacheMutex;
+
+// Check cache
+{
+    std::lock_guard<std::mutex> lock(s_CacheMutex);
+    if (s_Cache.count(key)) return s_Cache[key];
+}
+
+// Compute value...
+
+// Store in cache
+{
+    std::lock_guard<std::mutex> lock(s_CacheMutex);
+    s_Cache[key] = value;
+}
+```
+
 ---
 
 ## Available Game State Data
