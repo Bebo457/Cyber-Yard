@@ -7,7 +7,8 @@ namespace ScotlandYard {
         enum class GameMode : uint8_t { PvP, PvBot, BotvBot };
 
         // Random is working, TODO others
-        enum class AIAlgorithm : uint8_t { Random, GreedyShortestPath, NeuralNet };
+        enum class AIAlgorithm : uint8_t { Random, NeuralNet, DistanceMaximizationMrX, DecoyMovementMrX, MonteCarloMrX, DFSMrX, 
+            MonteCarloPolice, MinimaxPolice, GreedyShortestPathPolice, FrontSearchEncirclementPolice};
         enum class HumanSide : uint8_t { MrX, Detectives };
 
         struct GameSettings {

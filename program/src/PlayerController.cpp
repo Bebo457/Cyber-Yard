@@ -2650,7 +2650,12 @@ MoveDecision AIPlayerController::CalculateBestMove(
             decision = { true, sel.i_DestinationNode, sel.i_TransportType };
             break;
         }
-        case Core::AIAlgorithm::GreedyShortestPath:
+        // case Core::AIAlgorithm::GreedyShortestPathPolice:
+        // // TODO implementing algorithm here, rn fallback to distance maximization
+        // decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
+        //     break;    
+        // decision = GreedyShortestPathPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            // break;
 // TODO implementing algorithm here, rn fallback to Random
             //[[fallthrough]];
             // decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
@@ -2659,15 +2664,41 @@ MoveDecision AIPlayerController::CalculateBestMove(
             //[[fallthrough]];
             // decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
             //decision = MonteCarloMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
+        case Core::AIAlgorithm::DistanceMaximizationMrX:
+            decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            break;
+        case Core::AIAlgorithm::DecoyMovementMrX:
+            decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            break;
+        case Core::AIAlgorithm::MonteCarloMrX:
+            decision = MonteCarloMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            break;
+        case Core::AIAlgorithm::DFSMrX:
             decision = DFSMrXAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
-        case Core::AIAlgorithm::NeuralNet:
-// TODO implementing algorithm here, rn fallback to Random
-            {
+        case Core::AIAlgorithm::MonteCarloPolice:
             decision = MonteCarloPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
-break;//decision = MinimaxPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
-            }
             break;
+        case Core::AIAlgorithm::MinimaxPolice:
+            decision = MinimaxPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+        case Core::AIAlgorithm::GreedyShortestPathPolice:
+            // TODO implementing algorithm here, rn fallback to monte carlo
+            decision = MonteCarloPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            break;
+        case Core::AIAlgorithm::FrontSearchEncirclementPolice:
+            // TODO implementing algorithm here, rn fallback to monte carlo
+            decision = MonteCarloPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            break;
+        
+        case Core::AIAlgorithm::NeuralNet: {
+            // TODO implementing algorithm here, rn fallback to Random
+            std::random_device rd; std::mt19937 gen(rd());
+            std::uniform_int_distribution<> dis(0, (int)vec_PossibleMoves.size() - 1);
+            const auto& sel = vec_PossibleMoves[dis(gen)];
+            decision = { true, sel.i_DestinationNode, sel.i_TransportType };
+            break;
+            }
+        
     }
     return decision;
 }

@@ -27,8 +27,8 @@ namespace ScotlandYard {
             const int   H = app->GetHeight();
 
             // setup
-            const int   cols = 3;
-            const float gridW = std::min((float)W * 0.92f, 1120.0f);
+            const int   cols = 5;  // ZMIANA: było 3, teraz 5
+            const float gridW = std::min((float)W * 0.92f, 1400.0f);  // ZMIANA: zwiększona szerokość z 1120 na 1400
             const float gridX = (W - gridW) * 0.5f;
             const float cellW = gridW / cols;
             const float cellGap = 14.0f;
@@ -38,9 +38,9 @@ namespace ScotlandYard {
             // vertical gap
             const float lineH = btnH + 45.0f;
 
-            const bool  hasHumanRow = (m_i_Mode == 1); // 1 = PvBot
+            const bool  hasHumanRow = (m_i_Mode == 1);
             const int   rowsAboveFooter = hasHumanRow ? 4 : 3;
-            const int   totalRows = rowsAboveFooter + 1; // +Footer
+            const int   totalRows = rowsAboveFooter + 1;
             const float blockH = totalRows * lineH + hasHumanRow;
 
             const float topY = (H + blockH) * 0.5f;
@@ -48,21 +48,34 @@ namespace ScotlandYard {
             auto rowYTopDown = [&](int idxFromTop) {
                 float y = topY - (idxFromTop + 1) * lineH + (lineH - btnH);
                 return y;
+            };
+
+            // NOWA FUNKCJA: umieszcza 5 przycisków w rzędzie
+            auto placeRow5 = [&](Row row, int idxFromTop,
+                const char* t0, const char* t1, const char* t2, const char* t3, const char* t4) {
+                    float y = rowYTopDown(idxFromTop);
+                    for (int c = 0; c < 5; ++c) {
+                        float x = gridX + c * cellW + cellGap;
+                        const char* texts[] = {t0, t1, t2, t3, t4};
+                        m_vec_Buttons.push_back({ row, c, x, y, btnW, btnH, texts[c] });
+                    }
                 };
 
-            auto placeRow3 = [&](Row row, int idxFromTop,
+            // ZMODYFIKOWANA FUNKCJA: dla 3 przycisków wyśrodkowanych
+            auto placeRow3Centered = [&](Row row, int idxFromTop,
                 const char* t0, const char* t1, const char* t2) {
                     float y = rowYTopDown(idxFromTop);
-                    for (int c = 0; c < 3; ++c) {
+                    // Wyśrodkuj 3 przyciski (użyj kolumn 1, 2, 3 z 5 dostępnych)
+                    for (int c = 1; c <= 3; ++c) {
                         float x = gridX + c * cellW + cellGap;
-                        const char* text = (c == 0 ? t0 : (c == 1 ? t1 : t2));
-                        m_vec_Buttons.push_back({ row, c, x, y, btnW, btnH, text });
+                        const char* text = (c == 1 ? t0 : (c == 2 ? t1 : t2));
+                        m_vec_Buttons.push_back({ row, c-1, x, y, btnW, btnH, text });
                     }
                 };
 
             // ROW LAYOUT
-            // 0: MODE
-            placeRow3(Row::Mode, 0, "Player vs Player", "Player vs Bot", "Bot vs Bot");
+            // 0: MODE (3 przyciski wyśrodkowane)
+            placeRow3Centered(Row::Mode, 0, "Player vs Player", "Player vs Bot", "Bot vs Bot");
 
             int idx = 1;
 
@@ -75,19 +88,28 @@ namespace ScotlandYard {
                 const float xL = center - groupW * 0.5f;
                 const float xR = xL + btnW + gap;
 
-                // buttons to choose a player
                 m_vec_Buttons.push_back({ Row::Human, 0, xL, y, btnW, btnH, "Mr X" });
                 m_vec_Buttons.push_back({ Row::Human, 1, xR, y, btnW, btnH, "Detectives" });
 
-
                 idx += 1;
             }
-            // Mr X AI
-            placeRow3(Row::MrX, idx++, "Mr X AI: Random", "Mr X AI: Greedy", "Mr X AI: Neural");
-            // Detectives AI
-            placeRow3(Row::Detectives, idx++, "Detectives AI: Random", "Detectives AI: Greedy", "Detectives AI: Neural");
+            
+            placeRow5(Row::MrX, idx++, 
+                "X: Random", 
+                "X: Dist Max", 
+                "X: Decoy Mov",
+                "X: Monte Carlo",
+                "X: DFS");
+            
+            // Detectives AI - 5 przycisków
+            placeRow5(Row::Detectives, idx++, 
+                "D: Random", 
+                "D: Monte Carlo", 
+                "D: Minimax",
+                "D: GSP", 
+                "D: FSE");
 
-            // Footer
+            // Footer (bez zmian)
             const float yF = rowYTopDown(idx);
             const float fBtnW = 250.0f;
             const float fGap = 60.0f;
@@ -305,22 +327,37 @@ namespace ScotlandYard {
             using namespace ScotlandYard::Core;
 
             auto& S = Settings();
-            // mode mapping
+            
             switch (m_i_Mode) {
             case 0: S.e_Mode = GameMode::PvP;     break;
             case 1: S.e_Mode = GameMode::PvBot;   break;
             case 2: S.e_Mode = GameMode::BotvBot; break;
             }
 
-            auto mapAI = [](int idx) {
+            // Mapowanie dla Mr X
+            auto mapAI_MrX = [](int idx) {
                 switch (idx) {
-                case 1: return AIAlgorithm::GreedyShortestPath;
-                case 2: return AIAlgorithm::NeuralNet;
+                case 1: return AIAlgorithm::DistanceMaximizationMrX;
+                case 2: return AIAlgorithm::DecoyMovementMrX;
+                case 3: return AIAlgorithm::MonteCarloMrX;
+                case 4: return AIAlgorithm::DFSMrX;      
                 default: return AIAlgorithm::Random;
                 }
-                };
-            S.e_AIMisterX = mapAI(m_i_AIMrX);
-            S.e_AIDetectives = mapAI(m_i_AIDet);
+            };
+            
+            // Mapowanie dla Detectives
+            auto mapAI_Detectives = [](int idx) {
+                switch (idx) {
+                case 1: return AIAlgorithm::MonteCarloPolice;
+                case 2: return AIAlgorithm::MinimaxPolice;
+                case 3: return AIAlgorithm::GreedyShortestPathPolice;
+                case 4: return AIAlgorithm::FrontSearchEncirclementPolice;  
+                default: return AIAlgorithm::Random;
+                }
+            };
+            
+            S.e_AIMisterX = mapAI_MrX(m_i_AIMrX);
+            S.e_AIDetectives = mapAI_Detectives(m_i_AIDet);
             S.e_PvBotHuman = (m_i_Human == 0 ? HumanSide::MrX : HumanSide::Detectives);
 
             app->GetStateManager()->ChangeState("game");
