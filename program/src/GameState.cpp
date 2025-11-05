@@ -21,6 +21,37 @@
 namespace ScotlandYard {
 namespace States {
 
+namespace {
+
+bool HasTicketForTransport(const Core::Player& player, int i_TransportType) {
+    using namespace Core;
+
+    switch (i_TransportType) {
+        case k_TransportTypeTaxi:
+            if (player.GetTaxiTickets() > 0) return true;
+            break;
+        case k_TransportTypeBus:
+            if (player.GetBusTickets() > 0) return true;
+            break;
+        case k_TransportTypeMetro:
+            if (player.GetMetroTickets() > 0) return true;
+            break;
+        case k_TransportTypeWater:
+            if (player.GetWaterTickets() > 0) return true;
+            break;
+        default:
+            return false;
+    }
+
+    if (player.GetType() == Core::PlayerType::MisterX) {
+        return player.GetBlackTickets() > 0;
+    }
+
+    return false;
+}
+
+}
+
 std::string GameState::BuildTicketsLogSuffix() {
     std::lock_guard<std::mutex> lock(m_mtx_Players);
     if (m_vec_Players.empty()) return std::string();
@@ -2090,6 +2121,9 @@ void GameState::UpdateArrowsForSelectedPlayer() {
     auto connections = m_graph.GetConnections(i_CurrentNode);
 
     for (const auto& conn : connections) {
+        if (!HasTicketForTransport(player, conn.i_TransportType)) {
+            continue;
+        }
         auto destIt = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
                                   [&conn](const StationCircle& sc){ return sc.stationID == conn.i_NodeId; });
         if (destIt == m_vec_CircleStations.end()) continue;
@@ -2331,28 +2365,9 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
                     }
                 }
             }
-
-            if (m_i_PlayersRemainingThisRound.load() == 0) {
-                int i_CurrentRound = m_i_Round.load();
-                if (i_CurrentRound >= Core::k_MaxRounds) {
-                    CheckEndOfGame();
-                } else {
-                    m_i_Round.store(i_CurrentRound + 1);
-                    std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
-                    m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
-                    UI::SetRound(m_i_Round.load());
-
-                    {
-                        std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
-                        for (auto& p : m_vec_Players) {
-                            if (p.GetType() == Core::PlayerType::MisterX) p.SetActive(true);
-                            else p.SetActive(false);
-                        }
-                        m_b_MrXSecondMovePending.store(false);
-                    }
-                }
-            }
         }
+
+        AdvanceRoundIfComplete();
 
         // Clear UI selections after applying the move
         UI::ClearMrXSelections();
@@ -2572,7 +2587,29 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
             // Get possible move list
             std::vector<Core::PossibleMove> vec_PossibleMoves = GetPossibleMovesForPlayer(i);
 
-            if (!vec_PossibleMoves.empty()) {
+            if (vec_PossibleMoves.empty()) {
+                std::cout << "[GameState] Player " << i << " has no available moves this turn." << std::endl;
+
+                if (i < m_vec_Players.size()) {
+                    m_vec_Players[i].SetActive(false);
+                }
+
+                {
+                    std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+                    if (i < m_vec_MovedThisRound.size() && !m_vec_MovedThisRound[i]) {
+                        m_vec_MovedThisRound[i] = true;
+                        int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                        if (i_Remaining > 0) {
+                            m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                        }
+                    }
+                }
+
+                AdvanceRoundIfComplete();
+                continue;
+            }
+
+            {
                 Core::GameStateData gameState;
                 gameState.i_CurrentPlayerIndex = static_cast<int>(i);
                 // Use Mr X turn counter (counts double moves) for reveal scheduling and AI hints
@@ -2664,6 +2701,10 @@ std::vector<Core::PossibleMove> GameState::GetPossibleMovesForPlayer(int i_Playe
 
     auto connections = m_graph.GetConnections(i_CurrentNode);
     for (const auto& conn : connections) {
+        if (!HasTicketForTransport(player, conn.i_TransportType)) {
+            continue;
+        }
+
         Core::PossibleMove move;
         move.i_DestinationNode = conn.i_NodeId;
         move.i_TransportType = conn.i_TransportType;
@@ -2671,6 +2712,36 @@ std::vector<Core::PossibleMove> GameState::GetPossibleMovesForPlayer(int i_Playe
     }
 
     return vec_Result;
+}
+
+void GameState::AdvanceRoundIfComplete() {
+    std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+    if (m_i_PlayersRemainingThisRound.load() != 0) {
+        return;
+    }
+
+    int i_CurrentRound = m_i_Round.load();
+    if (i_CurrentRound >= Core::k_MaxRounds) {
+        CheckEndOfGame();
+        return;
+    }
+
+    m_i_Round.store(i_CurrentRound + 1);
+    std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
+    m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
+    UI::SetRound(m_i_Round.load());
+
+    {
+        std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+        for (auto& p : m_vec_Players) {
+            if (p.GetType() == Core::PlayerType::MisterX) {
+                p.SetActive(true);
+            } else {
+                p.SetActive(false);
+            }
+        }
+        m_b_MrXSecondMovePending.store(false);
+    }
 }
 
 } // namespace States

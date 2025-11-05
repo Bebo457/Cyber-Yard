@@ -216,6 +216,7 @@ private:
     void UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime);
     void ProcessAIPendingMoves();
     std::vector<Core::PossibleMove> GetPossibleMovesForPlayer(int i_PlayerIndex);
+    void AdvanceRoundIfComplete();
 
     // Render functions
     void RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc);
