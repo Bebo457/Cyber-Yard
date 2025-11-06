@@ -1486,7 +1486,7 @@ static MoveDecision DFSMrXAlgorithm(
     // === MAIN DFS FUNCTION ===
 
     std::vector<std::pair<int, int>> vec_BestPath;
-    double f_BestScore = std::numeric_limits<double>::lowest();
+    double d_BestScore = std::numeric_limits<double>::lowest();
 
     std::function<void(int, std::vector<std::pair<int, int>>&, std::set<int>&,
                       std::map<int, int>&, std::map<int, int>&, int)> fn_DFS;
@@ -1508,8 +1508,8 @@ static MoveDecision DFSMrXAlgorithm(
                 map_Tickets, gameState.i_CurrentRound
             );
 
-            if (d_CurrentScore > f_BestScore) {
-                f_BestScore = d_CurrentScore;
+            if (d_CurrentScore > d_BestScore) {
+                d_BestScore = d_CurrentScore;
                 vec_BestPath = vec_Path;
             }
         }
@@ -1832,6 +1832,27 @@ static int ShortestPathDistance(const GraphManager* p_Graph, int i_startNode, in
     }
 
     return dist[i_goalNode];
+}
+
+// Lightweight symmetric distance cache to speed up repeated shortest-path queries
+static int GetCachedDistance(const GraphManager* p_Graph, int a, int b) {
+    if (a == b) return 0;
+    // static cache across calls; key is (a<<32)|b
+    static std::unordered_map<uint64_t, int> s_DistCache;
+    uint64_t keyAB = (static_cast<uint64_t>(static_cast<uint32_t>(a)) << 32) | static_cast<uint32_t>(b);
+    auto it = s_DistCache.find(keyAB);
+    if (it != s_DistCache.end()) return it->second;
+
+    int d = ShortestPathDistance(p_Graph, a, b);
+    s_DistCache[keyAB] = d;
+    // store symmetric as well (graph is effectively undirected for path length purposes)
+    uint64_t keyBA = (static_cast<uint64_t>(static_cast<uint32_t>(b)) << 32) | static_cast<uint32_t>(a);
+    s_DistCache[keyBA] = d;
+    // Optional: simple cap to prevent unbounded growth
+    if (s_DistCache.size() > 20000) {
+        s_DistCache.clear();
+    }
+    return d;
 }
 
 static std::map<int, double> ComputeProbabilityMap(const GameStateData& gameState, const Player* /*p_Player*/)
@@ -2306,7 +2327,7 @@ static MoveDecision MonteCarloPoliceAlgorithm(
             auto& i_TicketsBus = vec_PoliceTicketsBus[i];
             auto& i_TicketsMetro = vec_PoliceTicketsMetro[i];
 
-            auto vec_Connections = gameState.p_Graph->GetConnections(gameState.vec_AllPlayers[i].i_Position);
+            auto vec_Connections = gameState.p_Graph->GetConnections(i_Pos);
 
             std::vector<PossibleMove> vec_Moves;
             vec_Moves.reserve(vec_Connections.size());
@@ -3169,7 +3190,7 @@ static double EvaluateStateForMinimax(
     int i_Count = 0;
 
     for (int i_PolicePos : vec_PolicePositions) {
-        int i_Dist = ShortestPathDistance(p_Graph, i_PolicePos, i_MrXPos);
+        int i_Dist = GetCachedDistance(p_Graph, i_PolicePos, i_MrXPos);
         if (i_Dist >= 0) {
             d_DistSum += static_cast<double>(i_Dist);
             i_Count++;
@@ -3182,7 +3203,7 @@ static double EvaluateStateForMinimax(
     double d_ClusterPenalty = 0.0;
     for (size_t i = 0; i < vec_PolicePositions.size(); ++i) {
         for (size_t j = i + 1; j < vec_PolicePositions.size(); ++j) {
-            int i_Dist = ShortestPathDistance(p_Graph, vec_PolicePositions[i], vec_PolicePositions[j]);
+            int i_Dist = GetCachedDistance(p_Graph, vec_PolicePositions[i], vec_PolicePositions[j]);
             if (i_Dist >= 0 && i_Dist <= 2) {
                 d_ClusterPenalty += (2.0 - i_Dist);
             }
@@ -3236,7 +3257,7 @@ static std::vector<std::pair<int, int>> GetBestMovesForPolice(
     // Score moves by distance to Mr. X
     std::vector<std::tuple<int, int, int>> vec_ScoredMoves;
     for (const auto& [i_Dest, i_Transport] : vec_Moves) {
-        int i_Dist = ShortestPathDistance(p_Graph, i_Dest, i_MrXPos);
+        int i_Dist = GetCachedDistance(p_Graph, i_Dest, i_MrXPos);
         vec_ScoredMoves.push_back({i_Dest, i_Transport, i_Dist});
     }
 
@@ -3351,9 +3372,21 @@ static bool IsTerminalState(
         return true;
     }
 
-    // Police have no moves
-    auto vec_JointMoves = GenerateJointMoves(vec_PolicePositions, vec_PoliceTickets, i_MrXPos, p_Graph, 4);
-    if (vec_JointMoves.empty()) {
+    // Police have no moves (fast local check without generating joint combinations)
+    bool b_PoliceHasAnyMove = false;
+    for (size_t i = 0; i < vec_PolicePositions.size() && !b_PoliceHasAnyMove; ++i) {
+        int i_Pos = vec_PolicePositions[i];
+        const auto& map_Tickets = vec_PoliceTickets[i];
+        auto vec_Conn = p_Graph->GetConnections(i_Pos);
+        for (const auto& conn : vec_Conn) {
+            auto it = map_Tickets.find(conn.i_TransportType);
+            if (it != map_Tickets.end() && it->second > 0) {
+                b_PoliceHasAnyMove = true;
+                break;
+            }
+        }
+    }
+    if (!b_PoliceHasAnyMove) {
         return true;
     }
 
@@ -3387,35 +3420,43 @@ static double MinimaxAlgorithmRecursive(
         // Mr. X turn - maximize
         double d_MaxEval = std::numeric_limits<double>::lowest();
 
-        for (const auto& [i_MrXNewPos, i_Transport, f_Weight] : vec_MrXPositionCandidates) {
-            // Check if move is valid from current position
-            auto vec_Connections = p_Graph->GetConnections(i_MrXPos);
-            bool b_ValidMove = false;
-            int i_MoveTransport = 0;
+        // Build a quick weight lookup from Mr X probability candidates (optional ordering heuristic)
+        std::map<int, double> map_PosWeight;
+        for (const auto& tup : vec_MrXPositionCandidates) {
+            int i_Pos = std::get<0>(tup);
+            double d_W = std::get<2>(tup);
+            map_PosWeight[i_Pos] = d_W;
+        }
 
-            for (const auto& conn : vec_Connections) {
-                if (conn.i_NodeId == i_MrXNewPos) {
-                    auto it = map_MrXTickets.find(conn.i_TransportType);
-                    if (it != map_MrXTickets.end() && it->second > 0) {
-                        b_ValidMove = true;
-                        i_MoveTransport = conn.i_TransportType;
-                        break;
-                    }
-                }
+        // Generate all legal neighbor moves for Mr X from the current position (filter by tickets)
+        struct MrXMove { int dest; int transport; double weight; };
+        std::vector<MrXMove> vec_LegalMoves;
+        auto vec_Connections = p_Graph->GetConnections(i_MrXPos);
+        vec_LegalMoves.reserve(vec_Connections.size());
+        for (const auto& conn : vec_Connections) {
+            auto itT = map_MrXTickets.find(conn.i_TransportType);
+            if (itT != map_MrXTickets.end() && itT->second > 0) {
+                double d_W = 0.0;
+                auto itW = map_PosWeight.find(conn.i_NodeId);
+                if (itW != map_PosWeight.end()) d_W = itW->second;
+                vec_LegalMoves.push_back({conn.i_NodeId, conn.i_TransportType, d_W});
             }
+        }
 
-            if (!b_ValidMove) {
-                continue;
-            }
+        // Order moves by descending probability weight to improve pruning (higher first)
+        std::sort(vec_LegalMoves.begin(), vec_LegalMoves.end(), [](const MrXMove& a, const MrXMove& b){
+            return a.weight > b.weight;
+        });
 
+        for (const auto& mv : vec_LegalMoves) {
             // Apply move
             std::map<int, int> map_NewTickets = map_MrXTickets;
-            if (map_NewTickets[i_MoveTransport] != std::numeric_limits<int>::max()) {
-                map_NewTickets[i_MoveTransport] -= 1;
+            if (map_NewTickets[mv.transport] != std::numeric_limits<int>::max()) {
+                map_NewTickets[mv.transport] -= 1;
             }
 
             double d_Eval = MinimaxAlgorithmRecursive(
-                i_MrXNewPos, vec_PolicePositions, map_NewTickets, vec_PoliceTickets,
+                mv.dest, vec_PolicePositions, map_NewTickets, vec_PoliceTickets,
                 i_Depth - 1, false, d_Alpha, d_Beta, p_Graph, vec_MrXPositionCandidates
             );
 
@@ -3595,7 +3636,7 @@ static MoveDecision MinimaxPoliceAlgorithm(
     }
 
     // Evaluate each possible move
-    double d_BestScore = std::numeric_limits<double>::lowest();
+    double d_BestScore = std::numeric_limits<double>::infinity();
     PossibleMove bestMove = vec_PossibleMoves[0];
 
     for (const auto& move : vec_PossibleMoves) {
@@ -3627,7 +3668,7 @@ static MoveDecision MinimaxPoliceAlgorithm(
         vec_PolicePositions[i_PlayerIndex] = i_PrevPos;
         vec_PoliceTickets[i_PlayerIndex] = map_PrevTickets;
 
-        if (d_TotalScore > d_BestScore) {
+        if (d_TotalScore < d_BestScore) {
             d_BestScore = d_TotalScore;
             bestMove = move;
         }
