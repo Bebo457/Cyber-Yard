@@ -768,10 +768,12 @@ static MoveDecision MonteCarloMrXAlgorithm(
     };
 
     //evaluation of all moves
-    std::map<PossibleMove, double, decltype([](const PossibleMove& a, const PossibleMove& b) {
-        return a.i_DestinationNode < b.i_DestinationNode || 
+    auto fn_PossibleMoveLess = [](const PossibleMove& a, const PossibleMove& b) {
+        return a.i_DestinationNode < b.i_DestinationNode ||
                (a.i_DestinationNode == b.i_DestinationNode && a.i_TransportType < b.i_TransportType);
-    })> map_MoveScores;
+    };
+
+    std::map<PossibleMove, double, decltype(fn_PossibleMoveLess)> map_MoveScores(fn_PossibleMoveLess);
 
     for (const auto& move : vec_PossibleMoves) {
         double d_TotalScore = 0.0;
@@ -1502,7 +1504,7 @@ static MoveDecision DFSMrXAlgorithm(
         // Evaluate every 2nd step
         if (vec_Path.size() % 2 == 0) {
             double d_CurrentScore = fn_CalculatePathQuality(
-                vec_Path, vec_PoliceInfos, p_Player->GetOccupiedNode(),
+                vec_Path, vec_PoliceInfos, i_MrXPos,
                 map_Tickets, gameState.i_CurrentRound
             );
 
