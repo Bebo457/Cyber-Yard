@@ -17,10 +17,15 @@
 #include <mutex>
 #include <atomic>
 #include <memory>
+#include <string>
 
 namespace ScotlandYard {
 namespace Core {
     class Application;
+}
+
+namespace Net {
+    class NetworkManager;  // forward declaration
 }
 
 namespace States {
@@ -37,8 +42,16 @@ public:
     void Update(float f_DeltaTime) override;
     void Render(Core::Application* p_App) override;
     void HandleEvent(const SDL_Event& event, Core::Application* p_App) override;
+    
+    // Network helpers
+    void StartNetworkServer(uint16_t port);
+    void StartNetworkClient(const std::string& host, uint16_t port);
+    void StopNetwork();
+    void PollNetworkMessages();
+
 
 private:
+
     bool m_b_GameActive;
     bool m_b_Camera3D;
     bool m_b_TexturesLoaded;
@@ -240,6 +253,9 @@ private:
     std::string BuildTicketsLogSuffix();
 
     std::string BuildPlayerTicketsSuffix(int i_PlayerIndex);
+
+    // Network manager
+    std::unique_ptr<Net::NetworkManager> m_pNetworkManager;
 };
 
 } // namespace States

@@ -37,6 +37,11 @@ if(NOT FREETYPE_FOUND)
     message(FATAL_ERROR "FreeType not found. Please install FreeType development libraries")
 endif()
 
+find_package(unofficial-enet CONFIG REQUIRED)
+if(NOT unofficial-enet_FOUND)
+    message(FATAL_ERROR "ENet not found. Please install ENet development libraries")
+endif()
+
 # SOURCE FILES =========================================
 set(SOURCES
     src/main.cpp
@@ -61,6 +66,8 @@ set(SOURCES
     src/GameSettings.cpp
     src/GameSetupState.cpp
     src/GraphManager.cpp
+    src/NetworkManager.cpp
+    src/GameStateNetwork.cpp
 )
 
 set(HEADERS
@@ -82,6 +89,7 @@ set(HEADERS
     include/GameSettings.h
     include/GameSetupState.h
     include/GraphManager.h
+    include/NetworkManager.h
 )
 
 # EXE =================================================
@@ -107,6 +115,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${GLEW_LIBRARIES}
     glm::glm
     ${FREETYPE_LIBRARIES}
+    unofficial::enet::enet
 )
 
 # Platform-specific
@@ -117,6 +126,7 @@ if(WIN32)
     # Link additional Windows libraries
     target_link_libraries(${PROJECT_NAME} PRIVATE
         opengl32
+        ws2_32 winmm
     )
 
     # Copy SDL2.dll to output directory on Windows

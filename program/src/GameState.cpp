@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <sstream>
 
+// #include "NetworkManager.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "../external/stb_image.h"
 
@@ -96,50 +98,9 @@ std::string GameState::BuildPlayerTicketsSuffix(int i_PlayerIndex) {
     return oss.str();
 }
 
-GameState::GameState()
-    : m_b_GameActive(false)
-    , m_b_Camera3D(true)
-    , m_b_TexturesLoaded(false)
-    , m_VAO_Plane(0)
-    , m_VBO_Plane(0)
-    , m_ShaderProgram_Plane(0)
-    , m_ShaderProgram_Circle(0)
-    , m_VAO_Circle(0)
-    , m_VBO_Circle(0)
-    , m_i_CircleVertexCount(0)
-    , m_p_Window(nullptr)
-    , m_f_Rotation(0.0f)
-    , m_i_Width(800)
-    , m_i_Height(600)
-    , m_TextureID(0)
-    , m_vec3_CameraPosition(0.0f, 1.5f, 4.0f)
-    , m_vec3_CameraVelocity(0.0f, 0.0f, 0.0f)
-    , m_vec3_CameraFront(0.0f, -0.3f, -1.0f)
-    , m_vec3_CameraUp(0.0f, 1.0f, 0.0f)
-    , m_f_CameraAngle(k_MaxCameraAngle)
-    , m_f_CameraAngleVelocity(0.0f)
-    , m_vec3_Saved3DCameraPosition(0.0f, 1.5f, 4.0f)
-    , m_graph(200)
-    , m_FBO_Picking(0)
-    , m_TextureID_Picking(0)
-    , m_RBO_PickingDepth(0)
-    , m_FBO_PickingDilated(0)
-    , m_TextureID_PickingDilated(0)
-    , m_VAO_Arrow(0)
-    , m_VBO_Arrow(0)
-    , m_i_ArrowVertexCount(0)
-    , m_ShaderProgram_Picking(0)
-    , m_ShaderProgram_Dilation(0)
-    , m_VAO_FullscreenQuad(0)
-    , m_VBO_FullscreenQuad(0)
-    , m_i_SelectedPlayerIndex(-1)
-    , m_ui_NextPickingID(0)
-{
-}
-
-GameState::~GameState() {}
-
 void GameState::OnEnter() {
+    StartNetworkServer(1234);
+
     m_b_GameActive = true;
     m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
 
@@ -1142,6 +1103,9 @@ void GameState::OnResume() {
 
 void GameState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;
+
+    //Obsługa wiadomości sieciowych
+    PollNetworkMessages(); 
 
     if (m_b_Camera3D) {
         m_f_CameraAngleVelocity *= k_CameraScrollFriction;

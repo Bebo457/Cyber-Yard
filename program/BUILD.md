@@ -73,6 +73,7 @@ cd vcpkg
 .\vcpkg install glew:x64-windows
 .\vcpkg install glm:x64-windows
 .\vcpkg install freetype:x64-windows
+.\vcpkg install enet:x64-windows
 ```
 
 3. **Configure project:**
