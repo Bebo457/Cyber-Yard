@@ -98,6 +98,11 @@ void GameState::PollNetworkMessages() {
     }
 }
 
+// Wysyłanie wiadomości do wszystkich klientów (serwer)
+void GameState::BroadcastMessage(const std::string& msg) {
+    if (m_pNetworkManager)
+        m_pNetworkManager->SendToAll(msg);
+}
 
 } // namespace States
 } // namespace ScotlandYard

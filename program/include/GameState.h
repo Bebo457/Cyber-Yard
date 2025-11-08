@@ -48,6 +48,7 @@ public:
     void StartNetworkClient(const std::string& host, uint16_t port);
     void StopNetwork();
     void PollNetworkMessages();
+    void BroadcastMessage(const std::string& msg);
 
 
 private:
