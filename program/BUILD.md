@@ -25,7 +25,7 @@ cmake --build . --config Release
 ```bash
 # 1. Install dependencies
 sudo apt-get update
-sudo apt-get install cmake build-essential libsdl2-dev libglew-dev libgl1-mesa-dev libglm-dev libfreetype6-dev
+sudo apt-get install cmake build-essential libsdl2-dev libglew-dev libgl1-mesa-dev libglm-dev libfreetype6-dev libenet-dev
 
 # 2. Build
 mkdir build && cd build

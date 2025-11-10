@@ -37,10 +37,6 @@ if(NOT FREETYPE_FOUND)
     message(FATAL_ERROR "FreeType not found. Please install FreeType development libraries")
 endif()
 
-find_package(unofficial-enet CONFIG REQUIRED)
-if(NOT unofficial-enet_FOUND)
-    message(FATAL_ERROR "ENet not found. Please install ENet development libraries")
-endif()
 
 # SOURCE FILES =========================================
 set(SOURCES
@@ -99,29 +95,16 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
 
-# Include directories
-target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${SDL2_INCLUDE_DIRS}
-    ${OPENGL_INCLUDE_DIR}
-    ${GLEW_INCLUDE_DIRS}
-    ${FREETYPE_INCLUDE_DIRS}
-)
-
-# Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    ${SDL2_LIBRARIES}
-    ${OPENGL_LIBRARIES}
-    ${GLEW_LIBRARIES}
-    glm::glm
-    ${FREETYPE_LIBRARIES}
-    unofficial::enet::enet
-)
-
 # Platform-specific
 if(WIN32)
     # Windows-specific settings
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN)
+
+    find_package(unofficial-enet CONFIG REQUIRED)
+    if(NOT unofficial-enet_FOUND)
+        message(FATAL_ERROR "ENet not found. Please install ENet development libraries")
+    endif()
+    set(ENET_LIB unofficial::enet::enet)
 
     # Link additional Windows libraries
     target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -169,6 +152,20 @@ elseif(UNIX AND NOT APPLE)
         dl
     )
 
+    find_package(PkgConfig)
+    pkg_check_modules(ENET enet)
+    if(ENET_FOUND)
+        message("Znalazlem")
+    elseif(NOT ENET_FOUND)
+        find_path(ENET_INCLUDE_DIR enet/enet.h)
+        find_library(ENET_LIBRARY enet)
+        if(NOT ENET_INCLUDE_DIR OR NOT ENET_LIBRARY)
+            message(FATAL_ERROR "ENet not found. Install it with: sudo apt install libenet-dev")
+        endif()
+    endif()
+    include_directories(${ENET_INCLUDE_DIR})
+    set(ENET_LIB ${ENET_LIBRARY})   
+
     # Copy assets (fonts, textures, icons, maps) to binary directory
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -188,6 +185,25 @@ elseif(APPLE)
         ${COREVIDEO_LIBRARY}
     )
 endif()
+
+# Include directories
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${SDL2_INCLUDE_DIRS}
+    ${OPENGL_INCLUDE_DIR}
+    ${GLEW_INCLUDE_DIRS}
+    ${FREETYPE_INCLUDE_DIRS}
+)
+
+# Link libraries
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    ${SDL2_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+    ${GLEW_LIBRARIES}
+    glm::glm
+    ${FREETYPE_LIBRARIES}
+    ${ENET_LIB}
+)
 
 # COMPILER WARNINGS============================================
 
