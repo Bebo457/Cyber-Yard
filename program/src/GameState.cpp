@@ -2196,6 +2196,21 @@ void GameState::HandlePlayerClick(int i_PlayerIndex) {
         m_i_SelectedPlayerIndex = i_PlayerIndex;
         UpdateArrowsForSelectedPlayer();
     std::cout << "[GameState] Selected player " << i_PlayerIndex << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
+        // Show a simple popup for detectives indicating which player was selected
+        bool b_IsMrX = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_Players);
+            if (i_PlayerIndex >= 0 && i_PlayerIndex < static_cast<int>(m_vec_Players.size())) {
+                b_IsMrX = (m_vec_Players[i_PlayerIndex].GetType() == Core::PlayerType::MisterX);
+            }
+        }
+        if (!b_IsMrX) {
+            // show compact lowercase label like "player 1"
+            UI::SetDetectivePopupText(std::string("Player ") + std::to_string(i_PlayerIndex));
+            UI::ShowDetectivePopup(true);
+        } else {
+            UI::ShowDetectivePopup(false);
+        }
     }
 }
 
@@ -2255,6 +2270,7 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
     std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
 
         m_i_SelectedPlayerIndex = -1;
+        UI::ShowDetectivePopup(false);
         m_vec_CurrentArrows.clear();
 
         bool b_Captured = false;
@@ -2369,6 +2385,7 @@ void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
     if (ui_ClickedID == 0) {
         m_i_SelectedPlayerIndex = -1;
         m_vec_CurrentArrows.clear();
+        UI::ShowDetectivePopup(false);
         return;
     }
 

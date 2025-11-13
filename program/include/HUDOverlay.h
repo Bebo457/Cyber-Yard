@@ -115,6 +115,10 @@ namespace UI {
     void HandleMouseMotion(int x_px, int y_px);
     void SetPausedDebugState(bool enabled);
 
+    // Detective selection popup (simple modal showing selected player)
+    void ShowDetectivePopup(bool show);
+    void SetDetectivePopupText(const std::string& text);
+
     void DrawMenuLikeButton(const SDL_Rect& r, const char* text,
         Core::Application* app,
         bool highlighted = false);

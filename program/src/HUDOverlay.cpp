@@ -73,6 +73,11 @@ namespace UI {
     std::atomic_bool g_b_MrXBlackEnabled{true};
     std::atomic_bool g_b_MrXDoubleEnabled{true};
 
+    // Detective selection popup
+    std::atomic_bool g_b_ShowDetectivePopup{false};
+    std::string g_str_DetectivePopupText;
+    int g_i_DetectivePanelX0 = 0, g_i_DetectivePanelY0 = 0, g_i_DetectivePanelX1 = 0, g_i_DetectivePanelY1 = 0;
+
         int g_i_Round = 1;
 
         std::vector<TicketSlot> g_vec_TicketSlots(k_TicketSlotCount);
@@ -701,6 +706,15 @@ namespace UI {
         }
     }
 
+    void ShowDetectivePopup(bool show) {
+        g_b_ShowDetectivePopup.store(show);
+        if (!show) g_str_DetectivePopupText.clear();
+    }
+
+    void SetDetectivePopupText(const std::string& text) {
+        g_str_DetectivePopupText = text;
+    }
+
     void SetSlotMark(int round_1_to_24, TicketMark mark, bool markUsed) {
         int idx = std::clamp(round_1_to_24, 1, (int)g_vec_TicketSlots.size()) - 1;
         if (idx < 0 || idx >= (int)g_vec_TicketSlots.size()) return;
@@ -819,6 +833,41 @@ namespace UI {
             g_i_MrXDoubleBtnX1 = rDouble.x + rDouble.w;
             g_i_MrXDoubleBtnY1 = rDouble.y + rDouble.h;
         }
+
+            // Detective selection popup (draw in same area/style as Mr X panel)
+            if (g_b_ShowDetectivePopup.load()) {
+                int i_W = p_App->GetWidth();
+                int i_H = p_App->GetHeight();
+
+                float f_TopBarBottomPx = ndcY_to_px(f_TY0);
+
+                float f_PanelW = std::min(320.0f, float(i_W) * 0.28f);
+                float f_Pad = 12.0f;
+                // Make the panel noticeably taller but reserve a small rect at the top for the small label
+                float f_PanelH = 200.0f; // taller panel with empty space under the text
+
+                float f_Left = 16.0f;
+                float f_Top = std::min(float(i_H) - 16.0f, f_TopBarBottomPx - 10.0f);
+                float f_Bottom = f_Top - f_PanelH;
+                if (f_Bottom < 10.0f) {
+                    f_Bottom = 10.0f;
+                    f_Top = f_Bottom + f_PanelH;
+                }
+                float f_Right = f_Left + f_PanelW;
+
+                DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, g_HUDStyle.barColor, 12, p_App);
+
+                ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
+
+                // reserve a small area at the top for a compact label, leave the rest empty
+                float f_TextHeight = 28.0f; // small text box height
+                float f_TextY1 = f_Top - f_Pad;
+                float f_TextY0 = f_TextY1 - f_TextHeight;
+                DrawTextCenteredPx(g_str_DetectivePopupText.empty() ? std::string("") : g_str_DetectivePopupText, (float)f_Left + f_Pad, f_TextY0, (float)f_Right - f_Pad, f_TextY1, white, p_App, -10.0f);
+
+                g_i_DetectivePanelX0 = (int)f_Left; g_i_DetectivePanelY0 = (int)f_Bottom;
+                g_i_DetectivePanelX1 = (int)f_Right; g_i_DetectivePanelY1 = (int)f_Top;
+            }
 
         // Draw paused modal on top of HUD if requested
         if (g_b_ShowPausedModal.load()) {
