@@ -6,7 +6,7 @@
 
 ```powershell
 # 1. Install dependencies using vcpkg
-vcpkg install sdl2 glew glm freetype
+vcpkg install sdl2 glew glm freetype enet
 
 # 2. Configure CMake
 mkdir build
@@ -40,7 +40,7 @@ make -j$(nproc)
 
 ```bash
 # 1. Install dependencies
-brew install cmake sdl2 glew glm freetype
+brew install cmake sdl2 glew glm freetype enet
 
 # 2. Build
 mkdir build && cd build
