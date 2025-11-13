@@ -13,6 +13,16 @@ namespace UI {
 
     struct Color { float r, g, b, a; };
 
+    struct DetectiveTickets {
+        int taxi = 0;
+        int bus = 0;
+        int metro = 0;
+        int water = 0;
+        int black = 0;       // only for Mr X
+        int doubleMove = 0;  // only for Mr X
+        bool isMrX = false;
+    };
+
     constexpr float k_DefaultViewportWidth = 1280.0f;
     constexpr float k_DefaultViewportHeight = 720.0f;
     constexpr int k_TicketSlotCount = 24;
@@ -118,6 +128,8 @@ namespace UI {
     // Detective selection popup (simple modal showing selected player)
     void ShowDetectivePopup(bool show);
     void SetDetectivePopupText(const std::string& text);
+    void SetDetectivePopupTickets(const DetectiveTickets& t);
+
 
     void DrawMenuLikeButton(const SDL_Rect& r, const char* text,
         Core::Application* app,

@@ -2205,12 +2205,32 @@ void GameState::HandlePlayerClick(int i_PlayerIndex) {
             }
         }
         if (!b_IsMrX) {
-            // show compact lowercase label like "player 1"
+            UI::DetectiveTickets t;
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                if (i_PlayerIndex >= 0 && i_PlayerIndex < static_cast<int>(m_vec_Players.size())) {
+                    const auto& p = m_vec_Players[i_PlayerIndex];
+                    t.taxi = p.GetTaxiTickets();
+                    t.bus = p.GetBusTickets();
+                    t.metro = p.GetMetroTickets();
+                    t.water = p.GetWaterTickets();
+                    t.isMrX = (p.GetType() == Core::PlayerType::MisterX);
+                    if (t.isMrX) {
+                        t.black = p.GetBlackTickets();
+                        t.doubleMove = p.GetDoubleMoveTickets();
+                    }
+                }
+            }
+
+            UI::SetDetectivePopupTickets(t);
             UI::SetDetectivePopupText(std::string("Player ") + std::to_string(i_PlayerIndex));
             UI::ShowDetectivePopup(true);
-        } else {
+        }
+        else {
             UI::ShowDetectivePopup(false);
         }
+
+
     }
 }
 

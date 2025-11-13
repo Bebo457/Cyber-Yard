@@ -77,6 +77,8 @@ namespace UI {
     std::atomic_bool g_b_ShowDetectivePopup{false};
     std::string g_str_DetectivePopupText;
     int g_i_DetectivePanelX0 = 0, g_i_DetectivePanelY0 = 0, g_i_DetectivePanelX1 = 0, g_i_DetectivePanelY1 = 0;
+    DetectiveTickets g_DetectiveTickets{};
+
 
         int g_i_Round = 1;
 
@@ -708,12 +710,21 @@ namespace UI {
 
     void ShowDetectivePopup(bool show) {
         g_b_ShowDetectivePopup.store(show);
-        if (!show) g_str_DetectivePopupText.clear();
+        if (!show) {
+            g_str_DetectivePopupText.clear();
+            g_DetectiveTickets = DetectiveTickets{};
+        }
     }
 
     void SetDetectivePopupText(const std::string& text) {
         g_str_DetectivePopupText = text;
     }
+
+    void SetDetectivePopupTickets(const DetectiveTickets& t) {
+        g_DetectiveTickets = t;
+    }
+
+
 
     void SetSlotMark(int round_1_to_24, TicketMark mark, bool markUsed) {
         int idx = std::clamp(round_1_to_24, 1, (int)g_vec_TicketSlots.size()) - 1;
@@ -834,42 +845,110 @@ namespace UI {
             g_i_MrXDoubleBtnY1 = rDouble.y + rDouble.h;
         }
 
-            // Detective selection popup (draw in same area/style as Mr X panel)
-            if (g_b_ShowDetectivePopup.load()) {
-                int i_W = p_App->GetWidth();
-                int i_H = p_App->GetHeight();
+        // Detective selection popup
+        if (g_b_ShowDetectivePopup.load()) {
+            int i_W = p_App->GetWidth();
+            int i_H = p_App->GetHeight();
 
-                float f_TopBarBottomPx = ndcY_to_px(f_TY0);
+            float f_TopBarBottomPx = ndcY_to_px(f_TY0);
 
-                float f_PanelW = std::min(320.0f, float(i_W) * 0.28f);
-                float f_Pad = 12.0f;
-                // Make the panel noticeably taller but reserve a small rect at the top for the small label
-                float f_PanelH = 200.0f; // taller panel with empty space under the text
+            float f_PanelW = std::min(320.0f, float(i_W) * 0.28f);
+            float f_Pad = 12.0f;
+            float f_PanelH = 220.0f;
 
-                float f_Left = 16.0f;
-                float f_Top = std::min(float(i_H) - 16.0f, f_TopBarBottomPx - 10.0f);
-                float f_Bottom = f_Top - f_PanelH;
-                if (f_Bottom < 10.0f) {
-                    f_Bottom = 10.0f;
-                    f_Top = f_Bottom + f_PanelH;
-                }
-                float f_Right = f_Left + f_PanelW;
+            float f_Left = 16.0f;
+            float f_Top = std::min(float(i_H) - 16.0f, f_TopBarBottomPx - 10.0f);
+            float f_Bottom = f_Top - f_PanelH;
+            if (f_Bottom < 10.0f) {
+                f_Bottom = 10.0f;
+                f_Top = f_Bottom + f_PanelH;
+            }
+            float f_Right = f_Left + f_PanelW;
 
-                DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, g_HUDStyle.barColor, 12, p_App);
+            DrawRoundedRectScreen(f_Left, f_Bottom, f_Right, f_Top, g_HUDStyle.barColor, 12, p_App);
 
-                ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
+            Color white{ 1.0f, 1.0f, 1.0f, 1.0f };
 
-                // reserve a small area at the top for a compact label, leave the rest empty
-                float f_TextHeight = 28.0f; // small text box height
-                float f_TextY1 = f_Top - f_Pad;
-                float f_TextY0 = f_TextY1 - f_TextHeight;
-                DrawTextCenteredPx(g_str_DetectivePopupText.empty() ? std::string("") : g_str_DetectivePopupText, (float)f_Left + f_Pad, f_TextY0, (float)f_Right - f_Pad, f_TextY1, white, p_App, -10.0f);
+            float f_TextHeight = 28.0f;
+            float f_TextY1 = f_Top - f_Pad;
+            float f_TextY0 = f_TextY1 - f_TextHeight;
 
-                g_i_DetectivePanelX0 = (int)f_Left; g_i_DetectivePanelY0 = (int)f_Bottom;
-                g_i_DetectivePanelX1 = (int)f_Right; g_i_DetectivePanelY1 = (int)f_Top;
+            DrawTextCenteredPx(
+                g_str_DetectivePopupText.empty() ? "Player" : g_str_DetectivePopupText.c_str(),
+                f_Left + f_Pad,
+                f_TextY0,
+                f_Right - f_Pad,
+                f_TextY1,
+                white,
+                p_App,
+                -10.0f
+            );
+
+
+            float f_PillsTop = f_TextY0 - f_Pad;
+            float f_PillHeight = 28.0f;
+            float f_PillWidth = 110.0f;
+            float f_PillGap = 20.0f;
+
+            float f_CenterX = 0.5f * (f_Left + f_Right);
+            float f_CurTop = f_PillsTop;
+
+            auto drawTicketTile = [&](const char* shortLabel, int count, const Color& c)
+                {
+                    if (count <= 0) return;
+
+                    float f_X0 = f_CenterX - 0.5f * f_PillWidth;
+                    float f_X1 = f_CenterX + 0.5f * f_PillWidth;
+                    float f_Y1 = f_CurTop;
+                    float f_Y0 = f_Y1 - f_PillHeight;
+
+                    DrawRoundedRectScreen(f_X0, f_Y0, f_X1, f_Y1, c, 8, p_App);
+
+                    // left
+                    DrawTextCenteredPx(
+                        shortLabel,
+                        f_X0,
+                        f_Y0,
+                        f_X1,
+                        f_Y1,
+                        white,
+                        p_App,
+                        0.0f
+                    );
+
+                    // right
+                    std::string sCount = std::to_string(count);
+                    DrawTextCenteredPx(
+                        sCount.c_str(),
+                        f_X0 + 150.0f,
+                        f_Y0,
+                        f_X1 - 10.0f,
+                        f_Y1,
+                        white,
+                        p_App,
+                        0.0f
+                    );
+
+                    f_CurTop -= (f_PillHeight + f_PillGap);
+                };
+
+            drawTicketTile("T", g_DetectiveTickets.taxi, g_vec_PillColors[2]);
+            drawTicketTile("B", g_DetectiveTickets.bus, g_vec_PillColors[4]);
+            drawTicketTile("M", g_DetectiveTickets.metro, g_vec_PillColors[3]);
+            drawTicketTile("W", g_DetectiveTickets.water, g_vec_PillColors[5]);
+            if (g_DetectiveTickets.isMrX) {
+                drawTicketTile("BL", g_DetectiveTickets.black, g_vec_PillColors[0]);
+                drawTicketTile("2x", g_DetectiveTickets.doubleMove, g_vec_PillColors[1]);
             }
 
-        // Draw paused modal on top of HUD if requested
+            g_i_DetectivePanelX0 = static_cast<int>(f_Left);
+            g_i_DetectivePanelY0 = static_cast<int>(f_Bottom);
+            g_i_DetectivePanelX1 = static_cast<int>(f_Right);
+            g_i_DetectivePanelY1 = static_cast<int>(f_Top);
+        }
+
+        
+
         if (g_b_ShowPausedModal.load()) {
             GLboolean b_DepthWas = glIsEnabled(GL_DEPTH_TEST);
             GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
