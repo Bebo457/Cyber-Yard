@@ -343,6 +343,14 @@ namespace ScotlandYard {
             m_vec_Bridges = MapGen::GenerateBridges(m_vec_GridPoints, m_vec_RiverPath,
                                             numBridges, m_i_CurrentCorner);
 
+            m_vec_GridPoints = MapGen::GenerateNodePositions(
+                mapW, mapH,
+                m_vec_RiverPath,
+                m_vec_Parks,
+                120, // or any number of nodes you want
+                ui_Seed
+            );
+
             SaveMapToFile();
             UpdatePreviewTexture();
             

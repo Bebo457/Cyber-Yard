@@ -58,5 +58,13 @@ std::vector<std::pair<Point, Point>> GenerateBridges(
     int i_Corner
 );
 
+std::vector<Point> GenerateNodePositions(
+    int i_Width, int i_Height,
+    const std::vector<Point>& vec_RiverPath,
+    const std::vector<Park>& vec_Parks,
+    int i_NumNodes,
+    unsigned int seed 
+);
+
 } // namespace MapGen
 } // namespace ScotlandYard
