@@ -95,7 +95,6 @@ namespace UI {
             {0xED / 255.0f, 0xD1 / 255.0f, 0x00 / 255.0f, 1.0f},
             {0xF5 / 255.0f, 0x51 / 255.0f, 0xAE / 255.0f, 1.0f},
             {0x41 / 255.0f, 0x84 / 255.0f, 0x3D / 255.0f, 1.0f},
-            {0x00 / 255.0f, 0x60 / 255.0f, 0xFF / 255.0f, 1.0f}, // water
         };
 
         float pxToNDC(float f_Px) { return (2.0f * f_Px) / float(g_i_ViewportHeight); }
@@ -414,7 +413,6 @@ namespace UI {
                     case TicketMark::Taxi:       label = "T";  break;
                     case TicketMark::Bus:        label = "B";  break;
                     case TicketMark::Metro:      label = "M";  break;
-                    case TicketMark::Water:      label = "W";  break;
                     case TicketMark::Black:      label = "BL"; break;
                     case TicketMark::DoubleMove: label = "2x"; break;
                     default: break;
@@ -737,7 +735,6 @@ namespace UI {
         case TicketMark::Taxi:       c = g_vec_PillColors[2]; break;
         case TicketMark::Bus:        c = g_vec_PillColors[4]; break;
         case TicketMark::Metro:      c = g_vec_PillColors[3]; break;
-        case TicketMark::Water:      c = g_vec_PillColors[5]; break;
         case TicketMark::Black:      c = g_vec_PillColors[0]; break;
         case TicketMark::DoubleMove: c = g_vec_PillColors[1]; break;
         default: break;
@@ -935,7 +932,6 @@ namespace UI {
             drawTicketTile("T", g_DetectiveTickets.taxi, g_vec_PillColors[2]);
             drawTicketTile("B", g_DetectiveTickets.bus, g_vec_PillColors[4]);
             drawTicketTile("M", g_DetectiveTickets.metro, g_vec_PillColors[3]);
-            drawTicketTile("W", g_DetectiveTickets.water, g_vec_PillColors[5]);
             if (g_DetectiveTickets.isMrX) {
                 drawTicketTile("BL", g_DetectiveTickets.black, g_vec_PillColors[0]);
                 drawTicketTile("2x", g_DetectiveTickets.doubleMove, g_vec_PillColors[1]);

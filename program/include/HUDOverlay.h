@@ -17,7 +17,6 @@ namespace UI {
         int taxi = 0;
         int bus = 0;
         int metro = 0;
-        int water = 0;
         int black = 0;       // only for Mr X
         int doubleMove = 0;  // only for Mr X
         bool isMrX = false;
@@ -30,7 +29,7 @@ namespace UI {
     constexpr float k_DefaultInsetXMax = 0.45f;
 
     enum class TicketMark {
-        None = 0, Taxi, Bus, Metro, Water, Black, DoubleMove
+        None = 0, Taxi, Bus, Metro, Black, DoubleMove
     };
 
     struct TicketSlot {

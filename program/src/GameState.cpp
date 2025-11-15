@@ -41,8 +41,13 @@ bool HasTicketForTransport(const Core::Player& player, int i_TransportType) {
             if (player.GetMetroTickets() > 0) return true;
             break;
         case k_TransportTypeWater:
-            if (player.GetWaterTickets() > 0) return true;
-            break;
+            // Water transport requires black tickets (no water tickets exist)
+            // Ferry arrows only appear when black ticket is explicitly selected
+            if (player.GetType() == Core::PlayerType::MisterX) {
+                return UI::IsMrXBlackSelected() && player.GetBlackTickets() > 0;
+            }
+            // Detectives cannot use water transport
+            return false;
         default:
             return false;
     }
@@ -74,8 +79,7 @@ std::string GameState::BuildTicketsLogSuffix() {
 
         oss << "(taxi:" << p.GetTaxiTickets()
             << ", bus:" << p.GetBusTickets()
-            << ", metro:" << p.GetMetroTickets()
-            << ", water:" << p.GetWaterTickets();
+            << ", metro:" << p.GetMetroTickets();
         if (b_IsMrX) {
             oss << ", black:" << p.GetBlackTickets()
                 << ", 2x:" << p.GetDoubleMoveTickets();
@@ -93,8 +97,7 @@ std::string GameState::BuildPlayerTicketsSuffix(int i_PlayerIndex) {
     oss << " | Tickets: "
         << "taxi:" << p.GetTaxiTickets()
         << ", bus:" << p.GetBusTickets()
-        << ", metro:" << p.GetMetroTickets()
-        << ", water:" << p.GetWaterTickets();
+        << ", metro:" << p.GetMetroTickets();
     if (p.GetType() == Core::PlayerType::MisterX) {
         oss << ", black:" << p.GetBlackTickets()
             << ", 2x:" << p.GetDoubleMoveTickets();
@@ -768,10 +771,20 @@ void GameState::OnEnter() {
                 // If Mr X is moving, allow choosing Black ticket usage
                 if (player.GetType() == ScotlandYard::Core::PlayerType::MisterX) {
                     b_MrXSecondMoveWasPending = m_b_MrXSecondMovePending.load();
-                    std::cout << "[Console] Mr X move: use BLACK ticket? (y/N): ";
-                    std::string s_Black;
-                    std::getline(std::cin, s_Black);
-                    if (!s_Black.empty() && (s_Black == "y" || s_Black == "Y")) {
+                    // Water transport ALWAYS requires black ticket for Mister X
+                    bool b_ForceBlackForWater = (i_TransportType == Core::k_TransportTypeWater);
+                    bool b_UseBlack = b_ForceBlackForWater;
+
+                    if (!b_ForceBlackForWater) {
+                        std::cout << "[Console] Mr X move: use BLACK ticket? (y/N): ";
+                        std::string s_Black;
+                        std::getline(std::cin, s_Black);
+                        b_UseBlack = (!s_Black.empty() && (s_Black == "y" || s_Black == "Y"));
+                    } else {
+                        std::cout << "[Console] Water transport requires BLACK ticket.\n";
+                    }
+
+                    if (b_UseBlack) {
                         if (player.GetBlackTickets() > 0) {
                             if (!player.SpendBlackTicket()) {
                                 std::cout << "[Console] Unexpected: failed to spend black ticket.\n";
@@ -797,7 +810,9 @@ void GameState::OnEnter() {
                         b_TicketAvailable = player.SpendMetroTicket();
                     }
                     else if (i_TransportType == Core::k_TransportTypeWater) {
-                        b_TicketAvailable = player.SpendWaterTicket();
+                        // Water transport should have used black ticket
+                        std::cout << "[Console] Error: Water transport requires black ticket.\n";
+                        b_TicketAvailable = false;
                     }
                 }
 
@@ -841,7 +856,6 @@ void GameState::OnEnter() {
                         } else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
                         else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
                         else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
-                        else if (i_TransportType == Core::k_TransportTypeWater) mark = TicketMark::Water;
 
                         int i_TurnIdx = m_i_MrXTurn.load() + 1; // 1-based for HUD
                         UI::SetSlotMark(i_TurnIdx, mark, true);
@@ -1454,6 +1468,15 @@ void GameState::RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
 
+    // Count detectives per node to calculate radial offset
+    std::map<int, std::vector<size_t>> map_NodeDetectives;
+    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+        if (m_vec_Players[i].GetType() == Core::PlayerType::Detective) {
+            int i_NodeId = m_vec_Players[i].GetOccupiedNode();
+            map_NodeDetectives[i_NodeId].push_back(i);
+        }
+    }
+
     for (const auto& player : m_vec_Players) {
         if (player.GetType() != Core::PlayerType::Detective) continue;
 
@@ -1463,7 +1486,34 @@ void GameState::RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_
         if (it == m_vec_CircleStations.end()) continue;
 
         glm::vec2 vec2_Position = it->position;
-        glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f), glm::vec3(vec2_Position.x, 0.05f * m_f_GlobalScale, vec2_Position.y));
+
+        // Calculate radial offset for multiple detectives on same node
+        const auto& vec_DetectivesOnNode = map_NodeDetectives[i_NodeId];
+        int i_DetectiveCount = static_cast<int>(vec_DetectivesOnNode.size());
+        int i_DetectiveIndex = 0;
+
+        // Find this detective's index among those on the same node
+        for (size_t idx = 0; idx < vec_DetectivesOnNode.size(); ++idx) {
+            if (&m_vec_Players[vec_DetectivesOnNode[idx]] == &player) {
+                i_DetectiveIndex = static_cast<int>(idx);
+                break;
+            }
+        }
+
+        // Apply circular offset if multiple detectives on same node
+        float f_OffsetX = 0.0f;
+        float f_OffsetZ = 0.0f;
+        if (i_DetectiveCount > 1) {
+            const float k_CircleRadius = 0.2f * m_f_GlobalScale;
+            float f_Angle = (2.0f * 3.14159265359f * i_DetectiveIndex) / i_DetectiveCount;
+            f_OffsetX = k_CircleRadius * std::cos(f_Angle);
+            f_OffsetZ = k_CircleRadius * std::sin(f_Angle);
+        }
+
+        glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f),
+                                              glm::vec3(vec2_Position.x + f_OffsetX,
+                                                       0.05f * m_f_GlobalScale,
+                                                       vec2_Position.y + f_OffsetZ));
         mat4_Model = glm::scale(mat4_Model, glm::vec3(2.0f));
         mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
@@ -2220,7 +2270,6 @@ void GameState::HandlePlayerClick(int i_PlayerIndex) {
                     t.taxi = p.GetTaxiTickets();
                     t.bus = p.GetBusTickets();
                     t.metro = p.GetMetroTickets();
-                    t.water = p.GetWaterTickets();
                     t.isMrX = (p.GetType() == Core::PlayerType::MisterX);
                     if (t.isMrX) {
                         t.black = p.GetBlackTickets();
@@ -2268,9 +2317,19 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
         if (player.GetType() == Core::PlayerType::MisterX) {
             b_MrXSecondMoveWasPending = m_b_MrXSecondMovePending.load();
             bool b_UIBlack = UI::IsMrXBlackSelected();
-            if (b_UIBlack && player.GetBlackTickets() > 0) {
+            // Water transport ALWAYS requires black ticket for Mister X
+            bool b_ForceBlackForWater = (i_TransportType == Core::k_TransportTypeWater);
+            if ((b_UIBlack || b_ForceBlackForWater) && player.GetBlackTickets() > 0) {
                 b_TicketAvailable = player.SpendBlackTicket();
                 b_MrXUsedBlack = b_TicketAvailable;
+                if (b_ForceBlackForWater && !b_TicketAvailable) {
+                    std::cout << "[GameState] ERROR: Failed to spend black ticket for water transport!\n";
+                    return;
+                }
+            } else if (b_ForceBlackForWater) {
+                // Water transport requested but no black tickets available
+                std::cout << "[GameState] Cannot use water transport: No black tickets available.\n";
+                return;
             }
         }
         if (!b_MrXUsedBlack) {
@@ -2281,7 +2340,9 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
             } else if (i_TransportType == Core::k_TransportTypeMetro) {
                 b_TicketAvailable = player.SpendMetroTicket();
             } else if (i_TransportType == Core::k_TransportTypeWater) {
-                b_TicketAvailable = player.SpendWaterTicket();
+                // Water transport should have used black ticket
+                std::cout << "[GameState] Error: Water transport requires black ticket.\n";
+                b_TicketAvailable = false;
             }
         }
 
@@ -2321,7 +2382,6 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
                 else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
                 else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
                 else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
-                else if (i_TransportType == Core::k_TransportTypeWater) mark = TicketMark::Water;
 
                 int i_TurnIdx = m_i_MrXTurn.load() + 1;
                 UI::SetSlotMark(i_TurnIdx, mark, true);
@@ -2471,6 +2531,16 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
 
     {
         std::lock_guard<std::mutex> lock(m_mtx_Players);
+
+        // Count detectives per node to calculate radial offset
+        std::map<int, std::vector<size_t>> map_NodeDetectives;
+        for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+            if (m_vec_Players[i].GetType() == Core::PlayerType::Detective) {
+                int i_NodeId = m_vec_Players[i].GetOccupiedNode();
+                map_NodeDetectives[i_NodeId].push_back(i);
+            }
+        }
+
         for (size_t i = 0; i < m_vec_Players.size(); ++i) {
             const auto& player = m_vec_Players[i];
             int i_NodeId = player.GetOccupiedNode();
@@ -2484,8 +2554,33 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
             uint32_t ui_ID = RegisterClickable(e_Type, static_cast<int>(i), 0);
             glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
 
+            // Calculate radial offset for multiple detectives on same node
+            float f_OffsetX = 0.0f;
+            float f_OffsetZ = 0.0f;
+            if (player.GetType() == Core::PlayerType::Detective) {
+                const auto& vec_DetectivesOnNode = map_NodeDetectives[i_NodeId];
+                int i_DetectiveCount = static_cast<int>(vec_DetectivesOnNode.size());
+                int i_DetectiveIndex = 0;
+
+                // Find this detective's index among those on the same node
+                for (size_t idx = 0; idx < vec_DetectivesOnNode.size(); ++idx) {
+                    if (vec_DetectivesOnNode[idx] == i) {
+                        i_DetectiveIndex = static_cast<int>(idx);
+                        break;
+                    }
+                }
+
+                // Apply circular offset if multiple detectives on same node
+                if (i_DetectiveCount > 1) {
+                    const float k_CircleRadius = 0.1f * m_f_GlobalScale;
+                    float f_Angle = (2.0f * 3.14159265359f * i_DetectiveIndex) / i_DetectiveCount;
+                    f_OffsetX = k_CircleRadius * std::cos(f_Angle);
+                    f_OffsetZ = k_CircleRadius * std::sin(f_Angle);
+                }
+            }
+
             glm::mat4 mat4_Model = glm::mat4(1.0f);
-            mat4_Model = glm::translate(mat4_Model, glm::vec3(it->position.x, 0.05f * m_f_GlobalScale, it->position.y));
+            mat4_Model = glm::translate(mat4_Model, glm::vec3(it->position.x + f_OffsetX, 0.05f * m_f_GlobalScale, it->position.y + f_OffsetZ));
             mat4_Model = glm::scale(mat4_Model, glm::vec3(2.0f));
             mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 

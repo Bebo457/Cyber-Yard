@@ -26,7 +26,6 @@ public:
     int GetTaxiTickets() const { return m_i_TaxiTickets; }
     int GetBusTickets() const { return m_i_BusTickets; }
     int GetMetroTickets() const { return m_i_MetroTickets; }
-    int GetWaterTickets() const { return m_i_WaterTickets; }
     int GetBlackTickets() const { return m_i_BlackTickets; }
     int GetDoubleMoveTickets() const { return m_i_DoubleMoveTickets; }
 
@@ -34,7 +33,6 @@ public:
     bool SpendTaxiTicket();
     bool SpendBusTicket();
     bool SpendMetroTicket();
-    bool SpendWaterTicket();
     bool SpendBlackTicket();
     bool SpendDoubleMoveTicket();
 
@@ -54,7 +52,6 @@ private:
     int m_i_TaxiTickets;
     int m_i_BusTickets;
     int m_i_MetroTickets;
-    int m_i_WaterTickets;
     int m_i_BlackTickets; // MrX only
     int m_i_DoubleMoveTickets; // MrX only
 };

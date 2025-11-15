@@ -26,13 +26,11 @@ inline bool IsRevealRound(int i_Round) {
 static constexpr int k_DetectiveTaxiTickets = 11;
 static constexpr int k_DetectiveBusTickets = 8;
 static constexpr int k_DetectiveMetroTickets = 4;
-static constexpr int k_DetectiveWaterTickets = 0;
 
 // Initial Ticket Counts - Mr. X
 static constexpr int k_MrXTaxiTickets = 30;
 static constexpr int k_MrXBusTickets = 30;
 static constexpr int k_MrXMetroTickets = 30;
-static constexpr int k_MrXWaterTickets = 30;
 static constexpr int k_MrXBlackTickets = 5;
 static constexpr int k_MrXDoubleMoveTickets = 2;
 
