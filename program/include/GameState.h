@@ -18,6 +18,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include "Logger.h"
 
 namespace ScotlandYard {
 namespace Core {

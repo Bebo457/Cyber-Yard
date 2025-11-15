@@ -64,6 +64,7 @@ set(SOURCES
     src/GraphManager.cpp
     src/NetworkManager.cpp
     src/GameStateNetwork.cpp
+    src/Logger.cpp
 )
 
 set(HEADERS
@@ -86,6 +87,7 @@ set(HEADERS
     include/GameSetupState.h
     include/GraphManager.h
     include/NetworkManager.h
+    include/Logger.h
 )
 
 # EXE =================================================

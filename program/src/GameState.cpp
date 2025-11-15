@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <sstream>
 
+#include "Logger.h"
+
 // #include "NetworkManager.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -53,6 +55,8 @@ bool HasTicketForTransport(const Core::Player& player, int i_TransportType) {
 }
 
 }
+
+GameLogger logger("game_log.csv");
 
 std::string GameState::BuildTicketsLogSuffix() {
     std::lock_guard<std::mutex> lock(m_mtx_Players);
@@ -1797,16 +1801,19 @@ void GameState::CheckEndOfGame(Winner winner) {
             return; 
         }
     }
-
+    
     m_b_GameActive = false;
     m_EndGameWinner = winner;
     m_b_ShowEndGameModal.store(true);
 
     if (winner == Winner::Detectives) {
-    std::cout << "[Game] Detectives win -- MisterX captured!\n";
+        std::cout << "[Game] Detectives win -- MisterX captured!\n";
+        logger.logGameEnd("Detectives");
     } else if (winner == Winner::MisterX) {
-    std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
+        std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
+        logger.logGameEnd("MisterX");
     }
+    
 }
 
 bool GameState::CheckCapture() const {
@@ -2251,6 +2258,7 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
     bool b_MoveSuccessful = false;
     bool b_MrXUsedBlack = false;
     bool b_MrXSecondMoveWasPending = false;
+    int i_moveBuffor = -1;
 
     {
         std::lock_guard<std::mutex> lock(m_mtx_Players);
@@ -2281,14 +2289,14 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
             std::cout << "[GameState] No tickets available for this transport type.\n";
             return;
         }
-
+        i_moveBuffor = player.GetOccupiedNode();
         player.MoveTo(i_DestinationNode);
         b_MoveSuccessful = true;
     }
 
     if (b_MoveSuccessful) {
     std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
-
+        logger.logPlayerMove(i_PlayerIndex, i_moveBuffor , i_DestinationNode, i_TransportType); //todo zmienić pozycjateraz na odpowiednią zmienną
         m_i_SelectedPlayerIndex = -1;
         UI::ShowDetectivePopup(false);
         m_vec_CurrentArrows.clear();
@@ -2746,4 +2754,4 @@ void GameState::AdvanceRoundIfComplete() {
 }
 
 } // namespace States
-} // namespace ScotlandYard
+} // namespace ScotlandYard;
