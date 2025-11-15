@@ -277,6 +277,33 @@ std::vector<Point> GenerateRiverPath(const std::vector<Point>& vec_ControlPoints
     return vec_RiverPath;
 }
 
+std::vector<Point> RemoveNodesOnRiver(const std::vector<Point>& vec_GridPoints,
+                                       const std::vector<Point>& vec_RiverPath,
+                                       float f_MinDistance) {
+    std::vector<Point> vec_FilteredPoints;
+    vec_FilteredPoints.reserve(vec_GridPoints.size());
+    
+    int i_RemovedCount = 0;
+    
+    for (const auto& gridPoint : vec_GridPoints) {
+        float f_DistToRiver = GetDistanceToRiver(gridPoint, vec_RiverPath);
+        
+        if (f_DistToRiver >= f_MinDistance) {
+            vec_FilteredPoints.push_back(gridPoint);
+        } else {
+            i_RemovedCount++;
+        }
+    }
+    
+    // std::cout << "[MapGen] Removed " << i_RemovedCount << " nodes on river (distance < " 
+    //           << f_MinDistance << ")" << std::endl;
+    // std::cout << "[MapGen] Remaining nodes: " << vec_FilteredPoints.size() 
+    //           << " / " << vec_GridPoints.size() << std::endl;
+    
+    return vec_FilteredPoints;
+}
+
+
 std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
                                 const std::vector<Point>& vec_RiverPath,
                                 int i_Corner, int i_NumParks,
@@ -284,7 +311,6 @@ std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
     std::vector<Park> vec_Parks;
     std::vector<Point> vec_ValidPoints;
     
-    // POPRAWIONE: użyj f_MaxSize zamiast Config::PARK_MAX_SIZE
     for (const auto& gp : vec_GridPoints) {
         if (IsOnMajorSide(gp, vec_RiverPath, i_Corner)) {
             float f_DistToRiver = GetDistanceToRiver(gp, vec_RiverPath);
@@ -307,7 +333,6 @@ std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
         int i_Idx = rand() % vec_ValidPoints.size();
         Point center = vec_ValidPoints[i_Idx];
         
-        // POPRAWIONE: użyj f_MinSize i f_MaxSize z parametrów
         float f_Range = f_MaxSize - f_MinSize;
         float f_Size = f_MinSize + (rand() % 100) / 100.0f * f_Range;
         
@@ -342,6 +367,106 @@ std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
               << i_Attempts << " attempts" << std::endl;
     return vec_Parks;
 }
+
+std::vector<std::pair<Point, Point>> GenerateBridges(
+    const std::vector<Point>& vec_GridPoints,
+    const std::vector<Point>& vec_RiverPath,
+    int i_NumBridges,
+    int i_Corner
+) {
+    std::vector<std::pair<Point, Point>> vec_Bridges;
+    
+    if (i_NumBridges <= 0 || vec_GridPoints.empty() || vec_RiverPath.empty()) {
+        return vec_Bridges;
+    }
+    
+    std::vector<std::pair<Point, Point>> vec_PotentialBridges;
+    
+    for (size_t i = 0; i < vec_GridPoints.size(); ++i) {
+        const Point& p1 = vec_GridPoints[i];
+        float f_Dist1 = GetDistanceToRiver(p1, vec_RiverPath);
+        
+        if (f_Dist1 < 30.0f || f_Dist1 > 80.0f) continue;
+        
+        for (size_t j = i + 1; j < vec_GridPoints.size(); ++j) {
+            const Point& p2 = vec_GridPoints[j];
+            float f_Dist2 = GetDistanceToRiver(p2, vec_RiverPath);
+            
+            if (f_Dist2 < 30.0f || f_Dist2 > 80.0f) continue;
+            
+            float f_BridgeLength = sqrt(
+                (p1.x - p2.x) * (p1.x - p2.x) + 
+                (p1.y - p2.y) * (p1.y - p2.y)
+            );
+            
+            if (f_BridgeLength < 50.0f || f_BridgeLength > 200.0f) continue;
+            
+            bool b_CrossesRiver = false;
+            int i_Crossings = 0;
+            
+            for (size_t k = 0; k < vec_RiverPath.size() - 1; ++k) {
+                const Point& r1 = vec_RiverPath[k];
+                const Point& r2 = vec_RiverPath[k + 1];
+                
+                float f_DistToSegment = 0.0f;
+                
+                Point midPoint;
+                midPoint.x = (p1.x + p2.x) / 2.0f;
+                midPoint.y = (p1.y + p2.y) / 2.0f;
+                
+                float f_MidDist = GetDistanceToRiver(midPoint, vec_RiverPath);
+                if (f_MidDist < Config::RIVER_WIDTH / 2.0f + 5.0f) {
+                    b_CrossesRiver = true;
+                    break;
+                }
+            }
+            
+            if (b_CrossesRiver) {
+                vec_PotentialBridges.push_back({p1, p2});
+            }
+        }
+    }
+    
+    // std::cout << "[MapGen] Found " << vec_PotentialBridges.size() 
+    //           << " potential bridges" << std::endl;
+    
+    std::sort(vec_PotentialBridges.begin(), vec_PotentialBridges.end(),
+        [](const std::pair<Point, Point>& a, const std::pair<Point, Point>& b) {
+            float lenA = sqrt(
+                (a.first.x - a.second.x) * (a.first.x - a.second.x) +
+                (a.first.y - a.second.y) * (a.first.y - a.second.y)
+            );
+            float lenB = sqrt(
+                (b.first.x - b.second.x) * (b.first.x - b.second.x) +
+                (b.first.y - b.second.y) * (b.first.y - b.second.y)
+            );
+            return lenA < lenB;
+        });
+    
+    for (const auto& bridge : vec_PotentialBridges) {
+        if ((int)vec_Bridges.size() >= i_NumBridges) break;
+        
+        bool b_TooClose = false;
+        for (const auto& existing : vec_Bridges) {
+            float f_Dist = sqrt(
+                (bridge.first.x - existing.first.x) * (bridge.first.x - existing.first.x) +
+                (bridge.first.y - existing.first.y) * (bridge.first.y - existing.first.y)
+            );
+            if (f_Dist < 150.0f) {
+                b_TooClose = true;
+                break;
+            }
+        }
+        
+        if (!b_TooClose) {
+            vec_Bridges.push_back(bridge);
+        }
+    }
+    
+    // std::cout << "[MapGen] Generated " << vec_Bridges.size() << " bridges" << std::endl;
+    return vec_Bridges;
+}
+
 
 } // namespace MapGen
 } // namespace ScotlandYard

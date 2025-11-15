@@ -69,6 +69,7 @@ private:
     std::vector<MapGen::Point> m_vec_ControlPoints;
     std::vector<MapGen::Park> m_vec_Parks;
     int m_i_CurrentCorner = 0;
+    std::vector<std::pair<MapGen::Point, MapGen::Point>> m_vec_Bridges;
 
     GLuint m_VAO_PreviewQuad = 0;
     GLuint m_VBO_PreviewQuad = 0;

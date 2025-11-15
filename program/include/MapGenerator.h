@@ -43,11 +43,20 @@ Point BezierPoint(const Point& p0, const Point& p1, const Point& p2, const Point
 std::vector<Point> GenerateGridPoints(int i_Width, int i_Height);
 std::vector<Point> GenerateRiverControlPoints(int* p_CurrentCorner, int i_Width, int i_Height);
 std::vector<Point> GenerateRiverPath(const std::vector<Point>& vec_ControlPoints, int i_Segments = 100);
+std::vector<Point> RemoveNodesOnRiver(const std::vector<Point>& vec_GridPoints,
+                                       const std::vector<Point>& vec_RiverPath,
+                                       float f_MinDistance = Config::RIVER_WIDTH / 2.0f + 10.0f);
 std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
                                 const std::vector<Point>& vec_RiverPath,
                                 int i_Corner, int i_NumParks,
                                 float f_MinSize = Config::PARK_MIN_SIZE,
                                 float f_MaxSize = Config::PARK_MAX_SIZE);
+std::vector<std::pair<Point, Point>> GenerateBridges(
+    const std::vector<Point>& vec_GridPoints,
+    const std::vector<Point>& vec_RiverPath,
+    int i_NumBridges,
+    int i_Corner
+);
 
 } // namespace MapGen
 } // namespace ScotlandYard

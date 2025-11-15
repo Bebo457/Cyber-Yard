@@ -69,6 +69,7 @@ namespace ScotlandYard {
             m_vec_Sliders.push_back({ "Num Parks", 3.0f, 1.0f, 10.0f, 1.0f });
             m_vec_Sliders.push_back({ "Park Min Size", 60.0f, 30.0f, 150.0f, 5.0f });
             m_vec_Sliders.push_back({ "Park Max Size", 100.0f, 50.0f, 200.0f, 5.0f });
+            m_vec_Sliders.push_back({ "Num Bridges", 2.0f, 0.0f, 5.0f, 1.0f });
 
             m_i_FocusedFieldIndex = -1;
             m_b_HasPreview = false;
@@ -158,12 +159,30 @@ namespace ScotlandYard {
             int x = cardX + (cardW - shortW) / 2;
             int y = startY;
 
-            // All sliders in vertical layout
-            for (size_t i = 0; i < m_vec_Sliders.size(); ++i) {
-                auto& s = m_vec_Sliders[i];
+            if (m_vec_Sliders.size() >= 4) {
+                const int smallW = (shortW - 16) / 2;
+                const int gapBetween = 16;
+                
                 y -= rowH;
-                s.track = SDL_Rect{ x, y + 16, shortW, 12 };
+                m_vec_Sliders[0].track = SDL_Rect{ x, y + 16, smallW, 12 };
+                
+                m_vec_Sliders[3].track = SDL_Rect{ x + smallW + gapBetween, y + 16, smallW, 12 };
                 y -= gap;
+                
+                for (size_t i = 1; i <= 2; ++i) {
+                    auto& s = m_vec_Sliders[i];
+                    y -= rowH;
+                    s.track = SDL_Rect{ x, y + 16, shortW, 12 };
+                    y -= gap;
+                }
+            } else {
+                // Verical layout if there are less then 4 sliders
+                for (size_t i = 0; i < m_vec_Sliders.size(); ++i) {
+                    auto& s = m_vec_Sliders[i];
+                    y -= rowH;
+                    s.track = SDL_Rect{ x, y + 16, shortW, 12 };
+                    y -= gap;
+                }
             }
         }
 
@@ -179,7 +198,7 @@ namespace ScotlandYard {
             DrawRoundedRectScreen(0, 0, (float)W, (float)H, col_bg, 0, p_App);
             LayoutUI(W, H, p_App);
 
-            // ZMIENIONE: użyj dedykowanej funkcji do renderowania tekstury
+            //Dedicated function for texture render
             RenderPreviewTexture(p_App);
 
             // Render seed field
@@ -294,12 +313,11 @@ namespace ScotlandYard {
             
             srand(ui_Seed);
 
-            // POPRAWIONE: pobierz wartości z suwaków
             int numParks = (int)m_vec_Sliders[0].f_Value;
             float parkMinSize = m_vec_Sliders[1].f_Value;
             float parkMaxSize = m_vec_Sliders[2].f_Value;
+            int numBridges = (int)m_vec_Sliders[3].f_Value;
             
-            // NOWE: walidacja - jeśli min > max, zamień je
             if (parkMinSize > parkMaxSize) {
                 std::swap(parkMinSize, parkMaxSize);
                 m_vec_Sliders[1].f_Value = parkMinSize;
@@ -317,11 +335,13 @@ namespace ScotlandYard {
             m_vec_GridPoints = MapGen::GenerateGridPoints(mapW, mapH);
             m_vec_ControlPoints = MapGen::GenerateRiverControlPoints(&m_i_CurrentCorner, mapW, mapH);
             m_vec_RiverPath = MapGen::GenerateRiverPath(m_vec_ControlPoints, 150);
+            m_vec_GridPoints = MapGen::RemoveNodesOnRiver(m_vec_GridPoints, m_vec_RiverPath);
             
-            // POPRAWIONE: przekaż wartości min/max do generatora
             m_vec_Parks = MapGen::GenerateParks(m_vec_GridPoints, m_vec_RiverPath,
                                                 m_i_CurrentCorner, numParks, 
                                                 parkMinSize, parkMaxSize);
+            m_vec_Bridges = MapGen::GenerateBridges(m_vec_GridPoints, m_vec_RiverPath,
+                                            numBridges, m_i_CurrentCorner);
 
             SaveMapToFile();
             UpdatePreviewTexture();
@@ -342,7 +362,6 @@ namespace ScotlandYard {
             }
             
             SDL_LockSurface(surface);
-            // ZMIENIONE: tło czarne zamiast jasnoszarego
             SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
             
             auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b) {
@@ -383,10 +402,27 @@ namespace ScotlandYard {
             }
             
             for (const auto& p : m_vec_GridPoints) {
+                bool b_IsBridgeEnd = false;
+                for (const auto& bridge : m_vec_Bridges) {
+                    float f_Dist1 = sqrt((p.x - bridge.first.x) * (p.x - bridge.first.x) + 
+                                    (p.y - bridge.first.y) * (p.y - bridge.first.y));
+                    float f_Dist2 = sqrt((p.x - bridge.second.x) * (p.x - bridge.second.x) + 
+                                    (p.y - bridge.second.y) * (p.y - bridge.second.y));
+                    
+                    if (f_Dist1 < 1.0f || f_Dist2 < 1.0f) {
+                        b_IsBridgeEnd = true;
+                        break;
+                    }
+                }
+                
+                Uint8 r = b_IsBridgeEnd ? 255 : 255;
+                Uint8 g = b_IsBridgeEnd ? 0 : 255;
+                Uint8 b = b_IsBridgeEnd ? 0 : 255;
+                
                 for (int dy = -3; dy <= 3; ++dy) {
                     for (int dx = -3; dx <= 3; ++dx) {
                         if (dx*dx + dy*dy <= 9) {
-                            SetPixel((int)p.x + dx, (int)p.y + dy, 255, 255, 255);
+                            SetPixel((int)p.x + dx, (int)p.y + dy, r, g, b);
                         }
                     }
                 }
