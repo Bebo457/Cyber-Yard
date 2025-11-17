@@ -80,6 +80,7 @@ void NetworkManager::SendToAll(const std::string& msg) {
     ENetPacket* packet = enet_packet_create(msg.c_str(), msg.size() + 1, ENET_PACKET_FLAG_RELIABLE);
     enet_host_broadcast(m_Host, 0, packet);
     enet_host_flush(m_Host);
+    printf ("[NetworkManager] Broadcasting to all message: %s\n", msg.c_str());
 }
 
 void NetworkManager::SendToServer(const std::string& msg) {
@@ -88,6 +89,7 @@ void NetworkManager::SendToServer(const std::string& msg) {
     ENetPacket* packet = enet_packet_create(msg.c_str(), msg.size() + 1, ENET_PACKET_FLAG_RELIABLE);
     enet_peer_send(m_Peer, 0, packet);
     enet_host_flush(m_Host);
+    printf ("[NetworkManager] Broadcasting to server message: %s\n", msg.c_str());
 }
 
 bool NetworkManager::PollMessage(NetworkMessage& outMsg) {

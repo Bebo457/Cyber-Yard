@@ -95,13 +95,21 @@ void GameState::PollNetworkMessages() {
     while (m_pNetworkManager->PollMessage(msg)) {
         printf ("Otrzymano od ", msg.sender , ": " , msg.content );
         // Tutaj dodaj logikę gry dla odebranej wiadomości
+        size_t pos = msg.content.find('_');
+        int i_PlayerIndex = std::stoi(msg.content.substr(0, pos));
+        int i_DestinationNode = std::stoi(msg.content.substr(pos + 1));
+
+        auto& player = m_vec_Players[i_PlayerIndex];
+        player.MoveTo(i_DestinationNode);
     }
 }
 
 // Wysyłanie wiadomości do wszystkich klientów (serwer)
 void GameState::BroadcastMessage(const std::string& msg) {
-    if (m_pNetworkManager)
+    if (m_pNetworkManager){
         m_pNetworkManager->SendToAll(msg);
+        m_pNetworkManager->SendToServer(msg);
+    }
 }
 
 } // namespace States

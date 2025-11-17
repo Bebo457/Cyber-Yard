@@ -107,6 +107,7 @@ std::string GameState::BuildPlayerTicketsSuffix(int i_PlayerIndex) {
 
 void GameState::OnEnter() {
     StartNetworkServer(1234);
+    // StartNetworkClient("localhost", 1234); //Odkomentwać aby zmienić na klienta
 
     m_b_GameActive = true;
     m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
@@ -1087,6 +1088,8 @@ void GameState::OnExit() {
             m_t_ConsoleThread.detach();
         }
     }
+    
+    StopNetwork();
 
     // Ensure game data is reset when exiting so re-entering GameState starts fresh
     ResetToInitial();
@@ -2356,7 +2359,9 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
     }
 
     if (b_MoveSuccessful) {
-    std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
+        std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
+        std::string msg = std::to_string(i_PlayerIndex) + "_" + std::to_string(i_DestinationNode);
+        BroadcastMessage(msg);
         logger.logPlayerMove(i_PlayerIndex, i_moveBuffor , i_DestinationNode, i_TransportType); //todo zmienić pozycjateraz na odpowiednią zmienną
         m_i_SelectedPlayerIndex = -1;
         UI::ShowDetectivePopup(false);
