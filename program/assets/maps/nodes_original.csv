@@ -115,7 +115,7 @@ id,pos_x,pos_y,station_type
 115,14,8,taxi_water
 116,16,8,bus_taxi
 117,18,8,taxi
-118,19,8,taxi
+118,19,8,taxi_water
 119,22,8,taxi
 120,0,9,taxi
 121,1,9,taxi
@@ -125,7 +125,7 @@ id,pos_x,pos_y,station_type
 125,9,9,taxi
 126,13,9,taxi
 127,15,9,bus_taxi
-128,16,9,metro_bus_taxi
+128,16,9,taxi
 129,18,9,taxi
 130,8,10,taxi
 131,10,10,taxi
@@ -156,7 +156,7 @@ id,pos_x,pos_y,station_type
 156,12,12,bus_taxi
 157,14,12,bus_taxi_water
 158,15,12,taxi
-159,17,12,taxi
+159,17,12,metro_bus_taxi
 160,19,12,taxi
 161,20,12,bus_taxi
 162,22,12,taxi
