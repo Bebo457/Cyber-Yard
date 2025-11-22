@@ -91,6 +91,8 @@ private:
     void UpdatePreviewTexture();
     void RenderPreviewTexture(Core::Application* p_App);
     void CreatePreviewQuad();
+    void ExportNodesToCSV(const std::string& s_Filename);
+    void ExportMapInfoToCSV(const std::string& s_Filename);
 };
 
 } // namespace States
