@@ -509,6 +509,64 @@ namespace ScotlandYard
                 }
             }
 
+            
+            std::cout << "[MapGen] Drawing " << m_vec_Bridges.size() << " bridges..." << std::endl;
+
+            for (const auto& bridge : m_vec_Bridges) {
+                int x0 = (int)bridge.first.x;
+                int y0 = (int)bridge.first.y;
+                int x1 = (int)bridge.second.x;
+                int y1 = (int)bridge.second.y;
+                
+                int dx = abs(x1 - x0);
+                int dy = abs(y1 - y0);
+                int sx = (x0 < x1) ? 1 : -1;
+                int sy = (y0 < y1) ? 1 : -1;
+                int err = dx - dy;
+                
+                int x = x0;
+                int y = y0;
+                
+                while (true) {
+                    for (int d = -2; d <= 2; ++d) {
+                        SetPixel(x + d, y, 255, 255, 0);   
+                        SetPixel(x, y + d, 255, 255, 0);     
+                    }
+                    
+                    if (x == x1 && y == y1) break;
+                    
+                    int e2 = 2 * err;
+                    if (e2 > -dy) { err -= dy; x += sx; }
+                    if (e2 < dx) { err += dx; y += sy; }
+                }
+                
+                std::cout << "[MapGen] Bridge " << (int)(&bridge - &m_vec_Bridges[0]) + 1 
+                        << ": (" << x0 << "," << y0 << ") -> (" << x1 << "," << y1 << ")" << std::endl;
+            }
+
+            for (const auto& bridge : m_vec_Bridges) {
+                int x1 = (int)bridge.first.x;
+                int y1 = (int)bridge.first.y;
+                for (int dy = -5; dy <= 5; ++dy) {
+                    for (int dx = -5; dx <= 5; ++dx) {
+                        if (dx*dx + dy*dy <= 25) {
+                            SetPixel(x1 + dx, y1 + dy, 255, 0, 0);  
+                        }
+                    }
+                }
+                
+                int x2 = (int)bridge.second.x;
+                int y2 = (int)bridge.second.y;
+                for (int dy = -5; dy <= 5; ++dy) {
+                    for (int dx = -5; dx <= 5; ++dx) {
+                        if (dx*dx + dy*dy <= 25) {
+                            SetPixel(x2 + dx, y2 + dy, 255, 0, 0); 
+                        }
+                    }
+                }
+            }
+
+
             SDL_UnlockSurface(surface);
 
             if (SDL_SaveBMP(surface, filename.c_str()) == 0)
