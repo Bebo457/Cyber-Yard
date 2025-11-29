@@ -66,5 +66,13 @@ std::vector<Point> GenerateNodePositions(
     unsigned int seed 
 );
 
+std::vector<Point> GenerateNodesWithParkDensity(
+    int i_Width, int i_Height,
+    const std::vector<Point>& vec_RiverPath,
+    const std::vector<Park>& vec_Parks,
+    int i_NumNodes,
+    unsigned int seed
+);
+
 } // namespace MapGen
 } // namespace ScotlandYard

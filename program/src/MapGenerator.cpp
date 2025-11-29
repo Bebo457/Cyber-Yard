@@ -368,6 +368,56 @@ std::vector<Park> GenerateParks(const std::vector<Point>& vec_GridPoints,
     return vec_Parks;
 }
 
+std::vector<Point> GenerateNodesWithParkDensity(
+    int i_Width, int i_Height,
+    const std::vector<Point>& vec_RiverPath,
+    const std::vector<Park>& vec_Parks,
+    int i_NumNodes,
+    unsigned int seed
+) {
+    if (seed) srand(seed);
+    std::vector<Point> vec_Nodes;
+    int attempts = 0;
+    const int MAX_ATTEMPTS = i_NumNodes * 10;
+    while ((int)vec_Nodes.size() < i_NumNodes && attempts < MAX_ATTEMPTS) {
+        float x = Config::GRID_MARGIN + (rand() / (float)RAND_MAX) * (i_Width - 2 * Config::GRID_MARGIN);
+        float y = Config::GRID_MARGIN + (rand() / (float)RAND_MAX) * (i_Height - 2 * Config::GRID_MARGIN);
+        x += ((rand() / (float)RAND_MAX) - 0.5f) * 30.0f;
+        y += ((rand() / (float)RAND_MAX) - 0.5f) * 30.0f;
+        Point p(x, y);
+        if (GetDistanceToRiver(p, vec_RiverPath) < Config::RIVER_WIDTH / 2.0f + 10.0f) {
+            attempts++;
+            continue;
+        }
+        bool inPark = false;
+        for (const auto& park : vec_Parks) {
+            if (park.ContainsPoint(p.x, p.y)) {
+                inPark = true;
+                break;
+            }
+        }
+        if (inPark && (rand() % 100) > 30) {
+            attempts++;
+            continue;
+        }
+        bool tooClose = false;
+        for (const auto& other : vec_Nodes) {
+            float dx = other.x - p.x, dy = other.y - p.y;
+            if (dx*dx + dy*dy < 900.0f) {
+                tooClose = true;
+                break;
+            }
+        }
+        if (tooClose) {
+            attempts++;
+            continue;
+        }
+        vec_Nodes.push_back(p);
+        attempts++;
+    }
+    return vec_Nodes;
+}
+
 std::vector<std::pair<Point, Point>> GenerateBridges(
     const std::vector<Point>& vec_GridPoints,
     const std::vector<Point>& vec_RiverPath,
