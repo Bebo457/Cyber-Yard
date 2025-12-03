@@ -37,6 +37,21 @@ if(NOT FREETYPE_FOUND)
     message(FATAL_ERROR "FreeType not found. Please install FreeType development libraries")
 endif()
 
+find_package(ZeroMQ CONFIG REQUIRED)
+if(NOT ZeroMQ_FOUND)
+    message(FATAL_ERROR "ZeroMQ not found. Please install ZeroMQ development libraries")
+endif()
+
+find_package(cppzmq CONFIG REQUIRED)
+if(NOT cppzmq_FOUND)
+    message(FATAL_ERROR "cppzmq not found. Please install cppzmq via vcpkg")
+endif()
+
+find_package(nlohmann_json CONFIG REQUIRED)
+if(NOT nlohmann_json_FOUND)
+    message(FATAL_ERROR "nlohmann_json not found")
+endif()
+
 
 # SOURCE FILES =========================================
 set(SOURCES
@@ -65,6 +80,7 @@ set(SOURCES
     src/NetworkManager.cpp
     src/GameStateNetwork.cpp
     src/Logger.cpp
+    src/PythonBridge.cpp
 )
 
 set(HEADERS
@@ -88,6 +104,7 @@ set(HEADERS
     include/GraphManager.h
     include/NetworkManager.h
     include/Logger.h
+    include/PythonBridge.h
 )
 
 # EXE =================================================
@@ -205,6 +222,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glm::glm
     ${FREETYPE_LIBRARIES}
     ${ENET_LIB}
+    libzmq
+    nlohmann_json::nlohmann_json
+    cppzmq
 )
 
 # COMPILER WARNINGS============================================

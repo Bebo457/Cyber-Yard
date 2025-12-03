@@ -13,6 +13,7 @@
 #include <sstream>
 
 #include "Logger.h"
+#include "PythonBridge.h"
 
 // #include "NetworkManager.h"
 
@@ -62,6 +63,7 @@ bool HasTicketForTransport(const Core::Player& player, int i_TransportType) {
 }
 
 GameLogger logger("game_log.csv");
+static PythonBridge* g_pBridge = nullptr;
 
 std::string GameState::BuildTicketsLogSuffix() {
     std::lock_guard<std::mutex> lock(m_mtx_Players);
@@ -112,6 +114,14 @@ void GameState::OnEnter() {
     m_b_GameActive = true;
     m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
 
+    // initialize Python bridge (non-blocking, worker thread inside)
+    try {
+        g_pBridge = new PythonBridge("tcp://localhost:5555");
+    } catch (const std::exception& e) {
+        std::cerr << "[GameState] Failed to init PythonBridge: " << e.what() << "\n";
+        g_pBridge = nullptr;
+    }
+    
     // Dane wierzchołków planszy (pozycja, kolor, UV)
     float planeVertices[] = {
         // pozycja xyz           // normalne        // uv (odwrócone pionowo)
@@ -960,6 +970,10 @@ void GameState::LoadTextures(Core::Application* p_App) {
 }
 
 void GameState::OnExit() {
+    if (g_pBridge) {
+        delete g_pBridge;
+        g_pBridge = nullptr;
+    }
     if (m_VAO_Plane) {
         glDeleteVertexArrays(1, &m_VAO_Plane);
         m_VAO_Plane = 0;
@@ -2363,9 +2377,31 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
         std::string msg = std::to_string(i_PlayerIndex) + "_" + std::to_string(i_DestinationNode);
         BroadcastMessage(msg);
         logger.logPlayerMove(i_PlayerIndex, i_moveBuffor , i_DestinationNode, i_TransportType); //todo zmienić pozycjateraz na odpowiednią zmienną
-        m_i_SelectedPlayerIndex = -1;
-        UI::ShowDetectivePopup(false);
-        m_vec_CurrentArrows.clear();
+           // send to python for testing/logging (async)
+        //    if (g_pBridge) {
+        //        nlohmann::json moveData;
+        //        moveData["player_id"] = i_PlayerIndex;
+        //        moveData["from_node"] = i_moveBuffor;
+        //        moveData["to_node"] = i_DestinationNode;
+        //        moveData["transport"] = i_TransportType;
+        //        moveData["round"] = m_i_Round.load();
+
+        //        auto fut = g_pBridge->sendRequestAsync(moveData);
+        //        std::thread([f = std::move(fut)]() mutable {
+        //            try {
+        //                auto resp = f.get();
+        //                if (resp.contains("player_id"))
+        //                    std::cout << "[Bridge] player_id from python: " << resp["player_id"] << "\n";
+        //                else
+        //                    std::cout << "[Bridge] Python response: " << resp.dump() << "\n";
+        //            } catch (const std::exception& e) {
+        //                std::cerr << "[Bridge] Python bridge error: " << e.what() << "\n";
+        //            }
+        //        }).detach();
+        //    }
+            m_i_SelectedPlayerIndex = -1;
+            UI::ShowDetectivePopup(false);
+            m_vec_CurrentArrows.clear();
 
         bool b_Captured = false;
         {

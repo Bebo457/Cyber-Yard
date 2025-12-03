@@ -21,6 +21,8 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include "PythonBridge.h"
+#include <nlohmann/json.hpp>
 
 namespace ScotlandYard {
 namespace Core {
@@ -116,6 +118,108 @@ void AIPlayerController::Reset() {
     m_f_ElapsedTime = 0.0f;
     m_b_CalculationInProgress = false;
 }
+
+static MoveDecision ExternalPythonAlgorithm(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState
+) {
+    std::cout << "PYTHON\n";
+    MoveDecision decision;
+    decision.b_HasDecision = false;
+    if (vec_PossibleMoves.empty()) return decision;
+
+    auto randomFallback = [&]() -> MoveDecision {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, static_cast<int>(vec_PossibleMoves.size()) - 1);
+        const auto& sel = vec_PossibleMoves[dis(gen)];
+        MoveDecision d;
+        d.b_HasDecision = true;
+        d.i_DestinationNode = sel.i_DestinationNode;
+        d.i_TransportType = sel.i_TransportType;
+        std::cout << "[Fallback] Using random move: dest=" 
+                  << sel.i_DestinationNode << ", transport=" << sel.i_TransportType << "\n";
+        return d;
+    };
+
+    PythonBridge* bridge = PythonBridge::Instance();
+    if (!bridge) {
+        std::cout << "[Fallback] Python bridge not available\n";
+        return randomFallback();
+    }
+
+    nlohmann::json req;
+    req["player_index"] = gameState.i_CurrentPlayerIndex;
+    req["round"] = gameState.i_CurrentRound;
+
+    nlohmann::json jmoves = nlohmann::json::array();
+    for (const auto& m : vec_PossibleMoves) {
+        jmoves.push_back({ {"dest", m.i_DestinationNode}, {"transport", m.i_TransportType} });
+    }
+    req["possible_moves"] = jmoves;
+
+    try {
+        auto fut = bridge->sendRequestAsync(req);
+        nlohmann::json resp = fut.get();
+
+        if (resp.is_object()) {
+            // wybór po indeksie
+            if (resp.contains("selected_index") && resp["selected_index"].is_number_integer()) {
+                int idx = resp["selected_index"].get<int>();
+                if (idx >= 0 && idx < static_cast<int>(vec_PossibleMoves.size())) {
+                    const auto& mv = vec_PossibleMoves[idx];
+                    MoveDecision d; 
+                    d.b_HasDecision = true; 
+                    d.i_DestinationNode = mv.i_DestinationNode; 
+                    d.i_TransportType = mv.i_TransportType;
+                    std::cout << "[Python] Selected move by index: dest=" 
+                              << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
+                    return d;
+                }
+            }
+
+            // wybór po destination (+ opcjonalnie transport)
+            if (resp.contains("destination") && !resp["destination"].is_null()) {
+                int dest = resp["destination"].get<int>();
+                int transport = resp.value("transport", 0);
+                for (const auto& mv : vec_PossibleMoves) {
+                    if (mv.i_DestinationNode == dest && (transport == 0 || mv.i_TransportType == transport)) {
+                        MoveDecision d; 
+                        d.b_HasDecision = true; 
+                        d.i_DestinationNode = mv.i_DestinationNode; 
+                        d.i_TransportType = mv.i_TransportType;
+                        std::cout << "[Python] Selected move by dest+transport: dest=" 
+                                  << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
+                        return d;
+                    }
+                }
+                for (const auto& mv : vec_PossibleMoves) {
+                    if (mv.i_DestinationNode == dest) {
+                        MoveDecision d; 
+                        d.b_HasDecision = true; 
+                        d.i_DestinationNode = mv.i_DestinationNode; 
+                        d.i_TransportType = mv.i_TransportType;
+                        std::cout << "[Python] Selected move by dest only: dest=" 
+                                  << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
+                        return d;
+                    }
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ExternalPythonAlgorithm] Python bridge error: " << e.what() << "\n";
+        return randomFallback();
+    } catch (...) {
+        std::cerr << "[ExternalPythonAlgorithm] Unknown Python bridge error\n";
+        return randomFallback();
+    }
+
+    // Jeśli doszliśmy tutaj, Python nie zwrócił poprawnego ruchu
+    std::cout << "[Fallback] Python returned invalid response\n";
+    return randomFallback();
+}
+
 
 static MoveDecision DistanceMaximizationAlgorithm(
     const Player* p_Player,
@@ -3703,6 +3807,7 @@ MoveDecision AIPlayerController::CalculateBestMove(
         }
         case Core::AIAlgorithm::DistanceMaximizationMrX:
             decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            //decision = ExternalPythonAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
         case Core::AIAlgorithm::DecoyMovementMrX:
             decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
