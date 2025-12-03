@@ -6,7 +6,7 @@
 
 ```powershell
 # 1. Install dependencies using vcpkg
-vcpkg install sdl2 glew glm freetype enet
+vcpkg install sdl2 glew glm freetype enet zeromq cppzmq nlohmann-json
 
 # 2. Configure CMake
 mkdir build
@@ -25,7 +25,7 @@ cmake --build . --config Release
 ```bash
 # 1. Install dependencies
 sudo apt-get update
-sudo apt-get install cmake build-essential libsdl2-dev libglew-dev libgl1-mesa-dev libglm-dev libfreetype6-dev libenet-dev
+sudo apt-get install cmake build-essential libsdl2-dev libglew-dev libgl1-mesa-dev libglm-dev libfreetype6-dev libenet-dev libzmq3-dev nlohmann-json3-dev
 
 # 2. Build
 mkdir build && cd build
@@ -40,7 +40,7 @@ make -j$(nproc)
 
 ```bash
 # 1. Install dependencies
-brew install cmake sdl2 glew glm freetype enet
+brew install cmake sdl2 glew glm freetype enet zeromq nlohmann-json
 
 # 2. Build
 mkdir build && cd build
@@ -74,6 +74,9 @@ cd vcpkg
 .\vcpkg install glm:x64-windows
 .\vcpkg install freetype:x64-windows
 .\vcpkg install enet:x64-windows
+.\vcpkg install zeromq:x64-windows
+.\vcpkg install cppzmq:x64-windows
+.\vcpkg install nlohmann-json:x64-windows
 ```
 
 3. **Configure project:**
