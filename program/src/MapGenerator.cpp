@@ -3,6 +3,8 @@
 #include <iostream>
 #include <ctime>
 #include <algorithm>
+#include <set>
+#include <functional>
 
 namespace ScotlandYard {
 namespace MapGen {
@@ -577,6 +579,384 @@ std::vector<Point> GenerateNodePositions(
 
     return vec_Nodes;
 }
+
+// Helper: check if the point is inside the circle circumscribing the triangle
+bool IsInCircumcircle(const Point& p, const Point& a, const Point& b, const Point& c) {
+    float ax = a.x - p.x;
+    float ay = a.y - p.y;
+    float bx = b.x - p.x;
+    float by = b.y - p.y;
+    float cx = c.x - p.x;
+    float cy = c.y - p.y;
+    
+    float det = (ax * ax + ay * ay) * (bx * cy - cx * by) -
+                (bx * bx + by * by) * (ax * cy - cx * ay) +
+                (cx * cx + cy * cy) * (ax * by - bx * ay);
+    
+    return det > 0;
+}
+
+std::vector<Triangle> DelaunayTriangulation(const std::vector<Point>& vec_Points) {
+    std::vector<Triangle> vec_Triangles;
+    
+    if (vec_Points.size() < 3) return vec_Triangles;
+    
+    //Bowyer-Watson algorithm
+    // Supertriangle
+    Point p1(-10000, -10000);
+    Point p2(10000, -10000);
+    Point p3(0, 10000);
+    
+    vec_Triangles.push_back(Triangle(vec_Points.size(), vec_Points.size() + 1, vec_Points.size() + 2));
+    
+    std::vector<Point> allPoints = vec_Points;
+    allPoints.push_back(p1);
+    allPoints.push_back(p2);
+    allPoints.push_back(p3);
+    
+    for (size_t i = 0; i < vec_Points.size(); ++i) {
+        std::vector<std::pair<int, int>> edges;
+        std::vector<Triangle> badTriangles;
+        
+        for (const auto& tri : vec_Triangles) {
+            if (IsInCircumcircle(vec_Points[i], 
+                                 allPoints[tri.i_A], 
+                                 allPoints[tri.i_B], 
+                                 allPoints[tri.i_C])) {
+                badTriangles.push_back(tri);
+                edges.push_back({tri.i_A, tri.i_B});
+                edges.push_back({tri.i_B, tri.i_C});
+                edges.push_back({tri.i_C, tri.i_A});
+            }
+        }
+        
+        // delete bad triangles
+        for (const auto& bad : badTriangles) {
+            vec_Triangles.erase(
+                std::remove_if(vec_Triangles.begin(), vec_Triangles.end(),
+                    [&](const Triangle& t) {
+                        return t.i_A == bad.i_A && t.i_B == bad.i_B && t.i_C == bad.i_C;
+                    }), 
+                vec_Triangles.end());
+        }
+        
+        std::vector<std::pair<int, int>> uniqueEdges;
+        for (const auto& edge : edges) {
+            int count = 0;
+            for (const auto& e2 : edges) {
+                if ((edge.first == e2.first && edge.second == e2.second) ||
+                    (edge.first == e2.second && edge.second == e2.first)) {
+                    count++;
+                }
+            }
+            if (count == 1) {
+                uniqueEdges.push_back(edge);
+            }
+        }
+        
+        for (const auto& edge : uniqueEdges) {
+            vec_Triangles.push_back(Triangle(edge.first, edge.second, i));
+        }
+    }
+    
+    vec_Triangles.erase(
+        std::remove_if(vec_Triangles.begin(), vec_Triangles.end(),
+            [&](const Triangle& t) {
+                return t.i_A >= (int)vec_Points.size() || 
+                       t.i_B >= (int)vec_Points.size() || 
+                       t.i_C >= (int)vec_Points.size();
+            }), 
+        vec_Triangles.end());
+    
+    std::cout << "[MapGen] Delaunay: " << vec_Triangles.size() << " triangles" << std::endl;
+    return vec_Triangles;
+}
+
+std::vector<Edge> MinimumSpanningTree(const std::vector<Point>& vec_Points, 
+                                       const std::vector<Edge>& vec_Edges) {
+    std::vector<Edge> vec_MST;
+    std::vector<int> parent(vec_Points.size());
+    
+    // Union-Find init
+    for (size_t i = 0; i < vec_Points.size(); ++i) {
+        parent[i] = i;
+    }
+    
+    std::function<int(int)> find = [&](int x) {
+        if (parent[x] != x) parent[x] = find(parent[x]);
+        return parent[x];
+    };
+    
+    // Sort edges by length (Kruskal)
+    std::vector<Edge> sortedEdges = vec_Edges;
+    std::sort(sortedEdges.begin(), sortedEdges.end(),
+        [](const Edge& a, const Edge& b) { return a.f_Length < b.f_Length; });
+    
+    for (const auto& edge : sortedEdges) {
+        int root1 = find(edge.i_Node1);
+        int root2 = find(edge.i_Node2);
+        
+        if (root1 != root2) {
+            vec_MST.push_back(edge);
+            parent[root1] = root2;
+        }
+    }
+    
+    std::cout << "[MapGen] MST: " << vec_MST.size() << " edges" << std::endl;
+    return vec_MST;
+}
+
+bool LineIntersectsRiver(const Point& p1, const Point& p2, 
+                         const std::vector<Point>& vec_RiverPath,
+                         const std::vector<std::pair<Point, Point>>& vec_Bridges) {
+    // check for bridge
+    for (const auto& bridge : vec_Bridges) {
+        float dist1 = sqrt((p1.x - bridge.first.x) * (p1.x - bridge.first.x) +
+                          (p1.y - bridge.first.y) * (p1.y - bridge.first.y));
+        float dist2 = sqrt((p2.x - bridge.second.x) * (p2.x - bridge.second.x) +
+                          (p2.y - bridge.second.y) * (p2.y - bridge.second.y));
+        
+        if ((dist1 < 5.0f && dist2 < 5.0f) || (dist1 < 5.0f && dist2 < 5.0f)) {
+            return false; // bridge
+        }
+    }
+    
+    //check river crossing
+    Point mid;
+    mid.x = (p1.x + p2.x) / 2.0f;
+    mid.y = (p1.y + p2.y) / 2.0f;
+    
+    float minDist = GetDistanceToRiver(mid, vec_RiverPath);
+    return minDist < Config::RIVER_WIDTH / 2.0f + 5.0f;
+}
+
+std::vector<Edge> GenerateStreetNetwork(
+    const std::vector<Point>& vec_GridPoints,
+    const std::vector<Point>& vec_RiverPath,
+    const std::vector<std::pair<Point, Point>>& vec_Bridges,
+    int i_MaxStreets
+) {
+    std::vector<Edge> vec_Streets;
+    
+    if (vec_GridPoints.size() < 3 || i_MaxStreets <= 0) return vec_Streets;
+    
+    std::cout << "[MapGen] Generating street network (max: " << i_MaxStreets << ")..." << std::endl;
+    
+    // Rozkład ulic według tier (proporcje)
+    int i_Tier0Count = std::max(2, i_MaxStreets * 5 / 100);   // 5% - arterie główne (min 2)
+    int i_Tier1Count = i_MaxStreets * 15 / 100;                // 15% - drogi główne
+    int i_Tier2Count = i_MaxStreets * 35 / 100;                // 35% - drogi lokalne
+    int i_Tier3Count = i_MaxStreets - i_Tier0Count - i_Tier1Count - i_Tier2Count; // 45% - uliczki
+    
+    std::cout << "[MapGen] Target distribution: T0=" << i_Tier0Count 
+              << ", T1=" << i_Tier1Count << ", T2=" << i_Tier2Count 
+              << ", T3=" << i_Tier3Count << std::endl;
+    
+    // 1. Delaunay triangulation
+    std::vector<Triangle> triangles = DelaunayTriangulation(vec_GridPoints);
+    
+    // 2. Konwertuj trójkąty na krawędzie
+    std::vector<Edge> allEdges;
+    std::set<std::pair<int, int>> edgeSet;
+    
+    for (const auto& tri : triangles) {
+        auto addEdge = [&](int a, int b) {
+            if (a > b) std::swap(a, b);
+            if (edgeSet.find({a, b}) == edgeSet.end()) {
+                float len = sqrt(
+                    (vec_GridPoints[a].x - vec_GridPoints[b].x) * 
+                    (vec_GridPoints[a].x - vec_GridPoints[b].x) +
+                    (vec_GridPoints[a].y - vec_GridPoints[b].y) * 
+                    (vec_GridPoints[a].y - vec_GridPoints[b].y)
+                );
+                
+                // Filtruj bardzo długie krawędzie (poza arteriami)
+                if (len < 200.0f) {
+                    edgeSet.insert({a, b});
+                    allEdges.push_back(Edge(a, b, len));
+                }
+            }
+        };
+        
+        addEdge(tri.i_A, tri.i_B);
+        addEdge(tri.i_B, tri.i_C);
+        addEdge(tri.i_C, tri.i_A);
+    }
+    
+    std::cout << "[MapGen] Delaunay edges: " << allEdges.size() << std::endl;
+    
+    // 3. Usuń krawędzie przecinające rzekę (nie będące mostami)
+    allEdges.erase(
+        std::remove_if(allEdges.begin(), allEdges.end(),
+            [&](const Edge& e) {
+                return LineIntersectsRiver(vec_GridPoints[e.i_Node1], 
+                                          vec_GridPoints[e.i_Node2],
+                                          vec_RiverPath, vec_Bridges);
+            }),
+        allEdges.end());
+    
+    std::cout << "[MapGen] Edges after river filter: " << allEdges.size() << std::endl;
+    
+    // 4. MST dla spójności (podstawa dla tier 2 i 3)
+    std::vector<Edge> mst = MinimumSpanningTree(vec_GridPoints, allEdges);
+    std::cout << "[MapGen] MST size: " << mst.size() << std::endl;
+    
+    // 5. TIER 0 - Arterie główne (długie połączenia)
+    std::vector<Edge> tier0Candidates;
+    for (size_t i = 0; i < vec_GridPoints.size(); i += 15) {
+        for (size_t j = i + 20; j < vec_GridPoints.size(); j += 15) {
+            float dist = sqrt(
+                (vec_GridPoints[i].x - vec_GridPoints[j].x) * 
+                (vec_GridPoints[i].x - vec_GridPoints[j].x) +
+                (vec_GridPoints[i].y - vec_GridPoints[j].y) * 
+                (vec_GridPoints[i].y - vec_GridPoints[j].y)
+            );
+            
+            if (dist > 250.0f && dist < 700.0f) {
+                if (!LineIntersectsRiver(vec_GridPoints[i], vec_GridPoints[j],
+                                        vec_RiverPath, vec_Bridges)) {
+                    tier0Candidates.push_back(Edge(i, j, dist, 0));
+                }
+            }
+        }
+    }
+    
+    // Sortuj według długości (preferuj długie arterie)
+    std::sort(tier0Candidates.begin(), tier0Candidates.end(),
+        [](const Edge& a, const Edge& b) { return a.f_Length > b.f_Length; });
+    
+    // Dodaj tier 0
+    for (int i = 0; i < i_Tier0Count && i < (int)tier0Candidates.size(); ++i) {
+        vec_Streets.push_back(tier0Candidates[i]);
+    }
+    
+    // 6. TIER 1 - Drogi główne (z MST, dłuższe)
+    std::vector<Edge> tier1Candidates;
+    for (auto edge : mst) {
+        if (edge.f_Length > 100.0f) {
+            edge.i_Tier = 1;
+            tier1Candidates.push_back(edge);
+        }
+    }
+    
+    // Dodaj dodatkowe długie krawędzie z Delaunay
+    for (const auto& edge : allEdges) {
+        if (edge.f_Length > 100.0f && edge.f_Length < 180.0f) {
+            bool exists = false;
+            for (const auto& mstEdge : mst) {
+                if ((edge.i_Node1 == mstEdge.i_Node1 && edge.i_Node2 == mstEdge.i_Node2) ||
+                    (edge.i_Node1 == mstEdge.i_Node2 && edge.i_Node2 == mstEdge.i_Node1)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                Edge e = edge;
+                e.i_Tier = 1;
+                tier1Candidates.push_back(e);
+            }
+        }
+    }
+    
+    std::sort(tier1Candidates.begin(), tier1Candidates.end(),
+        [](const Edge& a, const Edge& b) { return a.f_Length > b.f_Length; });
+    
+    for (int i = 0; i < i_Tier1Count && i < (int)tier1Candidates.size(); ++i) {
+        vec_Streets.push_back(tier1Candidates[i]);
+    }
+    
+    // 7. TIER 2 - Drogi lokalne (z MST, średnie)
+    std::vector<Edge> tier2Candidates;
+    for (auto edge : mst) {
+        if (edge.f_Length >= 50.0f && edge.f_Length <= 100.0f) {
+            // Sprawdź czy nie jest już w tier 1
+            bool inTier1 = false;
+            for (const auto& t1 : vec_Streets) {
+                if (t1.i_Tier == 1 && 
+                    ((t1.i_Node1 == edge.i_Node1 && t1.i_Node2 == edge.i_Node2) ||
+                     (t1.i_Node1 == edge.i_Node2 && t1.i_Node2 == edge.i_Node1))) {
+                    inTier1 = true;
+                    break;
+                }
+            }
+            if (!inTier1) {
+                edge.i_Tier = 2;
+                tier2Candidates.push_back(edge);
+            }
+        }
+    }
+    
+    for (int i = 0; i < i_Tier2Count && i < (int)tier2Candidates.size(); ++i) {
+        vec_Streets.push_back(tier2Candidates[i]);
+    }
+    
+    // 8. TIER 3 - Uliczki (z MST, krótkie + dodatkowe)
+    std::vector<Edge> tier3Candidates;
+    
+    // Krótkie z MST
+    for (auto edge : mst) {
+        if (edge.f_Length < 50.0f) {
+            bool alreadyAdded = false;
+            for (const auto& existing : vec_Streets) {
+                if ((existing.i_Node1 == edge.i_Node1 && existing.i_Node2 == edge.i_Node2) ||
+                    (existing.i_Node1 == edge.i_Node2 && existing.i_Node2 == edge.i_Node1)) {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+            if (!alreadyAdded) {
+                edge.i_Tier = 3;
+                tier3Candidates.push_back(edge);
+            }
+        }
+    }
+    
+    // Krótkie z pozostałych krawędzi Delaunay
+    for (const auto& edge : allEdges) {
+        if (edge.f_Length < 80.0f) {
+            bool exists = false;
+            for (const auto& existing : vec_Streets) {
+                if ((existing.i_Node1 == edge.i_Node1 && existing.i_Node2 == edge.i_Node2) ||
+                    (existing.i_Node1 == edge.i_Node2 && existing.i_Node2 == edge.i_Node1)) {
+                    exists = true;
+                    break;
+                }
+            }
+            for (const auto& t3 : tier3Candidates) {
+                if ((t3.i_Node1 == edge.i_Node1 && t3.i_Node2 == edge.i_Node2) ||
+                    (t3.i_Node1 == edge.i_Node2 && t3.i_Node2 == edge.i_Node1)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                Edge e = edge;
+                e.i_Tier = 3;
+                tier3Candidates.push_back(e);
+            }
+        }
+    }
+    
+    std::sort(tier3Candidates.begin(), tier3Candidates.end(),
+        [](const Edge& a, const Edge& b) { return a.f_Length < b.f_Length; });
+    
+    for (int i = 0; i < i_Tier3Count && i < (int)tier3Candidates.size(); ++i) {
+        vec_Streets.push_back(tier3Candidates[i]);
+    }
+    
+    // Podsumowanie
+    int actual[4] = {0, 0, 0, 0};
+    for (const auto& street : vec_Streets) {
+        actual[street.i_Tier]++;
+    }
+    
+    std::cout << "[MapGen] Generated streets: " << vec_Streets.size() << " total" << std::endl;
+    std::cout << "[MapGen] Actual: T0=" << actual[0] << ", T1=" << actual[1] 
+              << ", T2=" << actual[2] << ", T3=" << actual[3] << std::endl;
+    
+    return vec_Streets;
+}
+
 
 
 } // namespace MapGen

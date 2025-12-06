@@ -396,6 +396,10 @@ namespace ScotlandYard
             m_vec_Bridges = MapGen::GenerateBridges(m_vec_GridPoints, m_vec_RiverPath,
                                                     numBridges, m_i_CurrentCorner);
 
+            int maxStreets = 10; 
+            m_vec_Streets = MapGen::GenerateStreetNetwork(m_vec_GridPoints, m_vec_RiverPath, 
+                                                        m_vec_Bridges, maxStreets);
+
             m_vec_GridPoints = MapGen::GenerateNodePositions(
                 mapW, mapH,
                 m_vec_RiverPath,
@@ -473,6 +477,51 @@ namespace ScotlandYard
                             SetPixel(cx + dx, cy + dy, 50, 150, 255);
                         }
                     }
+                }
+            }
+
+            std::cout << "[MapGen] Drawing " << m_vec_Streets.size() << " streets..." << std::endl;
+
+            for (const auto& street : m_vec_Streets) {
+                const MapGen::Point& p1 = m_vec_GridPoints[street.i_Node1]; 
+                const MapGen::Point& p2 = m_vec_GridPoints[street.i_Node2];
+    
+                int thickness = 0;
+                Uint8 r = 128, g = 128, b = 128;
+                
+                switch(street.i_Tier) {
+                    case 0: thickness = 4; r = 255; g = 100; b = 100; break;
+                    case 1: thickness = 3; r = 255; g = 200; b = 100; break; 
+                    case 2: thickness = 2; r = 200; g = 200; b = 200; break; 
+                    case 3: thickness = 1; r = 150; g = 150; b = 150; break; 
+                }
+    
+                // Bresenham algorithm
+                int x0 = (int)p1.x;
+                int y0 = (int)p1.y;
+                int x1 = (int)p2.x;
+                int y1 = (int)p2.y;
+                
+                int dx = abs(x1 - x0);
+                int dy = abs(y1 - y0);
+                int sx = (x0 < x1) ? 1 : -1;
+                int sy = (y0 < y1) ? 1 : -1;
+                int err = dx - dy;
+                
+                int x = x0;
+                int y = y0;
+    
+                while (true) {
+                    for (int d = -thickness; d <= thickness; ++d) {
+                        SetPixel(x + d, y, r, g, b);
+                        SetPixel(x, y + d, r, g, b);
+                    }
+                    
+                    if (x == x1 && y == y1) break;
+                    
+                    int e2 = 2 * err;
+                    if (e2 > -dy) { err -= dy; x += sx; }
+                    if (e2 < dx) { err += dx; y += sy; }
                 }
             }
 
@@ -761,7 +810,7 @@ namespace ScotlandYard
 
         void MapGeneratorState::RenderMapToTexture()
         {
-            // Ta funkcja nie jest już używana - usunięto zbędny kod
+            // Ta funkcja nie jest juÅ¼ uÅ¼ywana - usuniÄ™to zbÄ™dny kod
         }
 
         void MapGeneratorState::HandleEvent(const SDL_Event &ev, Core::Application *p_App)

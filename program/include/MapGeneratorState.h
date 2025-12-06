@@ -71,6 +71,8 @@ private:
     int m_i_CurrentCorner = 0;
     std::vector<std::pair<MapGen::Point, MapGen::Point>> m_vec_Bridges;
 
+    std::vector<MapGen::Edge> m_vec_Streets;
+
     GLuint m_VAO_PreviewQuad = 0;
     GLuint m_VBO_PreviewQuad = 0;
     GLuint m_ShaderProgram_Preview = 0;

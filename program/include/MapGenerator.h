@@ -22,6 +22,21 @@ struct Park {
     void GeneratePolygon(); 
 };
 
+struct Edge {
+    int i_Node1;
+    int i_Node2;
+    float f_Length;
+    int i_Tier;  // 0 = Main artery, 1= important street, 2=street, 3= little sweet street
+    
+    Edge(int n1, int n2, float len, int tier = 3) 
+        : i_Node1(n1), i_Node2(n2), f_Length(len), i_Tier(tier) {}
+};
+
+struct Triangle {
+    int i_A, i_B, i_C;
+    Triangle(int a, int b, int c) : i_A(a), i_B(b), i_C(c) {}
+};
+
 namespace Config {
     constexpr int RIVER_WIDTH = 40;
     constexpr int GRID_COLS = 20;
@@ -73,6 +88,19 @@ std::vector<Point> GenerateNodesWithParkDensity(
     int i_NumNodes,
     unsigned int seed
 );
+
+std::vector<Triangle> DelaunayTriangulation(const std::vector<Point>& vec_Points);
+std::vector<Edge> MinimumSpanningTree(const std::vector<Point>& vec_Points, 
+                                       const std::vector<Edge>& vec_Edges);
+std::vector<Edge> GenerateStreetNetwork(
+    const std::vector<Point>& vec_GridPoints,
+    const std::vector<Point>& vec_RiverPath,
+    const std::vector<std::pair<Point, Point>>& vec_Bridges,
+     int i_MaxStreets = 100
+);
+bool LineIntersectsRiver(const Point& p1, const Point& p2, 
+                         const std::vector<Point>& vec_RiverPath,
+                         const std::vector<std::pair<Point, Point>>& vec_Bridges);
 
 } // namespace MapGen
 } // namespace ScotlandYard
