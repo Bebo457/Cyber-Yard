@@ -102,5 +102,11 @@ bool LineIntersectsRiver(const Point& p1, const Point& p2,
                          const std::vector<Point>& vec_RiverPath,
                          const std::vector<std::pair<Point, Point>>& vec_Bridges);
 
+std::vector<Point> GenerateNodesOnStreets(
+    const std::vector<std::vector<Point>>& vec_Streets,
+    int i_NumNodes,
+    unsigned int seed
+);
+
 } // namespace MapGen
 } // namespace ScotlandYard

@@ -957,7 +957,40 @@ std::vector<Edge> GenerateStreetNetwork(
     return vec_Streets;
 }
 
+std::vector<Point> GenerateNodesOnStreets(
+    const std::vector<std::vector<Point>>& vec_Streets,
+    int i_NumNodes,
+    unsigned int seed
+) {
+    if (seed) srand(seed);
+    std::vector<Point> vec_Nodes;
+    std::vector<Point> sampledPoints;
 
+    // Sample points along each street polyline
+    for (const auto& street : vec_Streets) {
+        for (size_t i = 1; i < street.size(); ++i) {
+            const Point& p0 = street[i-1];
+            const Point& p1 = street[i];
+            int samples = (int)(sqrt((p1.x-p0.x)*(p1.x-p0.x)+(p1.y-p0.y)*(p1.y-p0.y))/30.0f);
+            samples = std::max(samples, 1);
+            for (int s = 0; s <= samples; ++s) {
+                float t = s / (float)samples;
+                Point pt;
+                pt.x = p0.x + t * (p1.x - p0.x);
+                pt.y = p0.y + t * (p1.y - p0.y);
+                sampledPoints.push_back(pt);
+            }
+        }
+    }
+
+    // Randomly select node positions from sampled points
+    std::random_shuffle(sampledPoints.begin(), sampledPoints.end());
+    for (size_t i = 0; i < sampledPoints.size() && (int)vec_Nodes.size() < i_NumNodes; ++i) {
+        vec_Nodes.push_back(sampledPoints[i]);
+    }
+
+    return vec_Nodes;
+}
 
 } // namespace MapGen
 } // namespace ScotlandYard
