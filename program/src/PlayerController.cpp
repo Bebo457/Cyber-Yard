@@ -119,7 +119,7 @@ void AIPlayerController::Reset() {
     m_b_CalculationInProgress = false;
 }
 
-static MoveDecision ExternalPythonAlgorithm(
+static MoveDecision ExternalPythonAlgorithmmrX(
     const Player* p_Player,
     const std::vector<PossibleMove>& vec_PossibleMoves,
     const GameStateData& gameState
@@ -150,8 +150,31 @@ static MoveDecision ExternalPythonAlgorithm(
     }
 
     nlohmann::json req;
-    req["player_index"] = gameState.i_CurrentPlayerIndex;
-    req["round"] = gameState.i_CurrentRound;
+    req["game_state"] = {
+        {"current_player_index", gameState.i_CurrentPlayerIndex},
+        {"current_round", gameState.i_CurrentRound},
+        {"is_reveal_round", gameState.b_IsRevealRound},
+        {"is_next_reveal_round", gameState.b_IsNextRevealRound},
+        {"mr_x_last_known_position", gameState.i_MrXLastKnownPosition},
+        {"mr_x_last_known_round", gameState.i_MrXLastKnownRound}
+    };
+
+    nlohmann::json jplayers = nlohmann::json::array();
+    for (const auto& info : gameState.vec_AllPlayers) {
+        jplayers.push_back({
+            {"position", info.i_Position},
+            {"is_visible", info.b_IsVisible},
+            {"is_mister_x", info.b_IsMisterX},
+            {"tickets", {
+                {"taxi", info.i_TaxiTickets},
+                {"bus", info.i_BusTickets},
+                {"metro", info.i_MetroTickets},
+                {"black", info.i_BlackTickets},
+                {"double", info.i_DoubleMoveTickets}
+            }}
+        });
+    }
+    req["players"] = jplayers;
 
     nlohmann::json jmoves = nlohmann::json::array();
     for (const auto& m : vec_PossibleMoves) {
@@ -208,10 +231,10 @@ static MoveDecision ExternalPythonAlgorithm(
             }
         }
     } catch (const std::exception& e) {
-        std::cerr << "[ExternalPythonAlgorithm] Python bridge error: " << e.what() << "\n";
+        std::cerr << "[ExternalPythonAlgorithmmrX] Python bridge error: " << e.what() << "\n";
         return randomFallback();
     } catch (...) {
-        std::cerr << "[ExternalPythonAlgorithm] Unknown Python bridge error\n";
+        std::cerr << "[ExternalPythonAlgorithmmrX] Unknown Python bridge error\n";
         return randomFallback();
     }
 
@@ -3806,8 +3829,11 @@ MoveDecision AIPlayerController::CalculateBestMove(
             break;
         }
         case Core::AIAlgorithm::DistanceMaximizationMrX:
-            decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
-            //decision = ExternalPythonAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            //decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
+            // todo trzeba co rundę wysyłać algorytmowi nagrodę za ruch i dawać mu znać (done) że gra się skończyła żeby na zdobytych danych się nauczył
+            // trzeba też napisać skrypt który będzie uruchamiał wiele gier pod rząd żeby zebrać dane do nauki 
+            // oraz napisać kod RL dla policjantów ale na innym porcie żeby nie było sprzeczności w danych
             break;
         case Core::AIAlgorithm::DecoyMovementMrX:
             decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
