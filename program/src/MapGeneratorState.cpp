@@ -396,7 +396,7 @@ namespace ScotlandYard
             m_vec_Bridges = MapGen::GenerateBridges(m_vec_GridPoints, m_vec_RiverPath,
                                                     numBridges, m_i_CurrentCorner);
 
-            int maxStreets = 10; 
+            int maxStreets = 5; 
             m_vec_Streets = MapGen::GenerateStreetNetwork(m_vec_GridPoints, m_vec_RiverPath, 
                                                         m_vec_Bridges, maxStreets);
 
@@ -482,26 +482,105 @@ namespace ScotlandYard
 
             std::cout << "[MapGen] Drawing " << m_vec_Streets.size() << " streets..." << std::endl;
 
-            for (const auto& street : m_vec_Streets) {
-                const MapGen::Point& p1 = m_vec_GridPoints[street.i_Node1]; 
-                const MapGen::Point& p2 = m_vec_GridPoints[street.i_Node2];
+            // for (const auto& street : m_vec_Streets) {
+            //     const MapGen::Point& p1 = m_vec_GridPoints[street.i_Node1]; 
+            //     const MapGen::Point& p2 = m_vec_GridPoints[street.i_Node2];
     
-                int thickness = 0;
+            //     int thickness = 0;
+            //     Uint8 r = 128, g = 128, b = 128;
+                
+            //     switch(street.i_Tier) {
+            //         case 0: thickness = 4; r = 255; g = 100; b = 100; break;
+            //         case 1: thickness = 3; r = 255; g = 200; b = 100; break; 
+            //         case 2: thickness = 2; r = 200; g = 200; b = 200; break; 
+            //         case 3: thickness = 1; r = 150; g = 150; b = 150; break; 
+            //     }
+    
+            //     // Bresenham algorithm
+            //     int x0 = (int)p1.x;
+            //     int y0 = (int)p1.y;
+            //     int x1 = (int)p2.x;
+            //     int y1 = (int)p2.y;
+                
+            //     int dx = abs(x1 - x0);
+            //     int dy = abs(y1 - y0);
+            //     int sx = (x0 < x1) ? 1 : -1;
+            //     int sy = (y0 < y1) ? 1 : -1;
+            //     int err = dx - dy;
+                
+            //     int x = x0;
+            //     int y = y0;
+    
+            //     while (true) {
+            //         for (int d = -thickness; d <= thickness; ++d) {
+            //             SetPixel(x + d, y, r, g, b);
+            //             SetPixel(x, y + d, r, g, b);
+            //         }
+                    
+            //         if (x == x1 && y == y1) break;
+                    
+            //         int e2 = 2 * err;
+            //         if (e2 > -dy) { err -= dy; x += sx; }
+            //         if (e2 < dx) { err += dx; y += sy; }
+            //     }
+            // }
+
+            // for (const auto &p : m_vec_GridPoints)
+            // {
+            //     bool b_IsBridgeEnd = false;
+            //     for (const auto &bridge : m_vec_Bridges)
+            //     {
+            //         float f_Dist1 = sqrt((p.x - bridge.first.x) * (p.x - bridge.first.x) +
+            //                              (p.y - bridge.first.y) * (p.y - bridge.first.y));
+            //         float f_Dist2 = sqrt((p.x - bridge.second.x) * (p.x - bridge.second.x) +
+            //                              (p.y - bridge.second.y) * (p.y - bridge.second.y));
+
+            //         if (f_Dist1 < 1.0f || f_Dist2 < 1.0f)
+            //         {
+            //             b_IsBridgeEnd = true;
+            //             break;
+            //         }
+            //     }
+
+            //     Uint8 r = b_IsBridgeEnd ? 255 : 255;
+            //     Uint8 g = b_IsBridgeEnd ? 0 : 255;
+            //     Uint8 b = b_IsBridgeEnd ? 0 : 255;
+
+            //     for (int dy = -3; dy <= 3; ++dy)
+            //     {
+            //         for (int dx = -3; dx <= 3; ++dx)
+            //         {
+            //             if (dx * dx + dy * dy <= 9)
+            //             {
+            //                 SetPixel((int)p.x + dx, (int)p.y + dy, r, g, b);
+            //             }
+            //         }
+            //     }
+            // }
+            // Rysuj ulice (uproszczone - bez grubości)
+            std::cout << "[MapGen] Drawing " << m_vec_Streets.size() << " streets..." << std::endl;
+
+            for (size_t streetIdx = 0; streetIdx < m_vec_Streets.size(); ++streetIdx) {
+                const auto& street = m_vec_Streets[streetIdx];
+                const MapGen::Point& p1 = m_vec_GridPoints[street.i_Node1];
+                const MapGen::Point& p2 = m_vec_GridPoints[street.i_Node2];
+                
+                // Kolor według tier
                 Uint8 r = 128, g = 128, b = 128;
                 
                 switch(street.i_Tier) {
-                    case 0: thickness = 4; r = 255; g = 100; b = 100; break;
-                    case 1: thickness = 3; r = 255; g = 200; b = 100; break; 
-                    case 2: thickness = 2; r = 200; g = 200; b = 200; break; 
-                    case 3: thickness = 1; r = 150; g = 150; b = 150; break; 
+                    case 0: r = 255; g = 100; b = 100; break;  // Czerwone arterie
+                    case 1: r = 255; g = 200; b = 100; break;  // Pomarańczowe drogi główne
+                    case 2: r = 200; g = 200; b = 200; break;  // Szare drogi lokalne
+                    case 3: r = 150; g = 150; b = 150; break;  // Ciemnoszare uliczki
                 }
-    
-                // Bresenham algorithm
+                
                 int x0 = (int)p1.x;
                 int y0 = (int)p1.y;
                 int x1 = (int)p2.x;
                 int y1 = (int)p2.y;
                 
+                // Superszybki Bresenhams - SINGLE PIXEL
                 int dx = abs(x1 - x0);
                 int dy = abs(y1 - y0);
                 int sx = (x0 < x1) ? 1 : -1;
@@ -510,12 +589,9 @@ namespace ScotlandYard
                 
                 int x = x0;
                 int y = y0;
-    
+                
                 while (true) {
-                    for (int d = -thickness; d <= thickness; ++d) {
-                        SetPixel(x + d, y, r, g, b);
-                        SetPixel(x, y + d, r, g, b);
-                    }
+                    SetPixel(x, y, r, g, b);
                     
                     if (x == x1 && y == y1) break;
                     
@@ -523,40 +599,14 @@ namespace ScotlandYard
                     if (e2 > -dy) { err -= dy; x += sx; }
                     if (e2 < dx) { err += dx; y += sy; }
                 }
-            }
-
-            for (const auto &p : m_vec_GridPoints)
-            {
-                bool b_IsBridgeEnd = false;
-                for (const auto &bridge : m_vec_Bridges)
-                {
-                    float f_Dist1 = sqrt((p.x - bridge.first.x) * (p.x - bridge.first.x) +
-                                         (p.y - bridge.first.y) * (p.y - bridge.first.y));
-                    float f_Dist2 = sqrt((p.x - bridge.second.x) * (p.x - bridge.second.x) +
-                                         (p.y - bridge.second.y) * (p.y - bridge.second.y));
-
-                    if (f_Dist1 < 1.0f || f_Dist2 < 1.0f)
-                    {
-                        b_IsBridgeEnd = true;
-                        break;
-                    }
-                }
-
-                Uint8 r = b_IsBridgeEnd ? 255 : 255;
-                Uint8 g = b_IsBridgeEnd ? 0 : 255;
-                Uint8 b = b_IsBridgeEnd ? 0 : 255;
-
-                for (int dy = -3; dy <= 3; ++dy)
-                {
-                    for (int dx = -3; dx <= 3; ++dx)
-                    {
-                        if (dx * dx + dy * dy <= 9)
-                        {
-                            SetPixel((int)p.x + dx, (int)p.y + dy, r, g, b);
-                        }
-                    }
+                
+                if (streetIdx % 10 == 0) {
+                    std::cout << "[MapGen] Drew street " << streetIdx << "/" << m_vec_Streets.size() << std::endl;
                 }
             }
+
+            std::cout << "[MapGen] All streets drawn" << std::endl;
+
 
             
             std::cout << "[MapGen] Drawing " << m_vec_Bridges.size() << " bridges..." << std::endl;

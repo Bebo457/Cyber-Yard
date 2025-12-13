@@ -96,7 +96,7 @@ std::vector<Edge> GenerateStreetNetwork(
     const std::vector<Point>& vec_GridPoints,
     const std::vector<Point>& vec_RiverPath,
     const std::vector<std::pair<Point, Point>>& vec_Bridges,
-     int i_MaxStreets = 100
+    int i_MaxStreets = 100
 );
 bool LineIntersectsRiver(const Point& p1, const Point& p2, 
                          const std::vector<Point>& vec_RiverPath,

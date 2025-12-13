@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <set>
 #include <functional>
+#include <random>
 
 namespace ScotlandYard {
 namespace MapGen {
@@ -985,6 +986,12 @@ std::vector<Point> GenerateNodesOnStreets(
 
     // Randomly select node positions from sampled points
     std::random_shuffle(sampledPoints.begin(), sampledPoints.end());
+
+    // Another version
+    // std::random_device rd;
+    // std::mt19937 g(rd());
+    // std::shuffle(sampledPoints.begin(), sampledPoints.end(), g);
+
     for (size_t i = 0; i < sampledPoints.size() && (int)vec_Nodes.size() < i_NumNodes; ++i) {
         vec_Nodes.push_back(sampledPoints[i]);
     }
