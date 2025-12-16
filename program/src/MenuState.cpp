@@ -22,7 +22,7 @@ namespace States {
     {
         for (int i = 0; i < BUTTON_COUNT; ++i) {
             m_f_FrameAlpha[i] = 0.0f;
-            m_Buttons[i] = { 0.0f, 0.0f, 320.0f, 70.0f, "" };  // <- wa¿ne: rozmiary!
+            m_Buttons[i] = { 0.0f, 0.0f, 320.0f, 70.0f, "" };
         }
 
         BuildMainMenu();
@@ -254,7 +254,7 @@ void MenuState::Render(Core::Application* p_App) {
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"),
         1, GL_FALSE, glm::value_ptr(projection));
 
-    // ====== TYTU£ (jak wczeœniej) ======
+
     float f_TitleScale = 2.0f;
     const float f_SpecialScaleMul = 1.35f;
     std::string s_Title = "CYBER YARD";
@@ -340,23 +340,21 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                     p_App->GetStateManager()->ChangeState("mapgen");
                     break;
                 case 3: // Back
-                    BuildMainMenu();  // Powróæ do g³ównego menu
+                    BuildMainMenu();  // Back to main menu
                     break;
                 }
             }
             else {
                 switch (m_i_SelectedOption) {
                 case 0: // New Game
-                    BuildNewGameMenu();  // PrzejdŸ do submenu New Game
+                    BuildNewGameMenu();  // Submenu change
                     break;
                 case 1: // Load Game
-                    // Wczytaj grê
                     break;
                 case 2: // Settings
-                    // Ustawienia
                     break;
                 case 3: // Exit
-                    p_App->RequestExit();  // Zakoñcz aplikacjê
+                    p_App->RequestExit();  // END
                     break;
                 }
             }

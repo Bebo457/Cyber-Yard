@@ -13,126 +13,170 @@ namespace ScotlandYard {
         }
 
         void GameSetupState::OnEnter() {
-            // default setup
             m_i_Mode = 0;
+            m_i_Map = 0;
+            m_i_AIType = 0;
+            m_i_Human = 0;
             m_i_AIMrX = 0;
             m_i_AIDet = 0;
-            m_vec_Buttons.clear();
+            m_i_Hover = -1;
+
+            m_Page = Page::Main;
         }
+
+
+
 
         void GameSetupState::Layout(Core::Application* app) {
             m_vec_Buttons.clear();
 
-            const int   W = app->GetWidth();
-            const int   H = app->GetHeight();
+            const int W = app->GetWidth();
+            const int H = app->GetHeight();
 
-            // setup
-            const int   cols = 5;  // ZMIANA: było 3, teraz 5
-            const float gridW = std::min((float)W * 0.92f, 1400.0f);  // ZMIANA: zwiększona szerokość z 1120 na 1400
-            const float gridX = (W - gridW) * 0.5f;
-            const float cellW = gridW / cols;
-            const float cellGap = 14.0f;
-            const float btnW = cellW - 2 * cellGap;
+            const float btnW = 320.0f;
             const float btnH = 54.0f;
+            const float rowGap = 45.0f;
+            const float btnGap = 30.0f;
 
-            // vertical gap
-            const float lineH = btnH + 45.0f;
+            int rows = 0;
+            switch (m_Page) {
+            case Page::Main:      rows = IsPvBot() ? 4 : 3; break;
+            case Page::AIType:    rows = 2; break;
+            case Page::HumanSide: rows = 2; break;
+            case Page::Algorithms:rows = IsPvBot() ? 2 : 3; break;                 
+            default:              rows = 2; break;
+            }
 
-            const bool  hasHumanRow = (m_i_Mode == 1);
-            const int   rowsAboveFooter = hasHumanRow ? 4 : 3;
-            const int   totalRows = rowsAboveFooter + 1;
-            const float blockH = totalRows * lineH + hasHumanRow;
-
+            const float lineH = btnH + rowGap;
+            const float blockH = rows * lineH;
             const float topY = (H + blockH) * 0.5f;
 
             auto rowYTopDown = [&](int idxFromTop) {
-                float y = topY - (idxFromTop + 1) * lineH + (lineH - btnH);
-                return y;
-            };
+                return topY - (idxFromTop + 1) * lineH + (lineH - btnH);
+                };
 
-            // NOWA FUNKCJA: umieszcza 5 przycisków w rzędzie
+            auto placeRow3 = [&](Row row, int idxFromTop, const char* t0, const char* t1, const char* t2) {
+                float y = rowYTopDown(idxFromTop);
+                float totalW = 3.0f * btnW + 2.0f * btnGap;
+                float x0 = (W - totalW) * 0.5f;
+                m_vec_Buttons.push_back({ row, 0, x0 + 0.0f * (btnW + btnGap), y, btnW, btnH, t0 });
+                m_vec_Buttons.push_back({ row, 1, x0 + 1.0f * (btnW + btnGap), y, btnW, btnH, t1 });
+                m_vec_Buttons.push_back({ row, 2, x0 + 2.0f * (btnW + btnGap), y, btnW, btnH, t2 });
+                };
+
+            auto placeRow2 = [&](Row row, int idxFromTop, const char* t0, const char* t1) {
+                float y = rowYTopDown(idxFromTop);
+                float totalW = 2.0f * btnW + 1.0f * btnGap;
+                float x0 = (W - totalW) * 0.5f;
+                m_vec_Buttons.push_back({ row, 0, x0 + 0.0f * (btnW + btnGap), y, btnW, btnH, t0 });
+                m_vec_Buttons.push_back({ row, 1, x0 + 1.0f * (btnW + btnGap), y, btnW, btnH, t1 });
+                };
+
             auto placeRow5 = [&](Row row, int idxFromTop,
                 const char* t0, const char* t1, const char* t2, const char* t3, const char* t4) {
+
                     float y = rowYTopDown(idxFromTop);
-                    for (int c = 0; c < 5; ++c) {
-                        float x = gridX + c * cellW + cellGap;
-                        const char* texts[] = {t0, t1, t2, t3, t4};
-                        m_vec_Buttons.push_back({ row, c, x, y, btnW, btnH, texts[c] });
+                    const float smallW = 240.0f;
+                    const float gap = 18.0f;
+                    float totalW = 5.0f * smallW + 4.0f * gap;
+                    float x0 = (W - totalW) * 0.5f;
+
+                    const char* T[5] = { t0,t1,t2,t3,t4 };
+                    for (int i = 0; i < 5; ++i) {
+                        m_vec_Buttons.push_back({ row, i, x0 + i * (smallW + gap), y, smallW, btnH, T[i] });
                     }
                 };
 
-            // ZMODYFIKOWANA FUNKCJA: dla 3 przycisków wyśrodkowanych
-            auto placeRow3Centered = [&](Row row, int idxFromTop,
-                const char* t0, const char* t1, const char* t2) {
-                    float y = rowYTopDown(idxFromTop);
-                    // Wyśrodkuj 3 przyciski (użyj kolumn 1, 2, 3 z 5 dostępnych)
-                    for (int c = 1; c <= 3; ++c) {
-                        float x = gridX + c * cellW + cellGap;
-                        const char* text = (c == 1 ? t0 : (c == 2 ? t1 : t2));
-                        m_vec_Buttons.push_back({ row, c-1, x, y, btnW, btnH, text });
-                    }
-                };
 
-            // ROW LAYOUT
-            // 0: MODE (3 przyciski wyśrodkowane)
-            placeRow3Centered(Row::Mode, 0, "Player vs Player", "Player vs Bot", "Bot vs Bot");
 
-            int idx = 1;
+            int idx = 0;
 
-            // 1: HUMAN (PvBot)
-            if (m_i_Mode == 1) {
-                const float y = rowYTopDown(idx);
-                const float gap = 2.0f * cellGap;
-                const float groupW = 2.0f * btnW + gap;
-                const float center = W * 0.5f;
-                const float xL = center - groupW * 0.5f;
-                const float xR = xL + btnW + gap;
+            if (m_Page == Page::Main) {
+                placeRow3(Row::Mode, idx++, "Player vs Player", "Player vs Bot", "Bot vs Bot");
+                if (IsPvBot()) { // m_i_Mode == 1
+                    placeRow2(Row::Human, idx++, "Mr X", "Detectives");
+                }
+                placeRow2(Row::Map, idx++, "Default Map", "Map Generator");
 
-                m_vec_Buttons.push_back({ Row::Human, 0, xL, y, btnW, btnH, "Mr X" });
-                m_vec_Buttons.push_back({ Row::Human, 1, xR, y, btnW, btnH, "Detectives" });
-
-                idx += 1;
+               
+                PlaceFooter(idx++, "Back to Menu", HasBot() ? "Next" : "Start Game", W, rowYTopDown, btnH);
+                return;
             }
-            
-            placeRow5(Row::MrX, idx++, 
-                "X: Random", 
-                "X: Dist Max", 
-                "X: Decoy Mov",
-                "X: Monte Carlo",
-                "X: DFS");
-            
-            // Detectives AI - 5 przycisków
-            placeRow5(Row::Detectives, idx++, 
-                "D: Random", 
-                "D: Monte Carlo", 
-                "D: Minimax",
-                "D: GSP", 
-                "D: FSE");
 
-            // Footer (bez zmian)
-            const float yF = rowYTopDown(idx);
-            const float fBtnW = 250.0f;
-            const float fGap = 60.0f;
-            const float totalFW = fBtnW * 2 + fGap;
-            const float fx0 = (W - totalFW) * 0.5f;
 
-            m_vec_Buttons.push_back({ Row::Footer, 0, fx0,                  yF, fBtnW, btnH, "Back to Menu" });
-            m_vec_Buttons.push_back({ Row::Footer, 1, fx0 + fBtnW + fGap,   yF, fBtnW, btnH, "Start Game" });
+            if (m_Page == Page::AIType) {
+                placeRow2(Row::AIType, idx++, "Heuristic", "ML");
+                PlaceFooter(idx++, "Back", "Next", W, rowYTopDown, btnH);
+                return;
+            }
+
+            if (m_Page == Page::HumanSide) {
+                placeRow2(Row::Human, idx++, "Mr X", "Detectives");
+                PlaceFooter(idx++, "Back", "Next", W, rowYTopDown, btnH);
+                return;
+            }
+
+            if (m_Page == Page::Algorithms) {
+
+                if (IsPvBot()) {
+                    // if human = MrX (m_i_Human==0) -> bot = Detectives
+                    if (m_i_Human == 0) {
+                        placeRow5(Row::Detectives, idx++, "D: Random", "D: Monte Carlo", "D: Minimax", "D: GSP", "D: FSE");
+                    }
+                    else {
+                        placeRow5(Row::MrX, idx++, "X: Random", "X: Dist Max", "X: Decoy Mov", "X: Monte Carlo", "X: DFS");
+                    }
+                }
+                else {
+                    // BotvBot
+                    placeRow5(Row::MrX, idx++, "X: Random", "X: Dist Max", "X: Decoy Mov", "X: Monte Carlo", "X: DFS");
+                    placeRow5(Row::Detectives, idx++, "D: Random", "D: Monte Carlo", "D: Minimax", "D: GSP", "D: FSE");
+                }
+
+                PlaceFooter(idx++, "Back", "Start Game", W, rowYTopDown, btnH);
+                return;
+            }
         }
 
 
         bool GameSetupState::IsRowDisabled(Row row) const {
-            if (row == Row::Footer || row == Row::Mode || row == Row::Human) return false;
+            if (row == Row::Footer || row == Row::Mode || row == Row::Map) return false;
 
-            if (m_i_Mode == 0) { // PvP
-                return (row == Row::MrX || row == Row::Detectives);
+            // PvP
+            if (m_Page == Page::Algorithms && m_i_Mode == 0) {
+                return (row == Row::AIType || row == Row::Human || row == Row::MrX || row == Row::Detectives);
             }
-            if (m_i_Mode == 1) { // PvBot
-                // off human side
-                return (m_i_Human == 0) ? (row == Row::MrX) : (row == Row::Detectives);
+
+            // PvBot
+            if (m_Page == Page::Algorithms && m_i_Mode == 1) {
+                if (row == Row::AIType || row == Row::Human) return false;
+                if (row == Row::MrX)        return (m_i_Human == 0); // MrX = human
+                if (row == Row::Detectives) return (m_i_Human == 1); // Detectives = human
+                return false;
             }
-            return false; // BotvBot
+
+            // BotvBot
+            if (m_i_Mode == 2) {
+                if (row == Row::AIType) return false;
+                return false;
+            }
+
+            return false;
         }
+
+        void GameSetupState::PlaceFooter(int idxFromTop, const char* left, const char* right,
+            int W,
+            const std::function<float(int)>& rowYTopDown,
+            float btnH) {
+            float y = rowYTopDown(idxFromTop);
+            const float fBtnW = 250.0f;
+            const float fGap = 60.0f;
+            const float totalFW = fBtnW * 2 + fGap;
+            const float fx0 = (W - totalFW) * 0.5f;
+            m_vec_Buttons.push_back({ Row::Footer, 0, fx0,                y, fBtnW, btnH, left });
+            m_vec_Buttons.push_back({ Row::Footer, 1, fx0 + fBtnW + fGap, y, fBtnW, btnH, right });
+        }
+
 
 
         void GameSetupState::DrawButton(const Button& b, bool selected, Core::Application* app) {
@@ -195,15 +239,70 @@ namespace ScotlandYard {
                     if (mx >= b.f_X && mx <= b.f_X + b.f_W && myBL >= b.f_Y && myBL <= b.f_Y + b.f_H) {
                         if (IsRowDisabled(b.e_Row)) return; // ignored
 
-                        if (b.e_Row == Row::Mode) { m_i_Mode = b.i_Col; return; }
-                        if (b.e_Row == Row::Human) { m_i_Human = b.i_Col; return; }
-                        if (b.e_Row == Row::MrX) { m_i_AIMrX = b.i_Col; return; }
-                        if (b.e_Row == Row::Detectives) { m_i_AIDet = b.i_Col; return; }
-                        if (b.e_Row == Row::Footer) {
-                            if (b.i_Col == 0) app->GetStateManager()->ChangeState("menu");
-                            else            StartGame(app);
+                        if (b.e_Row == Row::Mode) {
+                            m_i_Mode = b.i_Col;
+                            m_i_AIType = 0;
+                            m_i_Human = 0;
+                            m_i_AIMrX = 0;
+                            m_i_AIDet = 0;
                             return;
                         }
+
+                        if (b.e_Row == Row::Map) { m_i_Map = b.i_Col; return; }
+                        if (b.e_Row == Row::AIType) { m_i_AIType = b.i_Col; return; }
+
+                        if (b.e_Row == Row::Human) { m_i_Human = b.i_Col; return; }
+
+                        if (b.e_Row == Row::MrX) { m_i_AIMrX = b.i_Col; return; }
+                        if (b.e_Row == Row::Detectives) { m_i_AIDet = b.i_Col; return; }
+
+                        if (b.e_Row == Row::Footer) {
+                            if (b.i_Col == 0) { 
+                                if (m_Page == Page::Main) {
+                                    app->GetStateManager()->ChangeState("menu");
+                                    return;
+                                }
+                                // back to previous
+                                if (m_Page == Page::AIType) { m_Page = Page::Main; return; }
+                                if (m_Page == Page::HumanSide) { m_Page = Page::AIType; return; }
+                                if (m_Page == Page::Algorithms) { m_Page = Page::AIType; return; }
+                                return;
+                            }
+                            else { 
+                                if (m_Page == Page::Main) {
+                                    if (m_i_Map == 1) {
+                                        app->GetStateManager()->ChangeState("mapgen");
+                                        return;
+                                    }
+
+                                    if (!HasBot()) {
+                                        // PvP - no more pages, just game
+                                        StartGame(app);
+                                        return;
+                                    }
+
+                                    m_Page = Page::AIType;
+                                    return;
+                                }
+
+                                if (m_Page == Page::AIType) {
+                                    m_Page = Page::Algorithms;
+                                    return;
+                                }
+
+
+                                if (m_Page == Page::HumanSide) {
+                                    m_Page = Page::Algorithms;
+                                    return;
+                                }
+
+                                if (m_Page == Page::Algorithms) {
+                                    StartGame(app);
+                                    return;
+                                }
+                            }
+                        }
+
                     }
                 }
             }
@@ -224,30 +323,29 @@ namespace ScotlandYard {
             // buttons drawing with selected option
             for (const auto& b : m_vec_Buttons) {
                 bool selected = false;
-                if (b.e_Row == Row::Mode)       selected = (b.i_Col == m_i_Mode);
-                if (b.e_Row == Row::MrX)        selected = (b.i_Col == m_i_AIMrX);
+                if (b.e_Row == Row::Mode)    selected = (b.i_Col == m_i_Mode);
+                if (b.e_Row == Row::Map)     selected = (b.i_Col == m_i_Map);
+                if (b.e_Row == Row::AIType)  selected = (b.i_Col == m_i_AIType);
+                if (b.e_Row == Row::Human)   selected = (b.i_Col == m_i_Human);
+                if (b.e_Row == Row::MrX)     selected = (b.i_Col == m_i_AIMrX);
                 if (b.e_Row == Row::Detectives) selected = (b.i_Col == m_i_AIDet);
-                if (b.e_Row == Row::Human)      selected = (b.i_Col == m_i_Human);
+
                 DrawButton(b, selected, app);
             }
 
             // tooltip for PvP
             if (m_i_Mode == 0) {
+                bool hasMrX = false, hasDet = false;
                 float mrxLower = 1e9f;
                 float detUpper = -1e9f;
 
-                // to have it centred in 2 rows
                 for (const auto& b : m_vec_Buttons) {
-                    if (b.e_Row == Row::MrX) {
-                        mrxLower = std::min(mrxLower, b.f_Y);
-                    }
-                    else if (b.e_Row == Row::Detectives) {
-                        detUpper = std::max(detUpper, b.f_Y + b.f_H);
-                    }
+                    if (b.e_Row == Row::MrX) { hasMrX = true; mrxLower = std::min(mrxLower, b.f_Y); }
+                    else if (b.e_Row == Row::Detectives) { hasDet = true; detUpper = std::max(detUpper, b.f_Y + b.f_H); }
                 }
 
-                // gap checking
-                if (detUpper < mrxLower) {
+                if (hasMrX && hasDet && detUpper < mrxLower) 
+                {
                     const float padY = 8.0f;
                     const float minH = 34.0f; // minimal height
                     float y0 = detUpper + padY;
@@ -269,7 +367,7 @@ namespace ScotlandYard {
                 }
             }
             // tooltip for PvBot
-            if (m_i_Mode == 1) {
+            if (m_Page == Page::Algorithms && m_i_Mode == 1) {
                 // if human is Mr X -> Mr X AI should be off (the same logic with Detectives)
                 const Row disabledRow = (m_i_Human == 0) ? Row::MrX : Row::Detectives;
 
@@ -326,6 +424,7 @@ namespace ScotlandYard {
         void GameSetupState::StartGame(Core::Application* app) {
             using namespace ScotlandYard::Core;
 
+
             auto& S = Settings();
             
             switch (m_i_Mode) {
@@ -334,7 +433,7 @@ namespace ScotlandYard {
             case 2: S.e_Mode = GameMode::BotvBot; break;
             }
 
-            // Mapowanie dla Mr X
+            // mapping for Mr X
             auto mapAI_MrX = [](int idx) {
                 switch (idx) {
                 case 1: return AIAlgorithm::DistanceMaximizationMrX;
@@ -345,7 +444,7 @@ namespace ScotlandYard {
                 }
             };
             
-            // Mapowanie dla Detectives
+            // mapping for Detectives
             auto mapAI_Detectives = [](int idx) {
                 switch (idx) {
                 case 1: return AIAlgorithm::MonteCarloPolice;
@@ -356,8 +455,24 @@ namespace ScotlandYard {
                 }
             };
             
-            S.e_AIMisterX = mapAI_MrX(m_i_AIMrX);
-            S.e_AIDetectives = mapAI_Detectives(m_i_AIDet);
+            if (S.e_Mode == GameMode::PvP) {
+                // AI ignored
+            }
+            else if (S.e_Mode == GameMode::PvBot) {
+                if (m_i_Human == 0) { // human = Mr X, bot = Detectives
+                    S.e_AIDetectives = mapAI_Detectives(m_i_AIDet);
+                    S.e_AIMisterX = AIAlgorithm::Random;
+                }
+                else { // human = Detectives, bot = MrX
+                    S.e_AIMisterX = mapAI_MrX(m_i_AIMrX);
+                    S.e_AIDetectives = AIAlgorithm::Random;
+                }
+            }
+            else { // BotvBot
+                S.e_AIMisterX = mapAI_MrX(m_i_AIMrX);
+                S.e_AIDetectives = mapAI_Detectives(m_i_AIDet);
+            }
+
             S.e_PvBotHuman = (m_i_Human == 0 ? HumanSide::MrX : HumanSide::Detectives);
 
             app->GetStateManager()->ChangeState("game");
