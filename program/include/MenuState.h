@@ -26,9 +26,14 @@ public:
     void HandleEvent(const SDL_Event& event, Core::Application* p_App) override;
 
 private:
+    bool m_b_NewGameSubmenu = false;
+
+    void BuildMainMenu();
+    void BuildNewGameMenu();
+
     int m_i_SelectedOption;
     int m_i_HoverOption;
-    static constexpr int BUTTON_COUNT = 5;
+    static constexpr int BUTTON_COUNT = 4;
     float m_f_FrameAlpha[BUTTON_COUNT];
     GLuint m_WhiteTexture;
 

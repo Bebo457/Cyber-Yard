@@ -14,21 +14,49 @@
 namespace ScotlandYard {
 namespace States {
 
-MenuState::MenuState()
-    : m_i_SelectedOption(0)
-    , m_i_HoverOption(-1)
-    , m_WhiteTexture(0)
-{
-    for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
-    m_Buttons[0] = {0.0f, 0.0f, 320.0f, 70.0f, "New Game"};
-    m_Buttons[1] = { 0.0f, 0.0f, 320.0f, 70.0f, "Map Generator" };
-    m_Buttons[2] = {0.0f, 0.0f, 320.0f, 70.0f, "Load Game"};
-    m_Buttons[3] = {0.0f, 0.0f, 320.0f, 70.0f, "Settings"};
-    m_Buttons[4] = {0.0f, 0.0f, 320.0f, 70.0f, "Exit"};
-}
+    MenuState::MenuState()
+        : m_i_SelectedOption(0)
+        , m_i_HoverOption(-1)
+        , m_WhiteTexture(0)
+        , m_b_NewGameSubmenu(false)
+    {
+        for (int i = 0; i < BUTTON_COUNT; ++i) {
+            m_f_FrameAlpha[i] = 0.0f;
+            m_Buttons[i] = { 0.0f, 0.0f, 320.0f, 70.0f, "" };  // <- wa¿ne: rozmiary!
+        }
 
-MenuState::~MenuState() {
-}
+        BuildMainMenu();
+    }
+
+    MenuState::~MenuState() = default;
+
+
+    void MenuState::BuildMainMenu() {
+        m_b_NewGameSubmenu = false;
+
+        m_Buttons[0].m_s_Text = "New Game";
+        m_Buttons[1].m_s_Text = "Load Game";
+        m_Buttons[2].m_s_Text = "Settings";
+        m_Buttons[3].m_s_Text = "Exit";
+
+        m_i_SelectedOption = 0;
+        m_i_HoverOption = -1;
+        for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
+    }
+
+    void MenuState::BuildNewGameMenu() {
+        m_b_NewGameSubmenu = true;
+
+        m_Buttons[0].m_s_Text = "Local";
+        m_Buttons[1].m_s_Text = "Online LAN";
+        m_Buttons[2].m_s_Text = "Map Generator";
+        m_Buttons[3].m_s_Text = "Back";
+
+        m_i_SelectedOption = 0;
+        m_i_HoverOption = -1;
+        for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
+    }
+
 
 void MenuState::OnEnter() {
     m_i_SelectedOption = 0;
@@ -218,15 +246,19 @@ void MenuState::Render(Core::Application* p_App) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(i_WindowWidth), 0.0f, static_cast<float>(i_WindowHeight));
+    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(i_WindowWidth),
+        0.0f, static_cast<float>(i_WindowHeight));
 
     GLuint shaderProgram = p_App->GetTextShaderProgram();
     glUseProgram(shaderProgram);
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"),
+        1, GL_FALSE, glm::value_ptr(projection));
 
-    float f_TitleScale = 2.0f; 
-    const float f_SpecialScaleMul = 1.35f; // multiplier for the larger letters
+    // ====== TYTU£ (jak wczeœniej) ======
+    float f_TitleScale = 2.0f;
+    const float f_SpecialScaleMul = 1.35f;
     std::string s_Title = "CYBER YARD";
+
     float f_TitleWidth = 0.0f;
     std::vector<float> charScales;
     charScales.reserve(s_Title.size());
@@ -235,74 +267,105 @@ void MenuState::Render(Core::Application* p_App) {
     for (int i = (int)s_Title.size() - 1; i >= 0; --i) {
         if (s_Title[i] != ' ') { i_LastIndex = i; break; }
     }
+
     for (size_t idx = 0; idx < s_Title.size(); ++idx) {
         char c = s_Title[idx];
         bool b_IsEdge = (idx == 0) || (static_cast<int>(idx) == i_LastIndex);
         float f_ThisScale = b_IsEdge ? (f_TitleScale * f_SpecialScaleMul) : f_TitleScale;
         charScales.push_back(f_ThisScale);
+
         auto it = characters.find(c);
         if (it != characters.end()) {
             f_TitleWidth += (it->second.m_i_Advance >> 6) * f_ThisScale;
         }
     }
+
     float f_TitleX = (i_WindowWidth - f_TitleWidth) / 2.0f;
-    float f_TitleY = i_WindowHeight - 140.0f; 
+    float f_TitleY = i_WindowHeight - 140.0f;
+
     float f_CursorX = f_TitleX;
     for (size_t i = 0; i < s_Title.size(); ++i) {
         char c = s_Title[i];
         float f_ThisScale = charScales[i];
         std::string s(1, c);
         RenderTextBold(s, f_CursorX, f_TitleY, f_ThisScale, 1.0f, 0.84f, 0.0f, p_App);
+
         auto it = characters.find(c);
         if (it != characters.end()) {
             f_CursorX += (it->second.m_i_Advance >> 6) * f_ThisScale;
-        } else {
+        }
+        else {
             f_CursorX += 8.0f * f_ThisScale;
         }
     }
 
     float f_ButtonSpacing = 28.0f;
-    float f_TotalHeight = MenuState::BUTTON_COUNT * m_Buttons[0].m_f_Height + (MenuState::BUTTON_COUNT - 1) * f_ButtonSpacing;
+    float f_TotalHeight = BUTTON_COUNT * m_Buttons[0].m_f_Height
+        + (BUTTON_COUNT - 1) * f_ButtonSpacing;
+
     float f_StartY = (i_WindowHeight - f_TotalHeight) / 2.0f - 30.0f;
 
-    for (int i = 0; i < MenuState::BUTTON_COUNT; i++) {
+    for (int i = 0; i < BUTTON_COUNT; i++) {
         m_Buttons[i].m_f_X = (i_WindowWidth - m_Buttons[i].m_f_Width) / 2.0f;
-        m_Buttons[i].m_f_Y = f_StartY + (MenuState::BUTTON_COUNT - 1 - i) * (m_Buttons[i].m_f_Height + f_ButtonSpacing);
-    RenderButton(m_Buttons[i], i, i == m_i_SelectedOption, i_WindowWidth, i_WindowHeight, p_App);
+        m_Buttons[i].m_f_Y = f_StartY + (BUTTON_COUNT - 1 - i) *
+            (m_Buttons[i].m_f_Height + f_ButtonSpacing);
+
+        RenderButton(m_Buttons[i], i, i == m_i_SelectedOption, i_WindowWidth, i_WindowHeight, p_App);
     }
 
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 }
 
+
+
 void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     if (event.type == SDL_KEYDOWN) {
         switch (event.key.keysym.sym) {
-            case SDLK_UP:
-                m_i_SelectedOption = (m_i_SelectedOption - 1 + MenuState::BUTTON_COUNT) % MenuState::BUTTON_COUNT;
-                break;
-            case SDLK_DOWN:
-                m_i_SelectedOption = (m_i_SelectedOption + 1) % MenuState::BUTTON_COUNT;
-                break;
-            case SDLK_RETURN:
+        case SDLK_UP:
+            m_i_SelectedOption = (m_i_SelectedOption - 1 + BUTTON_COUNT) % BUTTON_COUNT;
+            break;
+        case SDLK_DOWN:
+            m_i_SelectedOption = (m_i_SelectedOption + 1) % BUTTON_COUNT;
+            break;
+        case SDLK_RETURN:
+            if (m_b_NewGameSubmenu) {
                 switch (m_i_SelectedOption) {
-                    case 0: // New Game
-                        p_App->GetStateManager()->ChangeState("setup");
-                        break;
-                    case 1: // Map Generator
-                        p_App->GetStateManager()->ChangeState("mapgen");
-                        break;
-                    case 2: // Load Game 
-                        break;
-                    case 3: // Settings
-                        break;
-                    case 4: // Exit
-                        p_App->RequestExit();
-                        break;
+                case 0: // Local
+                    p_App->GetStateManager()->ChangeState("setup");
+                    break;
+                case 1: // Online LAN
+                    p_App->GetStateManager()->ChangeState("setup");
+                    break;
+                case 2: // Map Generator
+                    p_App->GetStateManager()->ChangeState("mapgen");
+                    break;
+                case 3: // Back
+                    BuildMainMenu();  // Powróæ do g³ównego menu
+                    break;
                 }
-                break;
-            case SDLK_ESCAPE:
-                p_App->RequestExit();
-                break;
+            }
+            else {
+                switch (m_i_SelectedOption) {
+                case 0: // New Game
+                    BuildNewGameMenu();  // PrzejdŸ do submenu New Game
+                    break;
+                case 1: // Load Game
+                    // Wczytaj grê
+                    break;
+                case 2: // Settings
+                    // Ustawienia
+                    break;
+                case 3: // Exit
+                    p_App->RequestExit();  // Zakoñcz aplikacjê
+                    break;
+                }
+            }
+            break;
+        case SDLK_ESCAPE:
+            if (m_b_NewGameSubmenu) BuildMainMenu();
+            else p_App->RequestExit();
+            break;
+
         }
     }
     else if (event.type == SDL_MOUSEBUTTONDOWN) {
@@ -318,22 +381,36 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                 f_MouseY >= m_Buttons[i].m_f_Y && f_MouseY <= m_Buttons[i].m_f_Y + m_Buttons[i].m_f_Height) {
                 m_i_HoverOption = i;
                 m_i_SelectedOption = i;
-                switch (i) {
+                if (!m_b_NewGameSubmenu) {
+                    switch (i) {
                     case 0: // New Game
-                        p_App->GetStateManager()->ChangeState("setup");
+                        BuildNewGameMenu();
                         break;
-                    case 1: 
-                        p_App->GetStateManager()->ChangeState("mapgen"); 
+                    case 1: // Load Game
                         break;
-                    case 2: // Load Game 
+                    case 2: // Settings
                         break;
-                    case 3: // Settings
-                        break;
-                    case 4: // Exit
+                    case 3: // Exit
                         p_App->RequestExit();
                         break;
+                    }
                 }
-                break;
+                else {
+                    switch (i) {
+                    case 0: // Local
+                        p_App->GetStateManager()->ChangeState("setup");
+                        break;
+                    case 1: // Online LAN
+                        p_App->GetStateManager()->ChangeState("setup");
+                        break;
+                    case 2: // Map Generator
+                        p_App->GetStateManager()->ChangeState("mapgen");
+                        break;
+                    case 3: // Back
+                        BuildMainMenu();
+                        break;
+                    }
+                }
             }
         }
     }
