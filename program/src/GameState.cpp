@@ -1875,10 +1875,24 @@ void GameState::CheckEndOfGame(Winner winner) {
 
     if (winner == Winner::Detectives) {
         std::cout << "[Game] Detectives win -- MisterX captured!\n";
+            if (g_pBridge) {
+               nlohmann::json moveData;
+               moveData["winner"] = "Detectives";
+               auto fut = g_pBridge->sendRequestAsync(moveData);
+               std::cout << "[Game] Sent game end to bridge for Detectives win.\n"; 
+            }
         logger.logGameEnd("Detectives");
+        
     } else if (winner == Winner::MisterX) {
         std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
-        logger.logGameEnd("MisterX");
+        if (g_pBridge) {
+               nlohmann::json moveData;
+               moveData["winner"] = "MrX";
+               auto fut = g_pBridge->sendRequestAsync(moveData);
+               std::cout << "[Game] Sent game end to bridge for MisterX win.\n"; 
+        }   
+                logger.logGameEnd("MisterX");
+        
     }
     
 }
@@ -2378,15 +2392,15 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
         BroadcastMessage(msg);
         logger.logPlayerMove(i_PlayerIndex, i_moveBuffor , i_DestinationNode, i_TransportType); //todo zmienić pozycjateraz na odpowiednią zmienną
            // send to python for testing/logging (async)
-        //    if (g_pBridge) {
+        //   if (g_pBridge) {
         //        nlohmann::json moveData;
         //        moveData["player_id"] = i_PlayerIndex;
         //        moveData["from_node"] = i_moveBuffor;
         //        moveData["to_node"] = i_DestinationNode;
         //        moveData["transport"] = i_TransportType;
         //        moveData["round"] = m_i_Round.load();
-
         //        auto fut = g_pBridge->sendRequestAsync(moveData);
+        
         //        std::thread([f = std::move(fut)]() mutable {
         //            try {
         //                auto resp = f.get();
@@ -2705,6 +2719,7 @@ void GameState::InitializePlayerControllers() {
 }
 
 void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
+    if (!m_b_GameActive) return;
     for (auto& p_Controller : m_vec_PlayerControllers) {
         if (p_Controller && p_Controller->IsAIControlled()) {
             p_Controller->Update(f_DeltaTime);
@@ -2812,6 +2827,7 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
 }
 
 void GameState::ProcessAIPendingMoves() {
+    if (!m_b_GameActive) return;
     std::unique_lock<std::mutex> lock(m_mtx_Players);
 
     for (size_t i = 0; i < m_vec_PlayerControllers.size(); ++i) {
@@ -2830,6 +2846,8 @@ void GameState::ProcessAIPendingMoves() {
                 HandleArrowClick(static_cast<int>(i), decision.i_DestinationNode);
 
                 lock.lock();
+                //tu zmiana
+                if (!m_b_GameActive) break;
             }
         }
     }

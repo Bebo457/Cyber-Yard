@@ -12,6 +12,13 @@ while True:
     try:
         msg = sock.recv()
         req = json.loads(msg.decode("utf-8"))
+
+        winner = req.get("winner")
+        if winner:
+            print(f"[GameOver] winner={winner}")
+            sock.send_json({"status": "ok"})
+            continue
+
         print("Received from C++:", req)
 
         moves = req.get("possible_moves", [])
