@@ -36,13 +36,15 @@ public:
     GameState();
     ~GameState() override;
 
-    void OnEnter() override;
-    void OnExit() override;
+    void OnEnter(Core::Application* p_App) override;
+    void OnExit(Core::Application* p_App) override;
     void OnPause() override;
     void OnResume() override;
     void Update(float f_DeltaTime) override;
     void Render(Core::Application* p_App) override;
     void HandleEvent(const SDL_Event& event, Core::Application* p_App) override;
+
+    bool IsGameFinished() const { return !m_b_GameActive; }
     
     // Network helpers
     void StartNetworkServer(uint16_t port);
@@ -84,6 +86,7 @@ private:
     std::vector<StationCircle> m_vec_CircleStations;
 
     SDL_Window* m_p_Window;
+    Core::Application* m_p_App;
 
     float m_f_Rotation;
 

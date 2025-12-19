@@ -107,7 +107,9 @@ std::string GameState::BuildPlayerTicketsSuffix(int i_PlayerIndex) {
     return oss.str();
 }
 
-void GameState::OnEnter() {
+void GameState::OnEnter(Core::Application* p_App) {
+    m_p_App = p_App;
+
     StartNetworkServer(1234);
     // StartNetworkClient("localhost", 1234); //Odkomentwać aby zmienić na klienta
 
@@ -115,11 +117,14 @@ void GameState::OnEnter() {
     m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
 
     // initialize Python bridge (non-blocking, worker thread inside)
-    try {
-        g_pBridge = new PythonBridge("tcp://localhost:5555");
-    } catch (const std::exception& e) {
-        std::cerr << "[GameState] Failed to init PythonBridge: " << e.what() << "\n";
-        g_pBridge = nullptr;
+    // TODO coś jest z destruktorem nie tak i potrafi zawieszać aplikacje
+    if (!p_App || !p_App->IsTrainingMode()) {
+        try {
+            g_pBridge = new PythonBridge("tcp://localhost:5555");
+        } catch (const std::exception& e) {
+            std::cerr << "[GameState] Failed to init PythonBridge: " << e.what() << "\n";
+            g_pBridge = nullptr;
+        }
     }
     
     // Dane wierzchołków planszy (pozycja, kolor, UV)
@@ -164,6 +169,8 @@ void GameState::OnEnter() {
         }
     }
 
+    // Skip all OpenGL initialization in headless/training mode
+    if (!p_App || !p_App->IsTrainingMode()) {
     // VAO/VBO planszy
     glGenVertexArrays(1, &m_VAO_Plane);
     glGenBuffers(1, &m_VBO_Plane);
@@ -582,7 +589,16 @@ void GameState::OnEnter() {
 
     glEnable(GL_DEPTH_TEST);
 
+    {
+        std::vector<ScotlandYard::UI::TicketSlot> emptySlots(ScotlandYard::UI::k_TicketSlotCount);
+        ScotlandYard::UI::SetTicketStates(emptySlots);
+        ScotlandYard::UI::SetRound(1);
+    }
+
+    }  // End of OpenGL initialization guard
+
     // Initialize players from graph data (random distinct nodes)
+    // to nie powinno byc razem z openGL!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     m_vec_Players.clear();
 
     GraphManager gm(Core::k_MaxNodes);
@@ -641,17 +657,6 @@ void GameState::OnEnter() {
     // Initialize player controllers (human/AI)
     InitializePlayerControllers();
 
-    // Reset HUD / ticket marks so previous game's marks don't persist
-    {
-        std::vector<ScotlandYard::UI::TicketSlot> emptySlots(ScotlandYard::UI::k_TicketSlotCount);
-        ScotlandYard::UI::SetTicketStates(emptySlots);
-        ScotlandYard::UI::SetRound(m_i_Round.load());
-    }
-
-    // Note: previously used debug modal here was removed so the end-game modal
-    // only appears when CheckEndOfGame() sets m_b_ShowEndGameModal.
-
-
     // Print player positions to console
     for (const auto& player : m_vec_Players) {
         printf("Player: %s\n", player.ToString().c_str());
@@ -662,9 +667,10 @@ void GameState::OnEnter() {
     // Load optional edge geometry (normalized polylines)
     m_graph.LoadEdgeGeometryCSV(Core::GetMapPath(Core::k_EdgeGeometryRelativePath), true);
 
-    // Launch console input loop as a dedicated joinable thread so we don't occupy a ThreadPool worker
-    m_b_ConsoleThreadRunning.store(true);
-    m_t_ConsoleThread = std::thread([this]() {
+    // Launch console input loop
+    if (p_App->IsGameConsoleEnabled()) {
+        m_b_ConsoleThreadRunning.store(true);
+        m_t_ConsoleThread = std::thread([this]() {
         while (m_b_ConsoleThreadRunning.load()) {
             // Print snapshot once and then block waiting for user input (no spamming)
             {
@@ -951,10 +957,12 @@ void GameState::OnEnter() {
             // (previously cleared active selection here) - removed per request
         }
 
-    });
+        });
+    }
 }
 
 void GameState::LoadTextures(Core::Application* p_App) {
+    if (p_App->IsTrainingMode()) return;
     if (m_b_TexturesLoaded) return;
 
     std::string s_TexturePath = p_App->GetAssetPath("textures/Scotland_Yard_schematic.png");
@@ -969,11 +977,15 @@ void GameState::LoadTextures(Core::Application* p_App) {
     m_b_TexturesLoaded = true;
 }
 
-void GameState::OnExit() {
+void GameState::OnExit(Core::Application* p_App) {
     if (g_pBridge) {
+        std::cout << "[OnExit] Cleaning up Python bridge...\n" << std::flush;
+        //tutaj sie zawiesza :(
         delete g_pBridge;
         g_pBridge = nullptr;
     }
+
+    if (!p_App || !p_App->IsTrainingMode()) {
     if (m_VAO_Plane) {
         glDeleteVertexArrays(1, &m_VAO_Plane);
         m_VAO_Plane = 0;
@@ -1087,6 +1099,7 @@ void GameState::OnExit() {
         glDeleteBuffers(1, &m_VBO_Line);
         m_VBO_Line = 0;
     }
+    }  // End of OpenGL cleanup guard
     // Note: do not delete m_TextureID here -- textures are managed by Application's cache.
     // ResetToInitial() will set m_TextureID to 0 so LoadTextures() can re-acquire or reload it.
     m_b_GameActive = false;
@@ -1102,7 +1115,7 @@ void GameState::OnExit() {
             m_t_ConsoleThread.detach();
         }
     }
-    
+
     StopNetwork();
 
     // Ensure game data is reset when exiting so re-entering GameState starts fresh
@@ -1227,7 +1240,8 @@ void GameState::RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& 
 }
 
 void GameState::Render(Core::Application* p_App) {
-    
+    if (p_App->IsTrainingMode()) return;
+
     LoadTextures(p_App);
     HandleResize(p_App);
 
@@ -1270,7 +1284,7 @@ void GameState::Render(Core::Application* p_App) {
     if (m_b_RequestMenuChange.load() && p_App) {
         if (auto mgr = p_App->GetStateManager()) {
             std::cout << "[GameState] Requesting state change to menu...\n";
-            mgr->ChangeState("menu");
+            mgr->ChangeState("menu", p_App);
         }
         m_b_RequestMenuChange.store(false);
     }
@@ -1375,6 +1389,8 @@ void GameState::RenderStationLabels(Core::Application* p_App, const glm::mat4& m
 }
 
 void GameState::HandleResize(Core::Application* p_App) {
+    if (p_App->IsTrainingMode()) return;
+
     int i_NewWidth = p_App->GetWidth();
     int i_NewHeight = p_App->GetHeight();
 
@@ -1865,10 +1881,10 @@ void GameState::CheckEndOfGame(Winner winner) {
         if (m_i_Round.load() >= Core::k_MaxRounds) {
             winner = Winner::MisterX;
         } else {
-            return; 
+            return;
         }
     }
-    
+
     m_b_GameActive = false;
     m_EndGameWinner = winner;
     m_b_ShowEndGameModal.store(true);
@@ -1879,22 +1895,22 @@ void GameState::CheckEndOfGame(Winner winner) {
                nlohmann::json moveData;
                moveData["winner"] = "Detectives";
                auto fut = g_pBridge->sendRequestAsync(moveData);
-               std::cout << "[Game] Sent game end to bridge for Detectives win.\n"; 
+               std::cout << "[Game] Sent game end to bridge for Detectives win.\n";
             }
         logger.logGameEnd("Detectives");
-        
+
     } else if (winner == Winner::MisterX) {
         std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
         if (g_pBridge) {
                nlohmann::json moveData;
                moveData["winner"] = "MrX";
                auto fut = g_pBridge->sendRequestAsync(moveData);
-               std::cout << "[Game] Sent game end to bridge for MisterX win.\n"; 
-        }   
+               std::cout << "[Game] Sent game end to bridge for MisterX win.\n";
+        }
                 logger.logGameEnd("MisterX");
-        
+
     }
-    
+
 }
 
 bool GameState::CheckCapture() const {

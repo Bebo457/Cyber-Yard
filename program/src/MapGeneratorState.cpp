@@ -68,7 +68,7 @@ namespace ScotlandYard
             }
         }
 
-        void MapGeneratorState::OnEnter()
+        void MapGeneratorState::OnEnter(Core::Application* p_App)
         {
             m_s_InfoText.clear();
             m_vec_Fields.clear();
@@ -85,7 +85,9 @@ namespace ScotlandYard
             m_b_HasPreview = false;
             SDL_StartTextInput();
 
-            CreatePreviewQuad();
+            if (!p_App || !p_App->IsTrainingMode()) {
+                CreatePreviewQuad();
+            }
         }
 
         void MapGeneratorState::LayoutUI(int W, int H, Core::Application *p_App)
@@ -211,6 +213,8 @@ namespace ScotlandYard
 
         void MapGeneratorState::Render(Core::Application *p_App)
         {
+            if (p_App->IsTrainingMode()) return;  // Skip rendering in headless mode
+
             m_pApp = p_App;
             glDisable(GL_DEPTH_TEST);
             glEnable(GL_BLEND);
@@ -870,7 +874,7 @@ namespace ScotlandYard
             case SDL_KEYDOWN:
                 if (ev.key.keysym.sym == SDLK_ESCAPE)
                 {
-                    p_App->GetStateManager()->ChangeState("menu");
+                    p_App->GetStateManager()->ChangeState("menu", p_App);
                     return;
                 }
                 if (ev.key.keysym.sym == SDLK_TAB)
@@ -942,7 +946,7 @@ namespace ScotlandYard
                     if (mx >= m_BtnBack.x && mx <= m_BtnBack.x + m_BtnBack.w &&
                         my >= m_BtnBack.y && my <= m_BtnBack.y + m_BtnBack.h)
                     {
-                        p_App->GetStateManager()->ChangeState("menu");
+                        p_App->GetStateManager()->ChangeState("menu", p_App);
                     }
                     if (mx >= m_BtnRandomSeed.x && mx <= m_BtnRandomSeed.x + m_BtnRandomSeed.w &&
                         my >= m_BtnRandomSeed.y && my <= m_BtnRandomSeed.y + m_BtnRandomSeed.h)

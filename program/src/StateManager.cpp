@@ -1,4 +1,5 @@
 #include "StateManager.h"
+#include "Application.h"
 #include <stdexcept>
 
 namespace ScotlandYard {
@@ -9,7 +10,7 @@ StateManager::StateManager() {
 
 StateManager::~StateManager() {
     while (!m_StateStack.empty()) {
-        m_StateStack.top()->OnExit();
+        m_StateStack.top()->OnExit(nullptr);
         m_StateStack.pop();
     }
 }
@@ -18,7 +19,7 @@ void StateManager::RegisterState(const std::string& s_Name, std::unique_ptr<IGam
     m_map_States[s_Name] = std::move(u_State);
 }
 
-void StateManager::PushState(const std::string& s_Name) {
+void StateManager::PushState(const std::string& s_Name, Application* p_App) {
     auto it = m_map_States.find(s_Name);
     if (it == m_map_States.end()) {
         throw std::runtime_error("State not found: " + s_Name);
@@ -30,15 +31,15 @@ void StateManager::PushState(const std::string& s_Name) {
 
     IGameState* p_State = it->second.get();
     m_StateStack.push(p_State);
-    p_State->OnEnter();
+    p_State->OnEnter(p_App);
 }
 
-void StateManager::PopState() {
+void StateManager::PopState(Application* p_App) {
     if (m_StateStack.empty()) {
         return;
     }
 
-    m_StateStack.top()->OnExit();
+    m_StateStack.top()->OnExit(p_App);
     m_StateStack.pop();
 
     if (!m_StateStack.empty()) {
@@ -46,20 +47,20 @@ void StateManager::PopState() {
     }
 }
 
-void StateManager::ChangeState(const std::string& s_Name) {
+void StateManager::ChangeState(const std::string& s_Name, Application* p_App) {
     auto it = m_map_States.find(s_Name);
     if (it == m_map_States.end()) {
         throw std::runtime_error("State not found: " + s_Name);
     }
 
     while (!m_StateStack.empty()) {
-        m_StateStack.top()->OnExit();
+        m_StateStack.top()->OnExit(p_App);
         m_StateStack.pop();
     }
 
     IGameState* p_State = it->second.get();
     m_StateStack.push(p_State);
-    p_State->OnEnter();
+    p_State->OnEnter(p_App);
 }
 
 void StateManager::Update(float f_DeltaTime) {
@@ -69,6 +70,7 @@ void StateManager::Update(float f_DeltaTime) {
 }
 
 void StateManager::Render(Application* p_App) {
+    if (p_App->IsTrainingMode()) return;
     if (!m_StateStack.empty()) {
         m_StateStack.top()->Render(p_App);
     }

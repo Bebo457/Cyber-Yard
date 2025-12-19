@@ -24,9 +24,26 @@ cmake --build .
 ### Command Line Arguments
 ```bash
 # Traning mode (no graphics)
-./ScotlandYardPlusPlus --training --steps 50000
-./ScotlandYardPlusPlus -t --steps 1000
+./ScotlandYardPlusPlus --training
+
+# Configure game from command line
+./ScotlandYardPlusPlus --training --mode botvbot --ai-mrx montecarlo --ai-detectives greedy
+
+# Run multiple games in training mode
+./ScotlandYardPlusPlus --training --mode botvbot --ai-mrx montecarlo --ai-detectives greedy --games 2
+
+# Enable in-game console (manual player control)
+./ScotlandYardPlusPlus --game-console
 ```
+
+**Available options:**
+- `--training` or `-t` - Headless mode (no graphics)
+- `--mode <pvp|pvbot|botvbot>` - Game mode
+- `--human <mrx|detectives>` - Human side for PvBot
+- `--ai-mrx <algorithm>` - MrX AI (random, neural, distmax, decoy, montecarlo, dfs)
+- `--ai-detectives <algorithm>` - Detectives AI (random, montecarlo, minimax, greedy, frontsearch)
+- `--games <N>` - Number of games to play in training mode (default: 1)
+- `--game-console` - Enable console input for manual moves
 
 ---
 

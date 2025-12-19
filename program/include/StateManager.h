@@ -21,14 +21,15 @@ public:
     StateManager& operator=(const StateManager&) = delete;
 
     void RegisterState(const std::string& s_Name, std::unique_ptr<IGameState> u_State);
-    void PushState(const std::string& s_Name);
-    void PopState();
-    void ChangeState(const std::string& s_Name);
+    void PushState(const std::string& s_Name, Application* p_App);
+    void PopState(Application* p_App);
+    void ChangeState(const std::string& s_Name, Application* p_App);
     void Update(float f_DeltaTime);
     void Render(Application* p_App);
     void HandleEvent(const SDL_Event& event, Application* p_App);
 
     bool IsEmpty() const { return m_StateStack.empty(); }
+    IGameState* GetCurrentState() const { return m_StateStack.empty() ? nullptr : m_StateStack.top(); }
 
 private:
     std::unordered_map<std::string, std::unique_ptr<IGameState>> m_map_States;

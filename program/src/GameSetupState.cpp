@@ -12,7 +12,7 @@ namespace ScotlandYard {
             return base + rowIndex * lineH;
         }
 
-        void GameSetupState::OnEnter() {
+        void GameSetupState::OnEnter(Core::Application* p_App) {
             m_i_Mode = 0;
             m_i_Map = 0;
             m_i_AIType = 0;
@@ -207,7 +207,7 @@ namespace ScotlandYard {
 
         void GameSetupState::HandleEvent(const SDL_Event& e, Core::Application* app) {
             if (e.type == SDL_KEYDOWN) {
-                if (e.key.keysym.sym == SDLK_ESCAPE) app->GetStateManager()->ChangeState("menu");
+                if (e.key.keysym.sym == SDLK_ESCAPE) app->GetStateManager()->ChangeState("menu", app);
                 else if (e.key.keysym.sym == SDLK_RETURN) StartGame(app);
                 return;
             }
@@ -259,7 +259,7 @@ namespace ScotlandYard {
                         if (b.e_Row == Row::Footer) {
                             if (b.i_Col == 0) { 
                                 if (m_Page == Page::Main) {
-                                    app->GetStateManager()->ChangeState("menu");
+                                    app->GetStateManager()->ChangeState("menu", app);
                                     return;
                                 }
                                 // back to previous
@@ -271,7 +271,7 @@ namespace ScotlandYard {
                             else { 
                                 if (m_Page == Page::Main) {
                                     if (m_i_Map == 1) {
-                                        app->GetStateManager()->ChangeState("mapgen");
+                                        app->GetStateManager()->ChangeState("mapgen", app);
                                         return;
                                     }
 
@@ -312,6 +312,8 @@ namespace ScotlandYard {
 
 
         void GameSetupState::Render(Core::Application* app) {
+            if (app->IsTrainingMode()) return;
+
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             Layout(app);
@@ -475,7 +477,7 @@ namespace ScotlandYard {
 
             S.e_PvBotHuman = (m_i_Human == 0 ? HumanSide::MrX : HumanSide::Detectives);
 
-            app->GetStateManager()->ChangeState("game");
+            app->GetStateManager()->ChangeState("game", app);
         }
 
 

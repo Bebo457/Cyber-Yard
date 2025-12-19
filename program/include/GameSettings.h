@@ -18,10 +18,15 @@ namespace ScotlandYard {
             float f_AITurnDelay = 0.8f; // sec
 
             HumanSide e_PvBotHuman = HumanSide::MrX;
+
+            bool b_ConfiguredFromCommandLine = false;
         };
 
         // global
         GameSettings& Settings();
+        inline bool HasBeenConfigured() {
+            return Settings().b_ConfiguredFromCommandLine;
+        }
 
     }
 } // namespaces

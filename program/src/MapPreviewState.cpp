@@ -30,12 +30,12 @@ MapPreviewState::~MapPreviewState() {
     }
 }
 
-void MapPreviewState::OnEnter() {
+void MapPreviewState::OnEnter(Core::Application* p_App) {
     std::cout << "[MapPreview] Creating map texture..." << std::endl;
     CreateMapTexture();
 }
 
-void MapPreviewState::OnExit() {
+void MapPreviewState::OnExit(Core::Application* p_App) {
     // Cleanup
 }
 
@@ -111,10 +111,12 @@ void MapPreviewState::CreateMapTexture() {
 }
 
 void MapPreviewState::Render(Core::Application* p_App) {
+    if (p_App->IsTrainingMode()) return;  // Skip rendering in headless mode
+
     if (!m_pSurface) {
         return;
     }
-    
+
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     
@@ -126,7 +128,7 @@ void MapPreviewState::HandleEvent(const SDL_Event& event, Core::Application* p_A
     if (event.type == SDL_KEYDOWN) {
         if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_BACKSPACE) {
             std::cout << "[MapPreview] Returning to generator..." << std::endl;
-            p_App->GetStateManager()->PopState();
+            p_App->GetStateManager()->PopState(p_App);
         }
     }
 }

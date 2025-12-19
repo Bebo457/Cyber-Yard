@@ -13,8 +13,8 @@ namespace ScotlandYard {
 
         class GameSetupState : public Core::IGameState {
         public:
-            void OnEnter() override;
-            void OnExit() override {}
+            void OnEnter(Core::Application* p_App) override;
+            void OnExit(Core::Application* p_App) override {}
             void OnPause() override {}
             void OnResume() override {}
             void Update(float) override {}

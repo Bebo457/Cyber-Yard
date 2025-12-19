@@ -32,7 +32,7 @@ public:
     bool Initialize();
     void LoadStates();
     void Run();
-    void RunTraining(int maxSteps = 10000);
+    void RunTraining(int i_MaxGames = 1);
     void Shutdown();
 
     void RequestExit() { m_b_Running = false; }
@@ -40,6 +40,8 @@ public:
     int GetHeight() const { return m_i_Height; }
     float GetDeltaTime() const { return m_f_DeltaTime; }
     bool IsTrainingMode() const { return m_b_TrainingMode; }
+    bool IsGameConsoleEnabled() const { return m_b_GameConsoleEnabled; }
+    void SetGameConsoleEnabled(bool enabled) { m_b_GameConsoleEnabled = enabled; }
     StateManager* GetStateManager() const { return m_p_StateManager.get(); }
 
     const std::map<char, Character>& GetCharacterMap() const { return m_map_Characters; }
@@ -81,6 +83,7 @@ private:
     bool m_b_Running;
     bool m_b_Initialized;
     bool m_b_TrainingMode;
+    bool m_b_GameConsoleEnabled;
 
     float m_f_DeltaTime;
     Uint64 m_u64_LastFrameTime;

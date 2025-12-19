@@ -58,27 +58,31 @@ namespace States {
     }
 
 
-void MenuState::OnEnter() {
+void MenuState::OnEnter(Core::Application* p_App) {
     m_i_SelectedOption = 0;
 
-    // texture for rendering solid colors
-    if (!m_WhiteTexture) {
-        unsigned char white = 255;
-        glGenTextures(1, &m_WhiteTexture);
-        glBindTexture(GL_TEXTURE_2D, m_WhiteTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, &white);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glBindTexture(GL_TEXTURE_2D, 0);
+    if (!p_App || !p_App->IsTrainingMode()) {
+        // texture for rendering solid colors
+        if (!m_WhiteTexture) {
+            unsigned char white = 255;
+            glGenTextures(1, &m_WhiteTexture);
+            glBindTexture(GL_TEXTURE_2D, m_WhiteTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, &white);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
     }
 }
 
-void MenuState::OnExit() {
-    if (m_WhiteTexture) {
-        glDeleteTextures(1, &m_WhiteTexture);
-        m_WhiteTexture = 0;
+void MenuState::OnExit(Core::Application* p_App) {
+    if (!p_App || !p_App->IsTrainingMode()) {
+        if (m_WhiteTexture) {
+            glDeleteTextures(1, &m_WhiteTexture);
+            m_WhiteTexture = 0;
+        }
     }
 }
 
@@ -236,6 +240,8 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
 }
 
 void MenuState::Render(Core::Application* p_App) {
+    if (p_App->IsTrainingMode()) return;
+
     int i_WindowWidth = p_App->GetWidth();
     int i_WindowHeight = p_App->GetHeight();
     const auto& characters = p_App->GetCharacterMap();
@@ -331,13 +337,13 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             if (m_b_NewGameSubmenu) {
                 switch (m_i_SelectedOption) {
                 case 0: // Local
-                    p_App->GetStateManager()->ChangeState("setup");
+                    p_App->GetStateManager()->ChangeState("setup", p_App);
                     break;
                 case 1: // Online LAN
-                    p_App->GetStateManager()->ChangeState("setup");
+                    p_App->GetStateManager()->ChangeState("setup", p_App);
                     break;
                 case 2: // Map Generator
-                    p_App->GetStateManager()->ChangeState("mapgen");
+                    p_App->GetStateManager()->ChangeState("mapgen", p_App);
                     break;
                 case 3: // Back
                     BuildMainMenu();  // Back to main menu
@@ -396,13 +402,13 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                 else {
                     switch (i) {
                     case 0: // Local
-                        p_App->GetStateManager()->ChangeState("setup");
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
                         break;
                     case 1: // Online LAN
-                        p_App->GetStateManager()->ChangeState("setup");
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
                         break;
                     case 2: // Map Generator
-                        p_App->GetStateManager()->ChangeState("mapgen");
+                        p_App->GetStateManager()->ChangeState("mapgen", p_App);
                         break;
                     case 3: // Back
                         BuildMainMenu();

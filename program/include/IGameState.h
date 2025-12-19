@@ -13,8 +13,8 @@ class IGameState {
 public:
     virtual ~IGameState() = default;
 
-    virtual void OnEnter() = 0;
-    virtual void OnExit() = 0;
+    virtual void OnEnter(Application* p_App) = 0;
+    virtual void OnExit(Application* p_App) = 0;
     virtual void OnPause() = 0;
     virtual void OnResume() = 0;
     virtual void Update(float f_DeltaTime) = 0;

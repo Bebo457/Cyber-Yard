@@ -4,6 +4,7 @@
 #include "GameState.h"
 #include "MapGeneratorState.h"
 #include "GameSetupState.h"
+#include "GameSettings.h"
 #include <GL/glew.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -31,6 +32,7 @@ Application::Application(const std::string& title, int width, int height, bool t
     , m_b_Running(false)
     , m_b_Initialized(false)
     , m_b_TrainingMode(trainingMode)
+    , m_b_GameConsoleEnabled(false)
     , m_f_DeltaTime(0.0f)
     , m_u64_LastFrameTime(0)
     , m_ShaderProgram_Text(0)
@@ -141,7 +143,13 @@ void Application::LoadStates() {
     m_p_StateManager->RegisterState("setup", std::make_unique<States::GameSetupState>());
     m_p_StateManager->RegisterState("game", std::make_unique<States::GameState>());
     m_p_StateManager->RegisterState("mapgen", std::make_unique<States::MapGeneratorState>());
-    m_p_StateManager->ChangeState("menu");
+
+    //in training mode with game config, skip menu
+    if (m_b_TrainingMode && ScotlandYard::Core::HasBeenConfigured()) {
+        m_p_StateManager->ChangeState("game", this);
+    } else {
+        m_p_StateManager->ChangeState("menu", this);
+    }
 }
 
 void Application::Run() {
@@ -163,12 +171,50 @@ void Application::Run() {
     }
 }
 
-void Application::RunTraining(int maxSteps) {
+void Application::RunTraining(int i_MaxGames) {
     const float k_FixedDt = 1.0f / 60.0f;
-    m_b_Running = true;
 
-    for (int i = 0; i < maxSteps && m_b_Running && !m_p_StateManager->IsEmpty(); ++i) {
-        Update(k_FixedDt);
+    for (int i_GameNum = 1; i_GameNum <= i_MaxGames; ++i_GameNum) {
+        if (i_MaxGames > 1) {
+            std::cout << "\n========== Game " << i_GameNum << " / " << i_MaxGames << " ==========\n" << std::endl;
+        }
+
+        m_b_Running = true;
+
+        // Ensure game state is active (might have been popped from previous game)
+        if (m_p_StateManager->IsEmpty()) {
+            m_p_StateManager->ChangeState("game", this);
+        }
+
+        // Get pointer to game state to check when it's finished
+        auto* p_GameState = dynamic_cast<States::GameState*>(m_p_StateManager->GetCurrentState());
+        if (!p_GameState) {
+            std::cerr << "[Training] Error: Current state is not a GameState!\n";
+            break;
+        }
+
+        // Run until game ends (win/loss) or manually exited
+        while (!p_GameState->IsGameFinished() && m_b_Running) {
+            Update(k_FixedDt);
+        }
+
+        std::cout << "[Training] Game " << i_GameNum << " finished. Cleaning up...\n" << std::flush;
+
+        // Clean up state after game ends
+        if (!m_p_StateManager->IsEmpty()) {
+            m_p_StateManager->PopState(this);
+            std::cout << "[Training] State popped successfully.\n" << std::flush;
+        }
+
+        // Check if user requested exit
+        if (!m_b_Running) {
+            std::cout << "[Training] User requested exit. Stopping after " << i_GameNum << " game(s).\n";
+            break;
+        }
+    }
+
+    if (i_MaxGames > 1) {
+        std::cout << "\n========== Completed " << i_MaxGames << " game(s) ==========\n" << std::endl;
     }
 }
 
