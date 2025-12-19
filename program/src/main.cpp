@@ -1,5 +1,4 @@
 #include "Application.h"
-#include "MemoryManager.h"
 #include "ThreadPool.h"
 #include "NeuralNetworkManager.h"
 #include <iostream>
@@ -24,11 +23,10 @@ int main(int argc, char* argv[]) {
 
     try {
         // INITIALIZATION
-        Memory::MemoryManager::Initialize();
         Threading::ThreadPool::Initialize();
         AI::NeuralNetworkManager::Initialize();
 
-        auto p_App = Memory::MakeUnique<Core::Application>("Scotland Yard++", 1280, 720, b_TrainingMode);
+        auto p_App = std::make_unique<Core::Application>("Scotland Yard++", 1280, 720, b_TrainingMode);
         if (!p_App->Initialize()) {
             std::cerr << "Failed to initialize application!" << std::endl;
             return 1;
@@ -48,7 +46,6 @@ int main(int argc, char* argv[]) {
         p_App.reset();
         AI::NeuralNetworkManager::Shutdown();
         Threading::ThreadPool::Shutdown();
-        Memory::MemoryManager::Shutdown();
 
         return 0;
 

@@ -110,7 +110,7 @@ void LoadTexture() {
 ```cpp
 // Organizational comments OK
 // INITIALIZATION
-Memory::Initialize();
+Threading::ThreadPool::Initialize();
 
 // Explanatory comments only when needed
 if (f_DeltaTime > 0.1f) {  // Cap to prevent spiral of death

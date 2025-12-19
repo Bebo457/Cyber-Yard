@@ -45,7 +45,6 @@ program/
 │   ├── main.cpp                  # Entry point
 │   ├── Application.cpp           # Main application
 │   ├── StateManager.cpp          # State management
-│   ├── MemoryManager.cpp         # Memory tracking
 │   ├── ThreadPool.cpp            # Thread pool
 │   ├── NeuralNetworkManager.cpp  # AI integration
 │   ├── MenuState.cpp             # Menu state
@@ -55,7 +54,6 @@ program/
 │   ├── Application.h
 │   ├── StateManager.h
 │   ├── IGameState.h
-│   ├── MemoryManager.h
 │   ├── ThreadPool.h
 │   ├── NeuralNetworkManager.h
 │   ├── MenuState.h
@@ -85,12 +83,6 @@ Stack-based state system:
 - Push/pop states (e.g., Menu → Game → Pause)
 - State lifecycle (enter/exit/pause/resume)
 - Current state update and render
-
-#### Memory Manager ([MemoryManager.h](include/MemoryManager.h))
-Tagged memory allocation:
-- Track memory by category (Graphics, AI, Game Logic, etc.)
-- Memory statistics and leak detection
-- Smart pointer helpers
 
 #### Thread Pool ([ThreadPool.h](include/ThreadPool.h))
 Worker thread pool:
