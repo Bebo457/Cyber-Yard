@@ -1,6 +1,5 @@
 #include "Application.h"
 #include "ThreadPool.h"
-#include "NeuralNetworkManager.h"
 #include <iostream>
 #include <memory>
 #include <string>
@@ -24,7 +23,6 @@ int main(int argc, char* argv[]) {
     try {
         // INITIALIZATION
         Threading::ThreadPool::Initialize();
-        AI::NeuralNetworkManager::Initialize();
 
         auto p_App = std::make_unique<Core::Application>("Scotland Yard++", 1280, 720, b_TrainingMode);
         if (!p_App->Initialize()) {
@@ -44,7 +42,6 @@ int main(int argc, char* argv[]) {
         // CLEANUP
         p_App->Shutdown();
         p_App.reset();
-        AI::NeuralNetworkManager::Shutdown();
         Threading::ThreadPool::Shutdown();
 
         return 0;

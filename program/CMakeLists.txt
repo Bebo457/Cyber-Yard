@@ -59,7 +59,6 @@ set(SOURCES
     src/Application.cpp
     src/StateManager.cpp
     src/ThreadPool.cpp
-    src/NeuralNetworkManager.cpp
     src/MenuState.cpp
     src/GameState.cpp
     src/HUDOverlay.cpp
@@ -87,7 +86,6 @@ set(HEADERS
     include/StateManager.h
     include/IGameState.h
     include/ThreadPool.h
-    include/NeuralNetworkManager.h
     include/MenuState.h
     include/GameState.h
     include/HUDOverlay.h

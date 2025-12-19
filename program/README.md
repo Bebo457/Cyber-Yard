@@ -46,7 +46,6 @@ program/
 │   ├── Application.cpp           # Main application
 │   ├── StateManager.cpp          # State management
 │   ├── ThreadPool.cpp            # Thread pool
-│   ├── NeuralNetworkManager.cpp  # AI integration
 │   ├── MenuState.cpp             # Menu state
 │   └── GameState.cpp             # Game state
 │
@@ -55,7 +54,6 @@ program/
 │   ├── StateManager.h
 │   ├── IGameState.h
 │   ├── ThreadPool.h
-│   ├── NeuralNetworkManager.h
 │   ├── MenuState.h
 │   └── GameState.h
 │
@@ -87,14 +85,7 @@ Stack-based state system:
 #### Thread Pool ([ThreadPool.h](include/ThreadPool.h))
 Worker thread pool:
 - Submit async tasks
-- Used by AI for inference
 - Background operations
-
-#### Neural Network Manager ([NeuralNetworkManager.h](include/NeuralNetworkManager.h))
-AI integration (placeholder):
-- Load neural network models
-- Run inference (sync/async)
-- Batch predictions
 
 ### Game States
 
@@ -169,20 +160,6 @@ void GameState::Render() {
     // RenderMap();
     // RenderPlayers();
 }
-```
-
-### Using AI System
-
-```cpp
-// In game AI code
-#include "NeuralNetworkManager.h"
-
-NetworkInput input;
-input.vecFeatures = EncodeGameState();
-
-auto future = AI::NeuralNetworkManager::PredictAsync(input);
-// Do other work...
-NetworkOutput output = future.get();
 ```
 
 ### Using Thread Pool
