@@ -23,6 +23,11 @@
 #include "HUDOverlay.h"
 #include <unordered_map>
 
+// Global scope definition of Detective Python bridge (extern accessed from PlayerController.cpp)
+PythonBridge* g_pDetectiveBridge = nullptr;
+// Global scope definition of Mr X Python bridge (extern accessed from PlayerController.cpp)
+PythonBridge* g_pBridge = nullptr;
+
 namespace ScotlandYard {
 namespace States {
 
@@ -63,7 +68,6 @@ bool HasTicketForTransport(const Core::Player& player, int i_TransportType) {
 }
 
 GameLogger logger("game_log.csv");
-static PythonBridge* g_pBridge = nullptr;
 
 std::string GameState::BuildTicketsLogSuffix() {
     std::lock_guard<std::mutex> lock(m_mtx_Players);
@@ -118,23 +122,40 @@ void GameState::OnEnter(Core::Application* p_App) {
 
     // STWORZONY HANDSHAKE cpp z py PAMIETAC O DODAWANIU HANDSHKE DO .py serwerowych!!!
     // wysyłanie jest ping odpowiedź pong
-if (!p_App || !p_App->IsTrainingMode()) {
-    const std::string serverAddr = "tcp://localhost:5555";
-    
-    // Sprawdzamy czy serwer żyje przed utworzeniem obiektu
-    if (PythonBridge::ProbeServer(serverAddr)) {
-        try {
-            g_pBridge = new PythonBridge(serverAddr);
-            std::cout << "[GameState] PythonBridge connected successfully.\n";
-        } catch (const std::exception& e) {
-            std::cerr << "[GameState] Failed to init PythonBridge: " << e.what() << "\n";
-            g_pBridge = nullptr;
+    // Bridge is initialized ONLY in training mode (when Python AI servers are expected to be running)
+    if (p_App && p_App->IsTrainingMode()) {
+        const std::string serverAddr = "tcp://localhost:5555";
+        
+        // Sprawdzamy czy serwer żyje przed utworzeniem obiektu
+        if (PythonBridge::ProbeServer(serverAddr)) {
+            try {
+                ::g_pBridge = new PythonBridge(serverAddr);
+                std::cout << "[GameState] PythonBridge (MrX) connected successfully.\n";
+            } catch (const std::exception& e) {
+                std::cerr << "[GameState] Failed to init PythonBridge (MrX): " << e.what() << "\n";
+                ::g_pBridge = nullptr;
+            }
+        } else {
+            std::cerr << "[GameState] Python server (MrX) NOT found at " << serverAddr << ". Bridge disabled.\n";
+            ::g_pBridge = nullptr;
         }
-    } else {
-        std::cerr << "[GameState] Python server NOT found at " << serverAddr << ". Bridge disabled.\n";
-        g_pBridge = nullptr;
+
+        // Second bridge for Detective AI on port 5556
+        const std::string detectiveAddr = "tcp://localhost:5556";
+        if (PythonBridge::ProbeServer(detectiveAddr)) {
+            try {
+                ::g_pDetectiveBridge = new PythonBridge(detectiveAddr);
+                std::cout << "[GameState] PythonBridge (Detective) connected successfully.\n";
+            } catch (const std::exception& e) {
+                std::cerr << "[GameState] Failed to init PythonBridge (Detective): " << e.what() << "\n";
+                ::g_pDetectiveBridge = nullptr;
+            }
+        } else {
+            std::cerr << "[GameState] Python server (Detective) NOT found at " << detectiveAddr << ". Bridge disabled.\n";
+            ::g_pDetectiveBridge = nullptr;
+        }
     }
-}
+
     
     // Dane wierzchołków planszy (pozycja, kolor, UV)
     float planeVertices[] = {
@@ -987,11 +1008,16 @@ void GameState::LoadTextures(Core::Application* p_App) {
 }
 
 void GameState::OnExit(Core::Application* p_App) {
-    if (g_pBridge) {
-        std::cout << "[OnExit] Cleaning up Python bridge...\n" << std::flush;
+    if (::g_pBridge) {
+        std::cout << "[OnExit] Cleaning up Python bridge (MrX)...\n" << std::flush;
         //tutaj sie zawiesza :(
-        delete g_pBridge;
-        g_pBridge = nullptr;
+        delete ::g_pBridge;
+        ::g_pBridge = nullptr;
+    }
+    if (::g_pDetectiveBridge) {
+        std::cout << "[OnExit] Cleaning up Python bridge (Detective)...\n" << std::flush;
+        delete ::g_pDetectiveBridge;
+        ::g_pDetectiveBridge = nullptr;
     }
 
     if (!p_App || !p_App->IsTrainingMode()) {
@@ -1900,21 +1926,33 @@ void GameState::CheckEndOfGame(Winner winner) {
 
     if (winner == Winner::Detectives) {
         std::cout << "[Game] Detectives win -- MisterX captured!\n";
-            if (g_pBridge) {
+            if (::g_pBridge) {
                nlohmann::json moveData;
                moveData["winner"] = "Detectives";
-               auto fut = g_pBridge->sendRequestAsync(moveData);
-               std::cout << "[Game] Sent game end to bridge for Detectives win.\n";
+               auto fut = ::g_pBridge->sendRequestAsync(moveData);
+               std::cout << "[Game] Sent game end to MrX bridge for Detectives win.\n";
+            }
+            if (::g_pDetectiveBridge) {
+               nlohmann::json moveData;
+               moveData["winner"] = "Detectives";
+               auto fut = ::g_pDetectiveBridge->sendRequestAsync(moveData);
+               std::cout << "[Game] Sent game end to Detective bridge for Detectives win.\n";
             }
         logger.logGameEnd("Detectives");
 
     } else if (winner == Winner::MisterX) {
         std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
-        if (g_pBridge) {
+        if (::g_pBridge) {
                nlohmann::json moveData;
                moveData["winner"] = "MrX";
-               auto fut = g_pBridge->sendRequestAsync(moveData);
-               std::cout << "[Game] Sent game end to bridge for MisterX win.\n";
+               auto fut = ::g_pBridge->sendRequestAsync(moveData);
+               std::cout << "[Game] Sent game end to MrX bridge for MisterX win.\n";
+        }
+        if (::g_pDetectiveBridge) {
+               nlohmann::json moveData;
+               moveData["winner"] = "MrX";
+               auto fut = ::g_pDetectiveBridge->sendRequestAsync(moveData);
+               std::cout << "[Game] Sent game end to Detective bridge for MisterX win.\n";
         }
                 logger.logGameEnd("MisterX");
 

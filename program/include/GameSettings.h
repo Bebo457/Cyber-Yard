@@ -8,7 +8,7 @@ namespace ScotlandYard {
 
         // Random is working, TODO others
         enum class AIAlgorithm : uint8_t { Random, NeuralNet, DistanceMaximizationMrX, DecoyMovementMrX, MonteCarloMrX, DFSMrX, 
-            MonteCarloPolice, MinimaxPolice, GreedyShortestPathPolice, FrontSearchEncirclementPolice};
+            MonteCarloPolice, MinimaxPolice, GreedyShortestPathPolice, FrontSearchEncirclementPolice, NeuralNetPolice};
         enum class HumanSide : uint8_t { MrX, Detectives };
 
         struct GameSettings {

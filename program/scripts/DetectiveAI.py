@@ -1,3 +1,18 @@
+"""
+PPO Agent for Detectives (Police) in Scotland Yard++
+=====================================================
+Based on MRXPPO.py implementation from colleagues.
+Port: 5556 (Detective AI) vs 5555 (Mr X AI)
+
+Detectives win by catching Mr X = positive reward
+Detectives lose when Mr X survives = negative reward
+
+Dependencies:
+- torch
+- numpy
+- pyzmq
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,7 +24,7 @@ import os
 from typing import Dict, List, Any, Optional
 
 # =================================================================
-# 1. KODER OBSERWACJI
+# 1. OBSERVATION ENCODER
 # =================================================================
 class ObservationEncoder:
     def __init__(self, max_nodes: int = 200, max_players: int = 6):
@@ -51,7 +66,7 @@ class ObservationEncoder:
         return np.array(obs, dtype=np.float32)
 
 # =================================================================
-# 2. MODELE I AGENT
+# 2. MODELS AND AGENT
 # =================================================================
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim):
@@ -72,7 +87,7 @@ class PPOAgent:
         # Use script directory for model file
         if model_path is None:
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            model_path = os.path.join(script_dir, "ppo_mrx.pth")
+            model_path = os.path.join(script_dir, "ppo_detective.pth")
         self.model_path = model_path
         self.buffer = {'s': [], 'a': [], 'lp': [], 'v': [], 'r': [], 'd': []}
         self.policy = ActorCritic(state_dim, action_dim)
@@ -80,14 +95,13 @@ class PPOAgent:
         self.policy_old = ActorCritic(state_dim, action_dim)
         
         if os.path.exists(self.model_path):
-            print(f"[AI] Wczytano model z: {self.model_path}")
+            print(f"[Detective AI] Model loaded from: {self.model_path}")
             checkpoint = torch.load(self.model_path)
             self.policy.load_state_dict(checkpoint['model_state'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state'])
         
         self.policy_old.load_state_dict(self.policy.state_dict())
 
-    # --- TA METODA BYŁA BRAKUJĄCA ---
     def select_action(self, state):
         with torch.no_grad():
             state_tensor = torch.FloatTensor(state)
@@ -106,7 +120,7 @@ class PPOAgent:
 
     def update(self):
         if not self.buffer['r']: return
-        print(f"[AI] Trening na {len(self.buffer['r'])} krokach...")
+        print(f"[Detective AI] Training on {len(self.buffer['r'])} steps...")
         
         rewards = []
         discounted_reward = 0
@@ -144,29 +158,27 @@ class PPOAgent:
 
 
 # =================================================================
-# 3. GŁÓWNA PĘTLA (Z pełnym logowaniem)
+# 3. MAIN LOOP (matching MRXPPO.py structure)
 # =================================================================
 encoder = ObservationEncoder()
 agent, last_step = None, None
 ctx = zmq.Context()
 sock = ctx.socket(zmq.REP)
-sock.bind("tcp://*:5555")
+sock.bind("tcp://*:5556")  # Port 5556 for detectives (5555 is for Mr X)
 
-print("AI PPO Server listening on 5555")
+print("Detective PPO AI Server listening on 5556")
 
 try:
     while True:
         msg = sock.recv()
         raw_msg = msg.decode("utf-8").strip()
 
-        # --- LOGOWANIE KAŻDEJ WIADOMOŚCI ---
         print(f"\n[RECEIVE] RAW MSG: {raw_msg}")
-        # -----------------------------------
 
         try:
             req = json.loads(raw_msg)
         except json.JSONDecodeError:
-            print(f"[ERROR] Odebrano niepoprawny format JSON!")
+            print(f"[ERROR] Invalid JSON received!")
             sock.send_json({"status": "error", "message": "Invalid JSON"})
             continue
 
@@ -178,27 +190,29 @@ try:
 
         # --- GAME OVER ---
         if "[GameOver]" in raw_msg or "winner" in req or "winner" in raw_msg:
-            winner = req.get("winner", "Detectives" if "Detectives" in raw_msg else "MrX")
+            winner = req.get("winner", "MrX" if "MrX" in raw_msg else "Detectives")
             print(f"[EVENT] Game Over! Winner: {winner}")
             if agent and last_step:
-                reward = 100.0 if winner == "MrX" else -100.0
+                # Detectives win = positive reward, Mr X wins = negative reward
+                reward = 100.0 if winner == "Detectives" else -100.0
                 agent.store_transition(*last_step, reward, True)
                 agent.update()
             last_step = None
             sock.send_json({"status": "ok"})
             continue
 
-        # --- OBSŁUGA RUCHU ---
+        # --- MOVE HANDLING ---
         obs = encoder.encode(req.get('game_state', {}), req.get('players', []))
 
         if agent is None:
-            print(f"[INIT] Pierwszy ruch - inicjalizacja agenta. Obs dim: {obs.size}")
+            print(f"[INIT] First move - initializing agent. Obs dim: {obs.size}")
             agent = PPOAgent(obs.size, 50)
 
-        step_reward = req.get("game_state", {}).get("reward", 111.0)
+        # Get step reward from C++ (distance-based reward for detective)
+        step_reward = req.get("game_state", {}).get("reward", 0.0)
 
         if last_step:
-            print(f"[DATA] Zapisuję przejście. Nagroda za poprzedni krok: {step_reward}")
+            print(f"[DATA] Storing transition. Reward for previous step: {step_reward}")
             agent.store_transition(*last_step, step_reward, False)
 
         action, lp, v = agent.select_action(obs)
@@ -207,7 +221,7 @@ try:
         moves = req.get("possible_moves", [])
         idx = action if action < len(moves) else 0
 
-        print(f"[DECISION] Wybrano akcję nr: {idx} (z {len(moves)} możliwych)")
+        print(f"[DECISION] Selected action: {idx} (from {len(moves)} possible)")
 
         if moves:
             sel = moves[idx]
@@ -223,7 +237,7 @@ try:
         sock.send_json(resp)
 
 except KeyboardInterrupt:
-    print("\n[STOP] Serwer zatrzymany przez użytkownika.")
+    print("\n[STOP] Server stopped by user.")
 finally:
     sock.close()
     ctx.term()

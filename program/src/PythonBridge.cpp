@@ -36,6 +36,12 @@ bool PythonBridge::ProbeServer(const std::string& addr) {
 
 PythonBridge::PythonBridge(const std::string& addr)
     : ctx_(1), socket_(ctx_, zmq::socket_type::req) {
+    // Set timeouts to prevent infinite hangs (ms)
+    int timeout = 5000;  // 5 second timeout
+    socket_.set(zmq::sockopt::rcvtimeo, timeout);
+    socket_.set(zmq::sockopt::sndtimeo, timeout);
+    socket_.set(zmq::sockopt::linger, 0);
+    
     socket_.connect(addr);
     s_instance = this; // register global instance
     worker_ = std::thread(&PythonBridge::workerThread, this);

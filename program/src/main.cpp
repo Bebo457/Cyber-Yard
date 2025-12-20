@@ -27,6 +27,7 @@ ScotlandYard::Core::AIAlgorithm ParseDetectivesAlgorithm(const std::string& s_Al
     if (s_Algo == "minimax") return AIAlgorithm::MinimaxPolice;
     if (s_Algo == "greedy") return AIAlgorithm::GreedyShortestPathPolice;
     if (s_Algo == "frontsearch") return AIAlgorithm::FrontSearchEncirclementPolice;
+    if (s_Algo == "neural" || s_Algo == "neuralnetpolice") return AIAlgorithm::NeuralNetPolice;
 
     std::cerr << "Invalid Detectives algorithm '" << s_Algo << "'. Using Random.\n";
     return AIAlgorithm::Random;

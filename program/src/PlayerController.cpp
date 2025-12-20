@@ -24,6 +24,11 @@
 #include "PythonBridge.h"
 #include <nlohmann/json.hpp>
 
+// Extern declaration for detective Python bridge (defined in GameState.cpp, global scope)
+extern PythonBridge* g_pDetectiveBridge;
+// Extern declaration for Mr X Python bridge (defined in GameState.cpp, global scope)
+extern PythonBridge* g_pBridge;
+
 namespace ScotlandYard {
 namespace Core {
 
@@ -227,9 +232,10 @@ static MoveDecision ExternalPythonAlgorithmmrX(
         return d;
     };
 
-    PythonBridge* bridge = PythonBridge::Instance();
+    // Use direct pointer instead of singleton (since Detective bridge may overwrite it)
+    PythonBridge* bridge = ::g_pBridge;
     if (!bridge) {
-        std::cout << "[Fallback] Python bridge not available\n";
+        std::cout << "[Fallback] Python bridge (MrX) not available\n";
         return randomFallback();
     }
 
@@ -331,6 +337,167 @@ static MoveDecision ExternalPythonAlgorithmmrX(
     std::cout << "[Fallback] Python returned invalid response\n";
     return randomFallback();
 }
+
+// Reward evaluation for Detective moves (opposite of Mr X - reward for being closer to Mr X)
+static double EvaluateDetectiveMoveReward(
+    const Player* p_Player,
+    const PossibleMove& move,
+    const GameStateData& gameState
+) {
+    // Build graph (neighbors only)
+    std::map<int, std::vector<int>> map_Graph;
+    for (int i_Node = 1; i_Node <= 200; ++i_Node) {
+        auto vec_Connections = gameState.p_Graph->GetConnections(i_Node);
+        for (const auto& conn : vec_Connections) {
+            map_Graph[i_Node].push_back(conn.i_NodeId);
+        }
+    }
+
+    // BFS helper
+    auto fn_BFS = [&](int i_Start) {
+        std::map<int,int> map_Dist;
+        std::queue<int> q;
+        map_Dist[i_Start] = 0;
+        q.push(i_Start);
+        while (!q.empty()) {
+            int u = q.front(); q.pop();
+            for (int v : map_Graph[u]) {
+                if (!map_Dist.count(v)) {
+                    map_Dist[v] = map_Dist[u] + 1;
+                    q.push(v);
+                }
+            }
+        }
+        return map_Dist;
+    };
+
+    // Find Mr X position (use last known if not visible)
+    int mrXPos = gameState.i_MrXLastKnownPosition;
+    for (const auto& info : gameState.vec_AllPlayers) {
+        if (info.b_IsMisterX && info.b_IsVisible) {
+            mrXPos = info.i_Position;
+            break;
+        }
+    }
+
+    if (mrXPos <= 0) {
+        // No known Mr X position, give neutral reward
+        return 0.0;
+    }
+
+    // BFS from destination to Mr X
+    auto distMap = fn_BFS(move.i_DestinationNode);
+    int distToMrX = distMap.count(mrXPos) ? distMap.at(mrXPos) : 999999;
+
+    // Detective reward: CLOSER to Mr X is BETTER (opposite of Mr X reward)
+    // Lower distance = higher reward
+    double reward = 10.0 - static_cast<double>(distToMrX);
+    
+    return reward;
+}
+
+// External Python Algorithm for Detectives (Police)
+// Uses g_pDetectiveBridge on port 5556
+static MoveDecision ExternalPythonAlgorithmPolice(
+    const Player* p_Player,
+    const std::vector<PossibleMove>& vec_PossibleMoves,
+    const GameStateData& gameState
+) {
+    std::cout << "PYTHON (Detective)\n";
+    MoveDecision decision;
+    decision.b_HasDecision = false;
+    if (vec_PossibleMoves.empty()) return decision;
+
+    auto randomFallback = [&]() -> MoveDecision {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, static_cast<int>(vec_PossibleMoves.size()) - 1);
+        const auto& sel = vec_PossibleMoves[dis(gen)];
+        MoveDecision d;
+        d.b_HasDecision = true;
+        d.i_DestinationNode = sel.i_DestinationNode;
+        d.i_TransportType = sel.i_TransportType;
+        std::cout << "[Fallback Detective] Using random move: dest=" 
+                  << sel.i_DestinationNode << ", transport=" << sel.i_TransportType << "\n";
+        return d;
+    };
+
+    // Use the detective bridge (extern from GameState.cpp)
+    PythonBridge* bridge = g_pDetectiveBridge;
+    if (!bridge) {
+        std::cout << "[Fallback] Detective Python bridge not available\n";
+        return randomFallback();
+    }
+
+    nlohmann::json req;
+    static double reward_for_move = 0.0;
+    req["game_state"] = {
+        {"current_player_index", gameState.i_CurrentPlayerIndex},
+        {"current_round", gameState.i_CurrentRound},
+        {"is_reveal_round", gameState.b_IsRevealRound},
+        {"is_next_reveal_round", gameState.b_IsNextRevealRound},
+        {"mr_x_last_known_position", gameState.i_MrXLastKnownPosition},
+        {"mr_x_last_known_round", gameState.i_MrXLastKnownRound},
+        {"reward", reward_for_move}
+    };
+
+    nlohmann::json jplayers = nlohmann::json::array();
+    for (const auto& info : gameState.vec_AllPlayers) {
+        jplayers.push_back({
+            {"position", info.i_Position},
+            {"is_visible", info.b_IsVisible},
+            {"is_mister_x", info.b_IsMisterX},
+            {"tickets", {
+                {"taxi", info.i_TaxiTickets},
+                {"bus", info.i_BusTickets},
+                {"metro", info.i_MetroTickets},
+                {"black", info.i_BlackTickets},
+                {"double", info.i_DoubleMoveTickets}
+            }}
+        });
+    }
+    req["players"] = jplayers;
+
+    nlohmann::json jmoves = nlohmann::json::array();
+    for (const auto& m : vec_PossibleMoves) {
+        jmoves.push_back({ {"dest", m.i_DestinationNode}, {"transport", m.i_TransportType} });
+    }
+    req["possible_moves"] = jmoves;
+
+    try {
+        auto fut = bridge->sendRequestAsync(req);
+        nlohmann::json resp = fut.get();
+
+        if (resp.is_object()) {
+            if (resp.contains("selected_index") && resp["selected_index"].is_number_integer()) {
+                int idx = resp["selected_index"].get<int>();
+                if (idx >= 0 && idx < static_cast<int>(vec_PossibleMoves.size())) {
+                    const auto& mv = vec_PossibleMoves[idx];
+                    MoveDecision d; 
+                    d.b_HasDecision = true; 
+                    d.i_DestinationNode = mv.i_DestinationNode; 
+                    d.i_TransportType = mv.i_TransportType;
+                    std::cout << "[Python Detective] Selected move by index: dest=" 
+                              << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
+                    double reward = EvaluateDetectiveMoveReward(p_Player, mv, gameState);
+                    reward_for_move = reward;
+                    std::cout << "[Reward Detective] Calculated reward for move: " << reward << "\n";
+                    return d;
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ExternalPythonAlgorithmPolice] Python bridge error: " << e.what() << "\n";
+        return randomFallback();
+    } catch (...) {
+        std::cerr << "[ExternalPythonAlgorithmPolice] Unknown Python bridge error\n";
+        return randomFallback();
+    }
+
+    std::cout << "[Fallback] Python Detective returned invalid response\n";
+    return randomFallback();
+}
+
 
 
 static MoveDecision DistanceMaximizationAlgorithm(
@@ -3946,14 +4113,12 @@ MoveDecision AIPlayerController::CalculateBestMove(
             decision = FrontSearchEncirclementPoliceAlgorithm(p_Player, vec_PossibleMoves, gameState);
             break;
         
-        case Core::AIAlgorithm::NeuralNet: {
-            // TODO implementing algorithm here, rn fallback to Random
-            std::random_device rd; std::mt19937 gen(rd());
-            std::uniform_int_distribution<> dis(0, (int)vec_PossibleMoves.size() - 1);
-            const auto& sel = vec_PossibleMoves[dis(gen)];
-            decision = { true, sel.i_DestinationNode, sel.i_TransportType };
+        case Core::AIAlgorithm::NeuralNet:
+            decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
             break;
-            }
+        case Core::AIAlgorithm::NeuralNetPolice:
+            decision = ExternalPythonAlgorithmPolice(p_Player, vec_PossibleMoves, gameState);
+            break;
         
     }
     return decision;
