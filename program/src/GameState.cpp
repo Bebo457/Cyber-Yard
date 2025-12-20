@@ -116,16 +116,25 @@ void GameState::OnEnter(Core::Application* p_App) {
     m_b_GameActive = true;
     m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
 
-    // initialize Python bridge (non-blocking, worker thread inside)
-    // TODO coś jest z destruktorem nie tak i potrafi zawieszać aplikacje
-    if (!p_App || !p_App->IsTrainingMode()) {
+    // STWORZONY HANDSHAKE cpp z py PAMIETAC O DODAWANIU HANDSHKE DO .py serwerowych!!!
+    // wysyłanie jest ping odpowiedź pong
+if (!p_App || !p_App->IsTrainingMode()) {
+    const std::string serverAddr = "tcp://localhost:5555";
+    
+    // Sprawdzamy czy serwer żyje przed utworzeniem obiektu
+    if (PythonBridge::ProbeServer(serverAddr)) {
         try {
-            g_pBridge = new PythonBridge("tcp://localhost:5555");
+            g_pBridge = new PythonBridge(serverAddr);
+            std::cout << "[GameState] PythonBridge connected successfully.\n";
         } catch (const std::exception& e) {
             std::cerr << "[GameState] Failed to init PythonBridge: " << e.what() << "\n";
             g_pBridge = nullptr;
         }
+    } else {
+        std::cerr << "[GameState] Python server NOT found at " << serverAddr << ". Bridge disabled.\n";
+        g_pBridge = nullptr;
     }
+}
     
     // Dane wierzchołków planszy (pozycja, kolor, UV)
     float planeVertices[] = {

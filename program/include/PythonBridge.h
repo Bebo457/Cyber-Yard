@@ -10,6 +10,8 @@
 
 class PythonBridge {
 public:
+    static bool ProbeServer(const std::string& addr);
+
     PythonBridge(const std::string& addr = "tcp://localhost:5555");
     ~PythonBridge();
 

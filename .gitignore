@@ -80,3 +80,6 @@ vcpkg_installed/
 
 # Grzegorz
 private_notes/
+
+# log
+game_log.csv

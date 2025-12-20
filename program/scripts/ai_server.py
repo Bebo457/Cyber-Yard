@@ -13,6 +13,12 @@ while True:
         msg = sock.recv()
         req = json.loads(msg.decode("utf-8"))
 
+        # --- OBSŁUGA HANDSHAKE ---
+        if req.get("type") == "ping":
+            sock.send_json({"type": "pong", "status": "ready"})
+            continue
+        # -------------------------
+
         winner = req.get("winner")
         if winner:
             print(f"[GameOver] winner={winner}")

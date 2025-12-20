@@ -1,6 +1,38 @@
 #include "PythonBridge.h"
-
+#include <iostream>
 PythonBridge* PythonBridge::s_instance = nullptr;
+
+// Statyczna metoda sprawdzająca serwer przed inicjalizacją
+bool PythonBridge::ProbeServer(const std::string& addr) {
+    try {
+        zmq::context_t temp_ctx(1);
+        zmq::socket_t temp_sock(temp_ctx, zmq::socket_type::req);
+        
+        // Ustawiamy krótkie timeouty (ms)
+        int timeout = 500; 
+        temp_sock.set(zmq::sockopt::rcvtimeo, timeout);
+        temp_sock.set(zmq::sockopt::sndtimeo, timeout);
+        temp_sock.set(zmq::sockopt::linger, 0);
+
+        temp_sock.connect(addr);
+
+        nlohmann::json ping = {{"type", "ping"}};
+        std::string out = ping.dump();
+        
+        temp_sock.send(zmq::buffer(out), zmq::send_flags::none);
+
+        zmq::message_t reply;
+        auto res = temp_sock.recv(reply, zmq::recv_flags::none);
+        
+        if (res) {
+            auto j_reply = nlohmann::json::parse(reply.to_string());
+            return j_reply["type"] == "pong";
+        }
+    } catch (...) {
+        return false;
+    }
+    return false;
+}
 
 PythonBridge::PythonBridge(const std::string& addr)
     : ctx_(1), socket_(ctx_, zmq::socket_type::req) {
@@ -11,14 +43,16 @@ PythonBridge::PythonBridge(const std::string& addr)
 
 PythonBridge::~PythonBridge() {
     {
-        std::lock_guard lock(mtx_);
+        std::lock_guard<std::mutex> lock(mtx_);
         stop_ = true;
         cv_.notify_all();
     }
+
+    try { socket_.close(); } catch (...) {}   // przerwie blokujące recv
     if (worker_.joinable()) worker_.join();
-    s_instance = nullptr; // unregister
-    try { socket_.close(); } catch(...) {}
-    try { ctx_.close(); } catch(...) {}
+    try { ctx_.close(); } catch (...) {}
+
+    s_instance = nullptr;
 }
 
 PythonBridge* PythonBridge::Instance() {
