@@ -119,6 +119,88 @@ void AIPlayerController::Reset() {
     m_b_CalculationInProgress = false;
 }
 
+static double EvaluateMoveReward(
+    const Player* p_Player,
+    const PossibleMove& move,
+    const GameStateData& gameState
+) {
+    // Budowa grafu (tylko sąsiedzi)
+    std::map<int, std::vector<int>> map_Graph;
+    for (int i_Node = 1; i_Node <= 200; ++i_Node) {
+        auto vec_Connections = gameState.p_Graph->GetConnections(i_Node);
+        for (const auto& conn : vec_Connections) {
+            map_Graph[i_Node].push_back(conn.i_NodeId);
+        }
+    }
+
+    // BFS pomocnicze
+    auto fn_BFS = [&](int i_Start) {
+        std::map<int,int> map_Dist;
+        std::queue<int> q;
+        map_Dist[i_Start] = 0;
+        q.push(i_Start);
+        while (!q.empty()) {
+            int u = q.front(); q.pop();
+            for (int v : map_Graph[u]) {
+                if (!map_Dist.count(v)) {
+                    map_Dist[v] = map_Dist[u] + 1;
+                    q.push(v);
+                }
+            }
+        }
+        return map_Dist;
+    };
+
+    // Pozycje policjantów
+    std::vector<int> policePositions;
+    for (const auto& info : gameState.vec_AllPlayers) {
+        if (!info.b_IsMisterX) policePositions.push_back(info.i_Position);
+    }
+
+    // BFS dla każdego policjanta
+    std::vector<std::map<int,int>> policeDists;
+    for (int pos : policePositions) {
+        policeDists.push_back(fn_BFS(pos));
+    }
+
+    // Liczba węzłów w zagłębieniu 2
+    auto countDepth2Neighbors = [&](int node) {
+        std::set<int> depth2;
+        for (int n1 : map_Graph[node]) {
+            depth2.insert(n1);
+            for (int n2 : map_Graph[n1]) depth2.insert(n2);
+        }
+        depth2.erase(node);
+        return static_cast<int>(depth2.size());
+    };
+
+    // Parametry wagowe do obliczenia nagrody
+    double w_min = 2.0;
+    double w_avg = 1.0;
+    double w_depth2 = 0.7;
+
+    int dest = move.i_DestinationNode;
+
+    // minimalna i średnia odległość do policjantów
+    int minDist = 999999;
+    double sumDist = 0.0;
+    for (const auto& distMap : policeDists) {
+        int d = distMap.count(dest) ? distMap.at(dest) : 999999;
+        minDist = std::min(minDist, d);
+        sumDist += d;
+    }
+    double avgDist = sumDist / std::max(1.0, static_cast<double>(policeDists.size()));
+
+    // liczba węzłów w zagłębieniu 2
+    int depth2Count = countDepth2Neighbors(dest);
+
+    // obliczenie nagrody
+    double reward = w_min * minDist + w_avg * avgDist + w_depth2 * depth2Count;
+
+    return reward;
+}
+
+
 static MoveDecision ExternalPythonAlgorithmmrX(
     const Player* p_Player,
     const std::vector<PossibleMove>& vec_PossibleMoves,
@@ -128,6 +210,8 @@ static MoveDecision ExternalPythonAlgorithmmrX(
     MoveDecision decision;
     decision.b_HasDecision = false;
     if (vec_PossibleMoves.empty()) return decision;
+
+
 
     auto randomFallback = [&]() -> MoveDecision {
         std::random_device rd;
@@ -150,13 +234,15 @@ static MoveDecision ExternalPythonAlgorithmmrX(
     }
 
     nlohmann::json req;
+    static double reward_for_move = 0.0;
     req["game_state"] = {
         {"current_player_index", gameState.i_CurrentPlayerIndex},
         {"current_round", gameState.i_CurrentRound},
         {"is_reveal_round", gameState.b_IsRevealRound},
         {"is_next_reveal_round", gameState.b_IsNextRevealRound},
         {"mr_x_last_known_position", gameState.i_MrXLastKnownPosition},
-        {"mr_x_last_known_round", gameState.i_MrXLastKnownRound}
+        {"mr_x_last_known_round", gameState.i_MrXLastKnownRound},
+        {"reward", reward_for_move},
     };
 
     nlohmann::json jplayers = nlohmann::json::array();
@@ -198,37 +284,40 @@ static MoveDecision ExternalPythonAlgorithmmrX(
                     d.i_TransportType = mv.i_TransportType;
                     std::cout << "[Python] Selected move by index: dest=" 
                               << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
+                    double reward = EvaluateMoveReward(p_Player, mv, gameState);
+                    reward_for_move = reward;
+                    std::cout << "[Reward] Calculated reward for move: " << reward << "\n";
                     return d;
                 }
             }
 
             // wybór po destination (+ opcjonalnie transport)
-            if (resp.contains("destination") && !resp["destination"].is_null()) {
-                int dest = resp["destination"].get<int>();
-                int transport = resp.value("transport", 0);
-                for (const auto& mv : vec_PossibleMoves) {
-                    if (mv.i_DestinationNode == dest && (transport == 0 || mv.i_TransportType == transport)) {
-                        MoveDecision d; 
-                        d.b_HasDecision = true; 
-                        d.i_DestinationNode = mv.i_DestinationNode; 
-                        d.i_TransportType = mv.i_TransportType;
-                        std::cout << "[Python] Selected move by dest+transport: dest=" 
-                                  << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
-                        return d;
-                    }
-                }
-                for (const auto& mv : vec_PossibleMoves) {
-                    if (mv.i_DestinationNode == dest) {
-                        MoveDecision d; 
-                        d.b_HasDecision = true; 
-                        d.i_DestinationNode = mv.i_DestinationNode; 
-                        d.i_TransportType = mv.i_TransportType;
-                        std::cout << "[Python] Selected move by dest only: dest=" 
-                                  << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
-                        return d;
-                    }
-                }
-            }
+            // if (resp.contains("destination") && !resp["destination"].is_null()) {
+            //     int dest = resp["destination"].get<int>();
+            //     int transport = resp.value("transport", 0);
+            //     for (const auto& mv : vec_PossibleMoves) {
+            //         if (mv.i_DestinationNode == dest && (transport == 0 || mv.i_TransportType == transport)) {
+            //             MoveDecision d; 
+            //             d.b_HasDecision = true; 
+            //             d.i_DestinationNode = mv.i_DestinationNode; 
+            //             d.i_TransportType = mv.i_TransportType;
+            //             std::cout << "[Python] Selected move by dest+transport: dest=" 
+            //                       << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
+            //             return d;
+            //         }
+            //     }
+            //     for (const auto& mv : vec_PossibleMoves) {
+            //         if (mv.i_DestinationNode == dest) {
+            //             MoveDecision d; 
+            //             d.b_HasDecision = true; 
+            //             d.i_DestinationNode = mv.i_DestinationNode; 
+            //             d.i_TransportType = mv.i_TransportType;
+            //             std::cout << "[Python] Selected move by dest only: dest=" 
+            //                       << mv.i_DestinationNode << ", transport=" << mv.i_TransportType << "\n";
+            //             return d;
+            //         }
+            //     }
+            // }
         }
     } catch (const std::exception& e) {
         std::cerr << "[ExternalPythonAlgorithmmrX] Python bridge error: " << e.what() << "\n";
