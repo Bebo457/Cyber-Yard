@@ -7,6 +7,7 @@ import json
 import numpy as np
 import os
 from typing import Dict, List, Any, Optional
+from metrics_logger import log_game
 
 # =================================================================
 # 1. KODER OBSERWACJI
@@ -179,11 +180,15 @@ try:
         # --- GAME OVER ---
         if "[GameOver]" in raw_msg or "winner" in req or "winner" in raw_msg:
             winner = req.get("winner", "Detectives" if "Detectives" in raw_msg else "MrX")
+            current_round = req.get("game_state", {}).get("current_round", 0)
             print(f"[EVENT] Game Over! Winner: {winner}")
+            mrx_reward = 0.0
             if agent and last_step:
-                reward = 100.0 if winner == "MrX" else -100.0
-                agent.store_transition(*last_step, reward, True)
+                mrx_reward = 100.0 if winner == "MrX" else -100.0
+                agent.store_transition(*last_step, mrx_reward, True)
                 agent.update()
+            # Log metrics for dashboard
+            log_game(winner=winner, mrx_reward=mrx_reward, rounds=current_round)
             last_step = None
             sock.send_json({"status": "ok"})
             continue

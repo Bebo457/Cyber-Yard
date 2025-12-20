@@ -35,9 +35,10 @@ bool PythonBridge::ProbeServer(const std::string& addr) {
 }
 
 PythonBridge::PythonBridge(const std::string& addr)
-    : ctx_(1), socket_(ctx_, zmq::socket_type::req) {
+    : addr_(addr), ctx_(1), socket_(ctx_, zmq::socket_type::req) {
     // Set timeouts to prevent infinite hangs (ms)
-    int timeout = 5000;  // 5 second timeout
+    // 2 seconds is enough for Python to respond even during initialization
+    int timeout = 2000;
     socket_.set(zmq::sockopt::rcvtimeo, timeout);
     socket_.set(zmq::sockopt::sndtimeo, timeout);
     socket_.set(zmq::sockopt::linger, 0);
@@ -47,16 +48,48 @@ PythonBridge::PythonBridge(const std::string& addr)
     worker_ = std::thread(&PythonBridge::workerThread, this);
 }
 
-PythonBridge::~PythonBridge() {
-    {
-        std::lock_guard<std::mutex> lock(mtx_);
-        stop_ = true;
-        cv_.notify_all();
+void PythonBridge::resetSocket() {
+    // Reset socket after timeout to recover from REQ/REP desync
+    try {
+        socket_.close();
+        socket_ = zmq::socket_t(ctx_, zmq::socket_type::req);
+        int timeout = 2000;
+        socket_.set(zmq::sockopt::rcvtimeo, timeout);
+        socket_.set(zmq::sockopt::sndtimeo, timeout);
+        socket_.set(zmq::sockopt::linger, 0);
+        socket_.connect(addr_);
+        std::cout << "[PythonBridge] Socket reset successful\n";
+    } catch (const std::exception& e) {
+        std::cerr << "[PythonBridge] Socket reset failed: " << e.what() << "\n";
     }
+}
 
-    try { socket_.close(); } catch (...) {}   // przerwie blokujące recv
-    if (worker_.joinable()) worker_.join();
-    try { ctx_.close(); } catch (...) {}
+PythonBridge::~PythonBridge() {
+    // Signal worker to stop (no mutex - just set flag and notify)
+    stop_ = true;
+    cv_.notify_all();
+
+    // Give worker time to exit (it should exit after recv timeout or cv_ wake)
+    if (worker_.joinable()) {
+        // Use a detach + short sleep approach to avoid join deadlock
+        // Worker will exit on its own when stop_ is true
+        try {
+            worker_.detach();
+        } catch (...) {}
+    }
+    
+    // Brief wait for detached thread to notice stop_
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    // Close socket and context
+    try { 
+        socket_.set(zmq::sockopt::linger, 0);
+        socket_.close(); 
+    } catch (...) {}
+    
+    try { 
+        ctx_.close(); 
+    } catch (...) {}
 
     s_instance = nullptr;
 }
@@ -88,17 +121,45 @@ void PythonBridge::workerThread() {
             queue_.pop();
         }
 
+        // Check stop_ before doing any socket operations
+        if (stop_) {
+            // Set exception to unblock any waiters
+            try {
+                job.prom.set_exception(std::make_exception_ptr(std::runtime_error("Bridge shutting down")));
+            } catch (...) {}
+            continue;
+        }
+
         try {
             std::string out = job.req.dump();
             zmq::message_t msg(out.begin(), out.end());
-            socket_.send(msg, zmq::send_flags::none);
+            auto send_result = socket_.send(msg, zmq::send_flags::none);
+            
+            // Check if we should stop after send
+            if (stop_ || !send_result) {
+                job.prom.set_exception(std::make_exception_ptr(std::runtime_error("Bridge shutting down")));
+                continue;
+            }
 
             zmq::message_t reply;
-            socket_.recv(reply, zmq::recv_flags::none);
+            auto recv_result = socket_.recv(reply, zmq::recv_flags::none);
+            
+            // Check if recv failed (timeout or shutdown)
+            if (!recv_result || stop_) {
+                job.prom.set_exception(std::make_exception_ptr(std::runtime_error("Recv timeout or shutdown")));
+                // Reset socket to recover from REQ/REP desync
+                if (!stop_) {
+                    resetSocket();
+                }
+                continue;
+            }
+            
             std::string sreply(static_cast<char*>(reply.data()), reply.size());
             job.prom.set_value(nlohmann::json::parse(sreply));
         } catch (...) {
-            job.prom.set_exception(std::current_exception());
+            try {
+                job.prom.set_exception(std::current_exception());
+            } catch (...) {}
         }
     }
 }

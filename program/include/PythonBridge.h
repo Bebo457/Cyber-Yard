@@ -23,7 +23,9 @@ public:
 
 private:
     void workerThread();
+    void resetSocket();
 
+    std::string addr_;
     zmq::context_t ctx_;
     zmq::socket_t socket_;
     std::thread worker_;
