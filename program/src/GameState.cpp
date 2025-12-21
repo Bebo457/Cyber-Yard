@@ -197,6 +197,7 @@ void GameState::OnEnter(Core::Application* p_App) {
             circle.stationID = station.i_StationID;
             m_vec_CircleStations.push_back(circle);
         }
+        m_vec3_Saved3DCameraPosition.x = 11.0f * m_f_GlobalScale;
     }
 
     // Skip all OpenGL initialization in headless/training mode
@@ -240,7 +241,7 @@ void GameState::OnEnter(Core::Application* p_App) {
     glBindVertexArray(0);
 
     // VAO/VBO cylindra i półkuli pionka
-    std::vector<float> cylVerts = generateCylinderVertices(0.05f, 0.1f, 20); // radius, height, segments
+    std::vector<float> cylVerts = generateCylinderVertices(0.1f, 0.2f, 20); // radius, height, segments
     m_i_CylinderVertexCount = static_cast<int>(cylVerts.size() / 3);
     glGenVertexArrays(1, &m_VAO_Cylinder);
     glGenBuffers(1, &m_VBO_Cylinder);
@@ -251,7 +252,7 @@ void GameState::OnEnter(Core::Application* p_App) {
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
 
-    std::vector<float> hemiVerts = generateHemisphereVertices(0.05f, 30); // radius, segments
+    std::vector<float> hemiVerts = generateHemisphereVertices(0.1f, 30); // radius, segments
     m_i_HemisphereVertexCount = static_cast<int>(hemiVerts.size() / 3);
     glGenVertexArrays(1, &m_VAO_Hemisphere);
     glGenBuffers(1, &m_VBO_Hemisphere);
@@ -2206,7 +2207,7 @@ void GameState::UpdateCameraPhysics(float f_DeltaTime) {
 
     //friction
     m_vec3_CameraVelocity *= k_CameraFriction;
-    if (glm::length(m_vec3_CameraVelocity) < 0.01f) {
+    if (glm::length(m_vec3_CameraVelocity) < 0.05f) {
         m_vec3_CameraVelocity = glm::vec3(0.0f);
     }
 
