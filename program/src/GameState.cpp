@@ -891,6 +891,18 @@ void GameState::OnEnter(Core::Application* p_App) {
                     }
                 }
 
+                {
+                    std::lock_guard<std::mutex> lock(m_mtx_Players);
+                    if (m_vec_Players[idx].GetType() == Core::PlayerType::Detective) {
+                        if (!CheckIfDetectivesCanMove()) {
+                            if (!m_b_GameActive) {
+                                m_b_ConsoleThreadRunning.store(false);
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 // Track Mr X ticket usage for HUD, Mr X turn counter, and clear/keep his active flag depending on double-move
                 using UI::TicketMark;
                 {
@@ -1879,9 +1891,17 @@ void GameState::RenderEndGameModal(Core::Application* p_App) {
 
     std::string s_Title = "";
     std::string s_Message = "GAME OVER";
-    if (m_EndGameWinner == Winner::Detectives) s_Title = "Congratulations! Detectives win";
-    else if (m_EndGameWinner == Winner::MisterX) s_Title = "Congratulations! Mister X wins";
-    else s_Title = "Game ended";
+    if (m_EndGameWinner == Winner::Detectives) {
+        s_Title = "Congratulations! Detectives win";
+    } else if (m_EndGameWinner == Winner::MisterX) {
+        if (GameState::m_b_DetectivesLostDueToNoMoves) {
+            s_Title = "Mister X wins - Detectives have no available moves";
+        } else {
+            s_Title = "Congratulations! Mister X wins";
+        }
+    } else {
+        s_Title = "Game ended";
+    }
 
     ScotlandYard::UI::Color white{1.0f,1.0f,1.0f,1.0f};
     float f_TitleH = f_ModalHpx * 0.14f;
@@ -1976,6 +1996,94 @@ bool GameState::CheckCapture() const {
         }
     }
     return false;
+}
+
+bool GameState::CheckIfDetectivesCanMove() {
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    
+    // Sprawdź każdego detektywa
+    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+        if (m_vec_Players[i].GetType() == Core::PlayerType::Detective) {
+            std::vector<Core::PossibleMove> vec_Moves = GetPossibleMovesForPlayer(static_cast<int>(i));
+            
+            // Jeśli chociaż jeden detektyw ma możliwy ruch, zwróć true
+            if (!vec_Moves.empty()) {
+                return true;
+            }
+        }
+    }
+    
+    // Żaden detektyw nie ma możliwych ruchów
+    std::cout << "[Game] No detective can move - Mr X wins!\n";
+    m_b_DetectivesLostDueToNoMoves = true;
+    CheckEndOfGame(Winner::MisterX);
+    return false;
+}
+
+void GameState::MarkDetectivesWithoutMoves() {
+    // WAŻNE: Ta funkcja powinna być wywoływana TYLKO gdy żaden z mutexów nie jest już zablokowany
+    // lub gdy trzymamy oba muteksy w bezpiecznej kolejności
+    
+    std::vector<int> vec_DetectivesWithoutMoves;
+    
+    // Krok 1: Znajdź detektywów bez ruchów (tylko odczyt z Players)
+    {
+        std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+        
+        for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+            // Sprawdź tylko detektywów
+            if (m_vec_Players[i].GetType() != Core::PlayerType::Detective) {
+                continue;
+            }
+            
+            // Sprawdź czy detektyw ma jakiekolwiek dostępne ruchy
+            std::vector<Core::PossibleMove> vec_Moves = GetPossibleMovesForPlayer(static_cast<int>(i));
+            
+            if (vec_Moves.empty()) {
+                vec_DetectivesWithoutMoves.push_back(static_cast<int>(i));
+            }
+        }
+    }
+    // lockPlayers zwolniony tutaj
+    
+    // Krok 2: Oznacz ich jako wykonali ruch (tylko GameState)
+    if (!vec_DetectivesWithoutMoves.empty()) {
+        std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+        
+        for (int i : vec_DetectivesWithoutMoves) {
+            std::cout << "[GameState] Detective " << i << " has no available moves - marking as moved.\n";
+            
+            if (i >= 0 && i < static_cast<int>(m_vec_MovedThisRound.size()) && !m_vec_MovedThisRound[i]) {
+                m_vec_MovedThisRound[i] = true;
+                
+                // Zmniejsz licznik pozostałych graczy
+                int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                if (i_Remaining > 0) {
+                    m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                }
+            }
+        }
+    }
+    // lockState zwolniony tutaj
+    
+    // Krok 3: Dezaktywuj ich (tylko Players)
+    if (!vec_DetectivesWithoutMoves.empty()) {
+        std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+        
+        for (int i : vec_DetectivesWithoutMoves) {
+            if (i >= 0 && i < static_cast<int>(m_vec_Players.size())) {
+                m_vec_Players[i].SetActive(false);
+                
+                // Loguj do pliku
+                logger.logPlayerMove(
+                    i, 
+                    m_vec_Players[i].GetOccupiedNode(), 
+                    m_vec_Players[i].GetOccupiedNode(), // brak ruchu - ta sama pozycja
+                    -1  // brak transportu
+                );
+            }
+        }
+    }
 }
 
 void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
@@ -2307,6 +2415,14 @@ void GameState::HandlePlayerClick(int i_PlayerIndex) {
         return;
     }
 
+    {
+        std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+        if (i_PlayerIndex < static_cast<int>(m_vec_MovedThisRound.size()) && m_vec_MovedThisRound[i_PlayerIndex]) {
+            std::cout << "[GameState] Player has already moved this round.\n";
+            return;
+        }
+    }
+
     bool b_CanSelect = false;
     {
         std::lock_guard<std::mutex> lock(m_mtx_Players);
@@ -2336,11 +2452,7 @@ void GameState::HandlePlayerClick(int i_PlayerIndex) {
     }
 
     {
-        std::lock_guard<std::mutex> lockState(m_mtx_GameState);
-        if (i_PlayerIndex < static_cast<int>(m_vec_MovedThisRound.size()) && m_vec_MovedThisRound[i_PlayerIndex]) {
-            std::cout << "[GameState] Player has already moved this round.\n";
-            return;
-        }
+        
     }
 
     if (b_CanSelect) {
@@ -2941,20 +3053,30 @@ std::vector<Core::PossibleMove> GameState::GetPossibleMovesForPlayer(int i_Playe
 }
 
 void GameState::AdvanceRoundIfComplete() {
-    std::lock_guard<std::mutex> lockState(m_mtx_GameState);
-    if (m_i_PlayersRemainingThisRound.load() != 0) {
+    {
+        std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+        if (m_i_PlayersRemainingThisRound.load() != 0) {
+            return;
+        }
+
+        int i_CurrentRound = m_i_Round.load();
+        if (i_CurrentRound >= Core::k_MaxRounds) {
+            CheckEndOfGame();
+            return;
+        }
+    }
+
+    if (!CheckIfDetectivesCanMove()) {
         return;
     }
 
-    int i_CurrentRound = m_i_Round.load();
-    if (i_CurrentRound >= Core::k_MaxRounds) {
-        CheckEndOfGame();
-        return;
+    {
+        std::lock_guard<std::mutex> lockState(m_mtx_GameState);
+        m_i_Round.store(m_i_Round.load() + 1);
+        std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
+        m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
     }
-
-    m_i_Round.store(i_CurrentRound + 1);
-    std::fill(m_vec_MovedThisRound.begin(), m_vec_MovedThisRound.end(), false);
-    m_i_PlayersRemainingThisRound.store(static_cast<int>(m_vec_Players.size()));
+    
     UI::SetRound(m_i_Round.load());
 
     {
@@ -2968,6 +3090,7 @@ void GameState::AdvanceRoundIfComplete() {
         }
         m_b_MrXSecondMovePending.store(false);
     }
+    MarkDetectivesWithoutMoves();
 }
 
 } // namespace States

@@ -213,6 +213,8 @@ private:
     GLuint m_VBO_Line = 0;
     int m_i_LineVertexCount = 0;
 
+    bool m_b_DetectivesLostDueToNoMoves = false;
+
     int m_i_SelectedPlayerIndex;
     std::vector<DirectionArrow> m_vec_CurrentArrows;
     uint32_t m_ui_NextPickingID;
@@ -235,6 +237,8 @@ private:
     void ProcessAIPendingMoves();
     std::vector<Core::PossibleMove> GetPossibleMovesForPlayer(int i_PlayerIndex);
     void AdvanceRoundIfComplete();
+    bool CheckIfDetectivesCanMove();
+    void MarkDetectivesWithoutMoves();
 
     // Render functions
     void RenderMrXToken(const glm::vec2& vec2_Position, const glm::mat4& mat4_Projection, const glm::mat4& mat4_View, GLint i_MvpLoc, GLint i_ColorLoc);
