@@ -37,17 +37,29 @@ if(NOT FREETYPE_FOUND)
     message(FATAL_ERROR "FreeType not found. Please install FreeType development libraries")
 endif()
 
-find_package(ZeroMQ CONFIG REQUIRED)
+# Try CONFIG mode first, fall back to MODULE mode for system installations
+find_package(ZeroMQ CONFIG QUIET)
+if(NOT ZeroMQ_FOUND)
+    find_package(ZeroMQ MODULE QUIET)
+endif()
+if(NOT ZeroMQ_FOUND)
+    message(STATUS "ZeroMQ not found via find_package, attempting pkg-config...")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(ZeroMQ libzmq)
+endif()
 if(NOT ZeroMQ_FOUND)
     message(FATAL_ERROR "ZeroMQ not found. Please install ZeroMQ development libraries")
 endif()
 
-find_package(cppzmq CONFIG REQUIRED)
+find_package(cppzmq CONFIG QUIET)
 if(NOT cppzmq_FOUND)
-    message(FATAL_ERROR "cppzmq not found. Please install cppzmq via vcpkg")
+    message(STATUS "cppzmq CONFIG not found, will use manual linking")
 endif()
 
-find_package(nlohmann_json CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+    find_package(nlohmann_json MODULE QUIET)
+endif()
 if(NOT nlohmann_json_FOUND)
     message(FATAL_ERROR "nlohmann_json not found")
 endif()
@@ -218,9 +230,59 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glm::glm
     ${FREETYPE_LIBRARIES}
     ${ENET_LIB}
-    libzmq
-    nlohmann_json::nlohmann_json
-    cppzmq
+)
+
+# Link ZeroMQ
+if(ZeroMQ_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${ZeroMQ_LIBRARIES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${ZeroMQ_INCLUDE_DIRS})
+else()
+    # Fallback - direct zmq library
+    target_link_libraries(${PROJECT_NAME} PRIVATE zmq)
+endif()
+
+# Link nlohmann_json
+if(nlohmann_json_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+else()
+    # Header-only library, no linking needed
+    target_include_directories(${PROJECT_NAME} PRIVATE /usr/include)
+endif()
+
+# Link cppzmq (header-only)
+if(cppzmq_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE cppzmq)
+endif()
+# cppzmq is header-only, headers should be in standard system paths
+
+# ===== BUILDING VISUALIZER TEST EXECUTABLE =====
+add_executable(BuildingVisualizer 
+    src/BuildingVisualizerTest.cpp
+    src/BuildingGenerator.cpp
+)
+
+target_compile_definitions(BuildingVisualizer PRIVATE ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
+
+target_include_directories(BuildingVisualizer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${SDL2_INCLUDE_DIRS}
+    ${OPENGL_INCLUDE_DIR}
+    ${GLEW_INCLUDE_DIRS}
+)
+
+target_link_libraries(BuildingVisualizer PRIVATE
+    ${SDL2_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+    ${GLEW_LIBRARIES}
+    glm::glm
+)
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(BuildingVisualizer PRIVATE pthread dl)
+endif()
+
+set_target_properties(BuildingVisualizer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
 # COMPILER WARNINGS============================================

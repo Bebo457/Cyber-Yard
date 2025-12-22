@@ -46,7 +46,7 @@ cmake --build .
 - `--game-console` - Enable console input for manual moves
 
 ---
-
+![alt text](image.png)
 ## Documentation
 
 - **[BUILD.md](BUILD.md)** - Build instructions
