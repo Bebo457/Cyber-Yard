@@ -181,7 +181,9 @@ private:
         None = 0,
         Detective = 1,
         MisterX = 2,
-        Arrow = 3
+        Arrow = 3,
+        Destination = 4,
+        TicketButton = 5
     };
 
     struct ClickableID {
@@ -195,6 +197,18 @@ private:
         float f_Rotation;
         int i_DestinationNode;
         int i_TransportType;
+    };
+
+    struct TicketButton {
+        glm::vec2 vec2_Position;
+        int i_TransportType;
+        float f_Radius;
+    };
+
+    struct DestinationNode {
+        int i_NodeID;
+        glm::vec2 vec2_Position;
+        std::vector<int> vec_AvailableTransports;
     };
 
     GLuint m_FBO_Picking;
@@ -217,6 +231,9 @@ private:
 
     int m_i_SelectedPlayerIndex;
     std::vector<DirectionArrow> m_vec_CurrentArrows;
+    std::vector<DestinationNode> m_vec_CurrentDestinations;
+    std::vector<TicketButton> m_vec_CurrentTicketButtons;
+    int m_i_SelectedDestinationNode;
     uint32_t m_ui_NextPickingID;
     std::map<uint32_t, ClickableID> m_map_PickingIDToClickable;
 
@@ -230,6 +247,12 @@ private:
     void HandleColorPicking(int i_MouseX, int i_MouseY);
     void HandlePlayerClick(int i_PlayerIndex);
     void HandleArrowClick(int i_PlayerIndex, int i_DestinationNode);
+    void HandleDestinationClick(int i_DestinationNode);
+    void HandleTicketButtonClick(int i_TransportType);
+    void UpdateDestinationsForSelectedPlayer();
+    void UpdateTicketButtonsForDestination(int i_DestinationNode);
+    void RenderHighlightedDestinations(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View);
+    void RenderTicketButtons(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View);
 
     // AI Player Controller helpers
     void InitializePlayerControllers();
