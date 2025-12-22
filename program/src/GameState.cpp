@@ -1676,20 +1676,27 @@ void GameState::RenderHighlightedDestinations(const glm::mat4& mat4_Projection, 
         return;
     }
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+
     glUseProgram(m_ShaderProgram_Circle);
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
 
     for (const auto& dest : m_vec_CurrentDestinations) {
-        glm::vec3 vec3_HighlightColor(1.0f, 1.0f, 0.5f);
+        if (m_i_SelectedDestinationNode >= 0 && dest.i_NodeID != m_i_SelectedDestinationNode) {
+            continue;
+        }
 
-        float f_BaseRadius = 0.12f;
-        float f_PulseAmount = 0.02f * sinf(static_cast<float>(SDL_GetTicks()) * 0.003f);
+        glm::vec3 vec3_HighlightColor(0.8f, 0.1f, 0.1f);
+
+        float f_BaseRadius = 8.5f;
+        float f_PulseAmount = 0.8f * sinf(static_cast<float>(SDL_GetTicks()) * 0.003f);
         float f_Radius = f_BaseRadius + f_PulseAmount;
 
         glm::mat4 mat4_Model = glm::mat4(1.0f);
-        mat4_Model = glm::translate(mat4_Model, glm::vec3(dest.vec2_Position.x, 0.05f * m_f_GlobalScale, dest.vec2_Position.y));
-        mat4_Model = glm::scale(mat4_Model, glm::vec3(f_Radius));
+        mat4_Model = glm::translate(mat4_Model, glm::vec3(dest.vec2_Position.x, 0.15f * m_f_GlobalScale, dest.vec2_Position.y));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(f_Radius, 0.2f, f_Radius));
         mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
         glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
@@ -1700,6 +1707,8 @@ void GameState::RenderHighlightedDestinations(const glm::mat4& mat4_Projection, 
         glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
         glBindVertexArray(0);
     }
+
+    glDisable(GL_BLEND);
 }
 
 void GameState::RenderTicketButtons(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View) {
@@ -1721,9 +1730,13 @@ void GameState::RenderTicketButtons(const glm::mat4& mat4_Projection, const glm:
             default: vec3_Color = glm::vec3(0.5f); break;
         }
 
+        if (!btn.b_Available) {
+            vec3_Color *= 0.3f;
+        }
+
         glm::mat4 mat4_OutlineModel = glm::mat4(1.0f);
-        mat4_OutlineModel = glm::translate(mat4_OutlineModel, glm::vec3(btn.vec2_Position.x, 0.06f * m_f_GlobalScale, btn.vec2_Position.y));
-        mat4_OutlineModel = glm::scale(mat4_OutlineModel, glm::vec3(btn.f_Radius * 1.2f));
+        mat4_OutlineModel = glm::translate(mat4_OutlineModel, glm::vec3(btn.vec2_Position.x, 0.18f * m_f_GlobalScale, btn.vec2_Position.y));
+        mat4_OutlineModel = glm::scale(mat4_OutlineModel, glm::vec3(btn.f_Radius * 1.2f, 0.2f, btn.f_Radius * 1.2f));
         mat4_OutlineModel = mat4_OutlineModel * m_mat4_GlobalScaleMatrix;
 
         glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_OutlineModel;
@@ -1734,8 +1747,8 @@ void GameState::RenderTicketButtons(const glm::mat4& mat4_Projection, const glm:
         glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
 
         glm::mat4 mat4_ButtonModel = glm::mat4(1.0f);
-        mat4_ButtonModel = glm::translate(mat4_ButtonModel, glm::vec3(btn.vec2_Position.x, 0.07f * m_f_GlobalScale, btn.vec2_Position.y));
-        mat4_ButtonModel = glm::scale(mat4_ButtonModel, glm::vec3(btn.f_Radius));
+        mat4_ButtonModel = glm::translate(mat4_ButtonModel, glm::vec3(btn.vec2_Position.x, 0.19f * m_f_GlobalScale, btn.vec2_Position.y));
+        mat4_ButtonModel = glm::scale(mat4_ButtonModel, glm::vec3(btn.f_Radius, 0.2f, btn.f_Radius));
         mat4_ButtonModel = mat4_ButtonModel * m_mat4_GlobalScaleMatrix;
 
         mat4_MVP = mat4_Projection * mat4_View * mat4_ButtonModel;
@@ -1743,6 +1756,20 @@ void GameState::RenderTicketButtons(const glm::mat4& mat4_Projection, const glm:
         glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
 
         glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+
+        if (!btn.b_Available) {
+            glm::mat4 mat4_CrossModel = glm::mat4(1.0f);
+            mat4_CrossModel = glm::translate(mat4_CrossModel, glm::vec3(btn.vec2_Position.x, 0.20f * m_f_GlobalScale, btn.vec2_Position.y));
+            mat4_CrossModel = glm::scale(mat4_CrossModel, glm::vec3(btn.f_Radius * 0.8f, 0.2f, btn.f_Radius * 0.8f));
+            mat4_CrossModel = mat4_CrossModel * m_mat4_GlobalScaleMatrix;
+
+            mat4_MVP = mat4_Projection * mat4_View * mat4_CrossModel;
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+            glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.3f, 0.3f, 0.3f)));
+
+            glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+        }
+
         glBindVertexArray(0);
     }
 }
@@ -2393,7 +2420,7 @@ void GameState::UpdateCameraPhysics(float f_DeltaTime) {
 
     //friction
     m_vec3_CameraVelocity *= k_CameraFriction;
-    if (glm::length(m_vec3_CameraVelocity) < 0.05f) {
+    if (glm::length(m_vec3_CameraVelocity) < 0.01f) {
         m_vec3_CameraVelocity = glm::vec3(0.0f);
     }
 
@@ -2529,13 +2556,51 @@ void GameState::UpdateTicketButtonsForDestination(int i_DestinationNode) {
     const DestinationNode& dest = *it;
     glm::vec2 vec2_NodePos = dest.vec2_Position;
 
-    int i_NumButtons = static_cast<int>(dest.vec_AvailableTransports.size());
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    const auto& player = m_vec_Players[m_i_SelectedPlayerIndex];
+    bool b_IsMrX = (player.GetType() == Core::PlayerType::MisterX);
+
+    std::vector<std::pair<int, bool>> transportOptions;
+    bool b_HasNonWaterTransport = false;
+
+    for (int transportType : dest.vec_AvailableTransports) {
+        bool b_HasTicket = false;
+        if (transportType == Core::k_TransportTypeTaxi) {
+            b_HasTicket = player.GetTaxiTickets() > 0;
+            b_HasNonWaterTransport = true;
+        } else if (transportType == Core::k_TransportTypeBus) {
+            b_HasTicket = player.GetBusTickets() > 0;
+            b_HasNonWaterTransport = true;
+        } else if (transportType == Core::k_TransportTypeMetro) {
+            b_HasTicket = player.GetMetroTickets() > 0;
+            b_HasNonWaterTransport = true;
+        } else if (transportType == Core::k_TransportTypeWater) {
+            b_HasTicket = player.GetBlackTickets() > 0;
+        }
+
+        transportOptions.push_back({transportType, b_HasTicket});
+    }
+
+    if (b_IsMrX && b_HasNonWaterTransport && player.GetBlackTickets() > 0) {
+        bool b_AlreadyHasWater = false;
+        for (int t : dest.vec_AvailableTransports) {
+            if (t == Core::k_TransportTypeWater) {
+                b_AlreadyHasWater = true;
+                break;
+            }
+        }
+        if (!b_AlreadyHasWater) {
+            transportOptions.push_back({Core::k_TransportTypeWater, true});
+        }
+    }
+
+    int i_NumButtons = static_cast<int>(transportOptions.size());
     if (i_NumButtons == 0) {
         return;
     }
 
-    float f_ButtonRadius = 0.08f;
-    float f_OrbitalRadius = 0.4f;
+    float f_ButtonRadius = 5.0f;
+    float f_OrbitalRadius = 0.6f * m_f_GlobalScale;
 
     for (int i = 0; i < i_NumButtons; ++i) {
         float f_Angle = (2.0f * 3.14159f * i) / i_NumButtons - 3.14159f / 2.0f;
@@ -2543,8 +2608,9 @@ void GameState::UpdateTicketButtonsForDestination(int i_DestinationNode) {
 
         TicketButton btn;
         btn.vec2_Position = vec2_NodePos + vec2_Offset;
-        btn.i_TransportType = dest.vec_AvailableTransports[i];
+        btn.i_TransportType = transportOptions[i].first;
         btn.f_Radius = f_ButtonRadius;
+        btn.b_Available = transportOptions[i].second;
 
         m_vec_CurrentTicketButtons.push_back(btn);
     }
@@ -2859,6 +2925,38 @@ void GameState::HandleDestinationClick(int i_DestinationNode) {
     }
 
     m_i_SelectedDestinationNode = i_DestinationNode;
+
+    int i_NumTransports = static_cast<int>(destIt->vec_AvailableTransports.size());
+
+    bool b_IsMrX = false;
+    bool b_HasBlackTickets = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mtx_Players);
+        const auto& player = m_vec_Players[m_i_SelectedPlayerIndex];
+        b_IsMrX = (player.GetType() == Core::PlayerType::MisterX);
+        b_HasBlackTickets = (player.GetBlackTickets() > 0);
+    }
+
+    bool b_HasNonWater = false;
+    bool b_HasWater = false;
+    for (int t : destIt->vec_AvailableTransports) {
+        if (t == Core::k_TransportTypeWater) {
+            b_HasWater = true;
+        } else {
+            b_HasNonWater = true;
+        }
+    }
+
+    int i_TotalButtons = i_NumTransports;
+    if (b_IsMrX && b_HasNonWater && b_HasBlackTickets && !b_HasWater) {
+        i_TotalButtons++;
+    }
+
+    if (i_TotalButtons == 1) {
+        HandleTicketButtonClick(destIt->vec_AvailableTransports[0]);
+        return;
+    }
+
     UpdateTicketButtonsForDestination(i_DestinationNode);
 }
 
@@ -3034,7 +3132,10 @@ void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
 
     if (ui_ClickedID == 0) {
         m_i_SelectedPlayerIndex = -1;
+        m_i_SelectedDestinationNode = -1;
         m_vec_CurrentArrows.clear();
+        m_vec_CurrentDestinations.clear();
+        m_vec_CurrentTicketButtons.clear();
         UI::ShowDetectivePopup(false);
         return;
     }
@@ -3190,8 +3291,8 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
         glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
 
         glm::mat4 mat4_Model = glm::mat4(1.0f);
-        mat4_Model = glm::translate(mat4_Model, glm::vec3(dest.vec2_Position.x, 0.05f * m_f_GlobalScale, dest.vec2_Position.y));
-        mat4_Model = glm::scale(mat4_Model, glm::vec3(0.8f));
+        mat4_Model = glm::translate(mat4_Model, glm::vec3(dest.vec2_Position.x, 0.15f * m_f_GlobalScale, dest.vec2_Position.y));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(9.5f, 0.2f, 9.5f));
         mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
         glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
@@ -3209,8 +3310,8 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
         glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
 
         glm::mat4 mat4_Model = glm::mat4(1.0f);
-        mat4_Model = glm::translate(mat4_Model, glm::vec3(btn.vec2_Position.x, 0.06f * m_f_GlobalScale, btn.vec2_Position.y));
-        mat4_Model = glm::scale(mat4_Model, glm::vec3(btn.f_Radius));
+        mat4_Model = glm::translate(mat4_Model, glm::vec3(btn.vec2_Position.x, 0.19f * m_f_GlobalScale, btn.vec2_Position.y));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(btn.f_Radius * 1.2f, 0.2f, btn.f_Radius * 1.2f));
         mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
         glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
