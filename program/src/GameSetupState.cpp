@@ -40,7 +40,7 @@ namespace ScotlandYard {
 
             int rows = 0;
             switch (m_Page) {
-            case Page::Main:      rows = IsPvBot() ? 4 : 3; break;
+            case Page::Main:      rows = IsPvBot() ? 5 : 4; break; // extra row for 3D Environment
             case Page::AIType:    rows = 2; break;
             case Page::HumanSide: rows = 2; break;
             case Page::Algorithms:rows = IsPvBot() ? 2 : 3; break;                 
@@ -97,8 +97,12 @@ namespace ScotlandYard {
                     placeRow2(Row::Human, idx++, "Mr X", "Detectives");
                 }
                 placeRow2(Row::Map, idx++, "Default Map", "Map Generator");
+                {
+                    float y = rowYTopDown(idx++);
+                    float x = (W - btnW) * 0.5f;
+                    m_vec_Buttons.push_back({ Row::Map, 2, x, y, btnW, btnH, "Random Environment" });
+                }
 
-               
                 PlaceFooter(idx++, "Back to Menu", HasBot() ? "Next" : "Start Game", W, rowYTopDown, btnH);
                 return;
             }
@@ -270,6 +274,10 @@ namespace ScotlandYard {
                             }
                             else { 
                                 if (m_Page == Page::Main) {
+                                    if (m_i_Map == 2) {
+                                        app->GetStateManager()->ChangeState("emptyenv", app);
+                                        return;
+                                    }
                                     if (m_i_Map == 1) {
                                         app->GetStateManager()->ChangeState("mapgen", app);
                                         return;

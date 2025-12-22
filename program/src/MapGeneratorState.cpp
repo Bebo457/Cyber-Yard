@@ -419,6 +419,9 @@ namespace ScotlandYard
 
             m_s_InfoText = "Map generated!";
             std::cout << "[MapGen] Generation complete!" << std::endl;
+            if (m_pApp && !m_pApp->IsTrainingMode()) {
+                m_pApp->GetStateManager()->ChangeState("emptyenv", m_pApp);
+            }
         }
 
         void MapGeneratorState::SaveMapToFile()

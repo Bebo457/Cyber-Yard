@@ -4,6 +4,7 @@
 #include "GameState.h"
 #include "MapGeneratorState.h"
 #include "GameSetupState.h"
+#include "EmptyEnvironmentState.h"
 #include "GameSettings.h"
 #include <GL/glew.h>
 #include <ft2build.h>
@@ -143,6 +144,7 @@ void Application::LoadStates() {
     m_p_StateManager->RegisterState("setup", std::make_unique<States::GameSetupState>());
     m_p_StateManager->RegisterState("game", std::make_unique<States::GameState>());
     m_p_StateManager->RegisterState("mapgen", std::make_unique<States::MapGeneratorState>());
+    m_p_StateManager->RegisterState("emptyenv", std::make_unique<States::EmptyEnvironmentState>());
 
     //in training mode with game config, skip menu
     if (m_b_TrainingMode && ScotlandYard::Core::HasBeenConfigured()) {

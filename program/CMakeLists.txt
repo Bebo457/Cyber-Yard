@@ -72,6 +72,7 @@ set(SOURCES
     src/StateManager.cpp
     src/ThreadPool.cpp
     src/MenuState.cpp
+    src/EmptyEnvironmentState.cpp
     src/GameState.cpp
     src/HUDOverlay.cpp
     src/Player.cpp
@@ -99,6 +100,7 @@ set(HEADERS
     include/IGameState.h
     include/ThreadPool.h
     include/MenuState.h
+    include/EmptyEnvironmentState.h
     include/GameState.h
     include/HUDOverlay.h
     include/Player.h
