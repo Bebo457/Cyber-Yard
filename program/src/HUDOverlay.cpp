@@ -143,6 +143,37 @@ namespace UI {
             glUseProgram(0);
         }
 
+        void drawPlayTriangle(float f_X0, float f_Y0, float f_X1, float f_Y1, Color c, Core::Application* p_App) {
+            // Calculate center and size
+            float f_CX = (f_X0 + f_X1) * 0.5f;
+            float f_CY = (f_Y0 + f_Y1) * 0.5f;
+            float f_W = (f_X1 - f_X0) * 0.25f;  // Narrower
+            float f_H = (f_Y1 - f_Y0) * 0.45f;  // Taller
+
+            // Triangle vertices (pointing right)
+            float f_X_Left = f_CX - f_W * 0.5f;
+            float f_X_Right = f_CX + f_W * 0.5f;
+            float f_Y_Top = f_CY + f_H * 0.5f;
+            float f_Y_Bottom = f_CY - f_H * 0.5f;
+
+            const float f_Verts[] = {
+                f_X_Left, f_Y_Top,
+                f_X_Right, f_CY,
+                f_X_Left, f_Y_Bottom
+            };
+
+            glUseProgram(p_App->GetHUDRoundedShader());
+            glUniform4f(glGetUniformLocation(p_App->GetHUDRoundedShader(), "uRect"), f_X0, f_Y0, f_X1, f_Y1);
+            glUniform1f(glGetUniformLocation(p_App->GetHUDRoundedShader(), "uRadius"), 0.0f);
+            glUniform4f(glGetUniformLocation(p_App->GetHUDRoundedShader(), "uColor"), c.r, c.g, c.b, c.a);
+            glBindVertexArray(p_App->GetHUDRoundedVAO());
+            glBindBuffer(GL_ARRAY_BUFFER, p_App->GetHUDRoundedVBO());
+            glBufferData(GL_ARRAY_BUFFER, sizeof(f_Verts), f_Verts, GL_DYNAMIC_DRAW);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glBindVertexArray(0);
+            glUseProgram(0);
+        }
+
         float textWidthPx(const std::string& s_Text, float f_Scale, Core::Application* p_App) {
             const auto& chars = p_App->GetCharacterMap();
             float f_W = 0.0f;
@@ -308,7 +339,12 @@ namespace UI {
                     drawIcon(g_GLuint_TexPause, f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, p_App);
                 } else {
                     drawRoundedRect(f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {0.12f, 0.12f, 0.12f, 0.85f}, pxToNDC(g_HUDStyle.slotRadiusPx), p_App);
-                    drawTextCentered(std::string("||"), f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {1,1,1,1}, p_App);
+                    // Show play triangle when paused, pause bars when playing
+                    if (g_b_ShowPausedModal.load()) {
+                        drawPlayTriangle(f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {1,1,1,1}, p_App);
+                    } else {
+                        drawTextCentered(std::string("||"), f_BtnX0, f_BtnY0, f_BtnX1, f_BtnY1, {1,1,1,1}, p_App);
+                    }
                 }
 
                 f_CapAreaRight = f_BtnX0 - f_Gap;
@@ -368,6 +404,7 @@ namespace UI {
 
 
             }
+            
         }
 
         constexpr float k_BottomBarGapPx = 10.0f;
@@ -450,6 +487,16 @@ namespace UI {
         bool hovered,
         bool selected,
         bool enabled) {
+        DrawColoredButtonWithOffset(r, text, app, bg, hovered, selected, enabled, -10.0f);
+    }
+
+    void DrawColoredButtonWithOffset(const SDL_Rect& r, const char* text,
+        Core::Application* app,
+        Color bg,
+        bool hovered,
+        bool selected,
+        bool enabled,
+        float f_TextOffsetY) {
         ScotlandYard::UI::Color white{ 1,1,1,1 };
         const float rad = 12.0f;
 
@@ -470,7 +517,7 @@ namespace UI {
 
         DrawTextCenteredPx(text, (float)r.x, (float)r.y,
             (float)(r.x + r.w), (float)(r.y + r.h),
-            white, app, -3.0f);
+            white, app, f_TextOffsetY);
     }
 
     // Backward-compatible wrapper used by other UI states (menus, setup)
@@ -822,11 +869,11 @@ namespace UI {
 
             SDL_Rect rBlack{ (int)f_BtnX, (int)f_SecondBtnY0, (int)f_BtnW, (int)f_BtnH };
             Color colBlack = (g_vec_PillColors.size() > 0) ? g_vec_PillColors[0] : Color{ 0,0,0,1 };
-            DrawColoredButton(rBlack, "BLACK", p_App, colBlack, g_b_MrXBlackHover.load(), g_b_MrXBlackSelected.load(), g_b_MrXBlackEnabled.load());
+            DrawColoredButtonWithOffset(rBlack, "BLACK", p_App, colBlack, g_b_MrXBlackHover.load(), g_b_MrXBlackSelected.load(), g_b_MrXBlackEnabled.load(), -3.0f);
 
             SDL_Rect rDouble{ (int)f_BtnX, (int)f_FirstBtnY0, (int)f_BtnW, (int)f_BtnH };
             Color colDouble = (g_vec_PillColors.size() > 1) ? g_vec_PillColors[1] : Color{ 0.92f,0.82f,0.12f,1 };
-            DrawColoredButton(rDouble, "2x", p_App, colDouble, g_b_MrXDoubleHover.load(), g_b_MrXDoubleSelected.load(), g_b_MrXDoubleEnabled.load());
+            DrawColoredButtonWithOffset(rDouble, "2x", p_App, colDouble, g_b_MrXDoubleHover.load(), g_b_MrXDoubleSelected.load(), g_b_MrXDoubleEnabled.load(), -3.0f);
 
             g_i_MrXPanelX0 = (int)f_Left; g_i_MrXPanelY0 = (int)f_Bottom;
             g_i_MrXPanelX1 = (int)f_Right; g_i_MrXPanelY1 = (int)f_Top;
@@ -951,6 +998,8 @@ namespace UI {
             if (b_DepthWas) glDisable(GL_DEPTH_TEST);
             if (!b_BlendWas) glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            drawRoundedRect(-1.0f, -1.0f, 1.0f, 1.0f, {0.0f, 0.0f, 0.0f, 0.5f}, 0.0f, p_App);
 
             int i_W = p_App->GetWidth();
             int i_H = p_App->GetHeight();

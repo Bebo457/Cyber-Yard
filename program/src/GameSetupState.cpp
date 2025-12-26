@@ -33,14 +33,14 @@ namespace ScotlandYard {
             const int W = app->GetWidth();
             const int H = app->GetHeight();
 
-            const float btnW = 320.0f;
+            const float btnW = 380.0f;
             const float btnH = 54.0f;
             const float rowGap = 45.0f;
             const float btnGap = 30.0f;
 
             int rows = 0;
             switch (m_Page) {
-            case Page::Main:      rows = IsPvBot() ? 5 : 4; break; // extra row for 3D Environment
+            case Page::Main:      rows = IsPvBot() ? 4 : 3; break;
             case Page::AIType:    rows = 2; break;
             case Page::HumanSide: rows = 2; break;
             case Page::Algorithms:rows = IsPvBot() ? 2 : 3; break;                 
@@ -96,12 +96,7 @@ namespace ScotlandYard {
                 if (IsPvBot()) { // m_i_Mode == 1
                     placeRow2(Row::Human, idx++, "Mr X", "Detectives");
                 }
-                placeRow2(Row::Map, idx++, "Default Map", "Map Generator");
-                {
-                    float y = rowYTopDown(idx++);
-                    float x = (W - btnW) * 0.5f;
-                    m_vec_Buttons.push_back({ Row::Map, 2, x, y, btnW, btnH, "Random Environment" });
-                }
+                placeRow3(Row::Map, idx++, "Default Map", "Map Generator", "Random Environment");
 
                 PlaceFooter(idx++, "Back to Menu", HasBot() ? "Next" : "Start Game", W, rowYTopDown, btnH);
                 return;

@@ -610,9 +610,13 @@ void GameState::OnEnter(Core::Application* p_App) {
         UI::SetPausedDebugState(this->m_b_DebuggingMode.load());
     });
 
-    UI::SetPausedMenuCallback([this]() {
+    UI::SetPausedMenuCallback([this, p_App]() {
         UI::ShowPausedModal(false);
-        this->m_b_RequestMenuChange.store(true);
+        if (p_App && p_App->GetStateManager()) {
+            p_App->GetStateManager()->ChangeState("menu", p_App);
+        } else {
+            this->m_b_RequestMenuChange.store(true);
+        }
     });
 
     // Initialize HUD with current debug state
@@ -1845,8 +1849,8 @@ void GameState::RenderDebugOverlay(Core::Application* p_App) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     UI::Color white{1.0f,1.0f,1.0f,1.0f};
-    UI::DrawTextCenteredPx("DEBUG MODE - Press P: Color Picking View", 10, m_i_Height-60, m_i_Width-10, m_i_Height-40, white, p_App, 0.0f);
-    UI::DrawTextCenteredPx("Press M: Toggle Mr X Visibility", 10, m_i_Height-40, m_i_Width-10, m_i_Height-20, white, p_App, 0.0f);
+    UI::DrawTextCenteredPx("Press M: Toggle Mr X Visibility", m_i_Width * 0.78f, 85, m_i_Width - 10, 90, white, p_App, 0.0f);
+    UI::DrawTextCenteredPx("DEBUG MODE - Press P: Color Picking View", m_i_Width * 0.71f, 65, m_i_Width - 10, 70, white, p_App, 0.0f);
 
     if (!b_BlendWas) glDisable(GL_BLEND);
     if (b_DepthWas) glEnable(GL_DEPTH_TEST);

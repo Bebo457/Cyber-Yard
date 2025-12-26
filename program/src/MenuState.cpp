@@ -22,7 +22,7 @@ namespace States {
     {
         for (int i = 0; i < BUTTON_COUNT; ++i) {
             m_f_FrameAlpha[i] = 0.0f;
-            m_Buttons[i] = { 0.0f, 0.0f, 320.0f, 70.0f, "" };
+            m_Buttons[i] = { 0.0f, 0.0f, 380.0f, 70.0f, "" };
         }
 
         BuildMainMenu();

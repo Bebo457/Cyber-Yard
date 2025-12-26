@@ -81,7 +81,7 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         UI::LoadCameraIconPNG(s_IconPath.c_str(), p_App);
         UI::SetCameraToggleCallback([this]() { this->m_b_Camera3D = !this->m_b_Camera3D; });
 
-        // Initialize top bar with original game labels and colors
+        // Initialize top bar with labels and hide all counts (no players here)
         std::vector<std::string> vec_Labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
         std::vector<UI::Color> vec_Colors = {
             {0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 1.0f},      // Black
@@ -90,15 +90,37 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
             {0xF5 / 255.0f, 0x51 / 255.0f, 0xAE / 255.0f, 1.0f},      // Metro (pink/magenta)
             {0x41 / 255.0f, 0x84 / 255.0f, 0x3D / 255.0f, 1.0f},      // Bus (green)
         };
-        // Display: -1 (hidden), 5, -1, -1, -1, -1 as dummy counts (showcase format)
-        std::vector<int> vec_Counts = { -1, 5, -1, -1, -1, -1 };
+        std::vector<int> vec_Counts = { -1, -1, -1, -1, -1, -1 };
         UI::SetTopBar(vec_Labels, vec_Colors, vec_Counts);
+        UI::SetMrXButtonsVisible(false);
+        UI::SetMrXButtonsEnabled(false, false);
 
         // Initialize default ticket slots and round for full HUD visuals
         std::vector<UI::TicketSlot> vec_Slots(UI::k_TicketSlotCount);
         UI::SetTicketStates(vec_Slots);
-        UI::SetRound(7);
+        UI::SetRound(1);
     }
+    
+    // Setup pause callbacks
+    UI::SetPauseCallback([this]() {
+        UI::ShowPausedModal(true);
+    });
+
+    UI::SetPausedResumeCallback([this]() {
+        UI::ShowPausedModal(false);
+        this->m_b_GameActive = true;
+    });
+
+    UI::SetPausedDebugCallback([this]() {
+        // Empty environment doesn't have debug mode, but keep callback for consistency
+    });
+
+    UI::SetPausedMenuCallback([this, p_App]() {
+        UI::ShowPausedModal(false);
+        if (p_App && p_App->GetStateManager()) {
+            p_App->GetStateManager()->ChangeState("menu", p_App);
+        }
+    });
 }
 
 void EmptyEnvironmentState::OnExit(Core::Application* p_App) {
@@ -121,6 +143,14 @@ void EmptyEnvironmentState::OnExit(Core::Application* p_App) {
     m_b_HasMapTexture = false;
 }
 
+void EmptyEnvironmentState::OnPause() {
+    m_b_GameActive = false;
+}
+
+void EmptyEnvironmentState::OnResume() {
+    m_b_GameActive = true;
+}
+
 void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
     std::string s_Path = "generated_map.bmp";
     if (std::filesystem::exists(s_Path)) {
@@ -132,6 +162,7 @@ void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
 }
 
 void EmptyEnvironmentState::Update(float f_DeltaTime) {
+    if (!m_b_GameActive) return;  // Pause handling
     if (!m_b_Camera3D) return;
 
     // Angle friction and limits

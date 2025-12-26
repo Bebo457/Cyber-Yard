@@ -134,6 +134,14 @@ namespace UI {
         Core::Application* app,
         bool highlighted = false);
 
+    void DrawColoredButtonWithOffset(const SDL_Rect& r, const char* text,
+        Core::Application* app,
+        Color bg,
+        bool hovered,
+        bool selected,
+        bool enabled,
+        float f_TextOffsetY);
 
 } // namespace UI
 } // namespace ScotlandYard
+

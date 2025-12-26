@@ -18,8 +18,8 @@ public:
 
     void OnEnter(Core::Application* p_App) override;
     void OnExit(Core::Application* p_App) override;
-    void OnPause() override {}
-    void OnResume() override {}
+    void OnPause() override;
+    void OnResume() override;
     void Update(float f_DeltaTime) override;
     void Render(Core::Application* p_App) override;
     void HandleEvent(const SDL_Event& event, Core::Application* p_App) override;
@@ -32,6 +32,9 @@ private:
     GLuint m_TextureID = 0;
     bool m_b_HasMapTexture = false;
 
+    // Game state
+    bool m_b_GameActive = true;
+    
     // Camera system (mirrors GameState behavior)
     bool m_b_Camera3D = true;
     glm::vec3 m_vec3_CameraPosition{0.0f, 2.2f, 6.0f};
