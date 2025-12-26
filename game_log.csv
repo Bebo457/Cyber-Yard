@@ -226,3 +226,9 @@ timestamp,eventType,playerId,fromNode,toNode,details
 2893,MOVE,3,146,147,
 2893,MOVE,4,163,164,
 2893,GAME_END,,-,-,Detectives
+timestamp,eventType,playerId,fromNode,toNode,details
+40008,MOVE,0,5,16,
+47325,MOVE,2,55,89,
+timestamp,eventType,playerId,fromNode,toNode,details
+timestamp,eventType,playerId,fromNode,toNode,details
+timestamp,eventType,playerId,fromNode,toNode,details

@@ -15,7 +15,30 @@ namespace Core {
 struct BuildingMesh {
     std::vector<glm::vec3> vertices;   
     std::vector<unsigned int> indices; 
-    std::vector<glm::vec3> normals;    
+    std::vector<glm::vec3> normals;
+    std::vector<glm::vec2> texCoords;
+    
+    struct WindowWall {
+        std::vector<glm::vec3> vertices;
+        std::vector<unsigned int> indices;
+        std::vector<glm::vec3> normals;
+        std::vector<glm::vec2> texCoords;
+        glm::vec3 wallNormal;  // Normal of the wall these windows are on
+        glm::vec3 wallCenter;  // Center point of the wall
+    };
+    
+    std::vector<WindowWall> windowWalls;  // Windows grouped by wall
+
+    struct Door {
+        std::vector<glm::vec3> vertices;
+        std::vector<unsigned int> indices;
+        std::vector<glm::vec3> normals;
+        std::vector<glm::vec2> texCoords;
+        glm::vec3 wallNormal;
+        glm::vec3 wallCenter;
+    };
+
+    std::vector<Door> doors;  // Doors grouped by wall (currently one front door)
     
     struct MaterialGroup {
         unsigned int firstIndex = 0;    
@@ -61,6 +84,12 @@ public:
 private:
 
     static void CalculateNormals(BuildingMesh& mesh);
+    
+    static void GenerateTexCoords(BuildingMesh& mesh);
+    
+    static void GenerateWindows(BuildingMesh& mesh, const std::vector<glm::vec2>& vec_BasePoints, float f_Height);
+
+    static void GenerateDoors(BuildingMesh& mesh, const std::vector<glm::vec2>& vec_BasePoints, float f_Height);
     
     static void AddQuad(
         std::vector<glm::vec3>& vec_Vertices,

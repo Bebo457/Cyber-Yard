@@ -101,7 +101,6 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         UI::SetRound(1);
     }
     
-    // Setup pause callbacks
     UI::SetPauseCallback([this]() {
         UI::ShowPausedModal(true);
     });
@@ -112,7 +111,6 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
     });
 
     UI::SetPausedDebugCallback([this]() {
-        // Empty environment doesn't have debug mode, but keep callback for consistency
     });
 
     UI::SetPausedMenuCallback([this, p_App]() {
@@ -162,7 +160,7 @@ void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
 }
 
 void EmptyEnvironmentState::Update(float f_DeltaTime) {
-    if (!m_b_GameActive) return;  // Pause handling
+    if (!m_b_GameActive) return;  
     if (!m_b_Camera3D) return;
 
     // Angle friction and limits

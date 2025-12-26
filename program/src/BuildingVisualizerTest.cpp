@@ -9,6 +9,9 @@
 
 #include "BuildingGenerator.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "../external/stb_image.h"
+
 using namespace ScotlandYard::Core;
 
 // ===== SHADER SOURCE CODE =====
@@ -16,9 +19,11 @@ const char* k_VertexShaderSource = R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
+layout (location = 2) in vec2 aTexCoord;
 
 out vec3 FragPos;
 out vec3 Normal;
+out vec2 TexCoord;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -28,6 +33,7 @@ void main()
 {
     FragPos = vec3(model * vec4(aPos, 1.0));
     Normal = normalize(mat3(transpose(inverse(model))) * aNormal);
+    TexCoord = aTexCoord;
     gl_Position = projection * view * vec4(FragPos, 1.0);
 }
 )";
@@ -38,11 +44,16 @@ out vec4 FragColor;
 
 in vec3 FragPos;
 in vec3 Normal;
+in vec2 TexCoord;
 
+uniform sampler2D texture1;
 uniform vec3 objColor;
 uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform vec3 lightColor;
+uniform bool useTexture;
+uniform bool isRoof;
+uniform float roofUVScale;
 
 void main()
 {
@@ -62,9 +73,20 @@ void main()
     vec3 reflectDir = reflect(-lightDir, norm);  
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
     vec3 specular = specularStrength * spec * lightColor;  
-        
-    vec3 result = (ambient + diffuse + specular) * objColor;
-    FragColor = vec4(result, 1.0);
+    
+    vec2 sampleUV = TexCoord;
+    if (isRoof) {
+        sampleUV *= roofUVScale;
+    }
+    vec4 texSample = texture(texture1, sampleUV);
+    vec3 baseColor = useTexture ? texSample.rgb : objColor;
+    // Optionally tint roofs slightly warmer if needed
+    float alpha = useTexture ? texSample.a : 1.0;
+    // Drop nearly transparent fragments to avoid darkening from premultiplied backgrounds
+    if (alpha < 0.05)
+        discard;
+    vec3 result = (ambient + diffuse + specular) * baseColor;
+    FragColor = vec4(result, alpha);
 }
 )";
 
@@ -77,7 +99,26 @@ GLuint g_ShaderProgram = 0;
 GLuint g_VAO = 0;
 GLuint g_VBO = 0;
 GLuint g_VBO_Normal = 0;
+GLuint g_VBO_TexCoord = 0;
 GLuint g_EBO = 0;
+GLuint g_TextureID = 0;
+GLuint g_TextureID_Roof = 0;
+
+// Windows
+std::vector<GLuint> g_VAO_Windows;
+std::vector<GLuint> g_VBO_Windows;
+std::vector<GLuint> g_VBO_Windows_Normal;
+std::vector<GLuint> g_VBO_Windows_TexCoord;
+std::vector<GLuint> g_EBO_Windows;
+GLuint g_TextureID_Windows = 0;
+
+// Doors
+std::vector<GLuint> g_VAO_Doors;
+std::vector<GLuint> g_VBO_Doors;
+std::vector<GLuint> g_VBO_Doors_Normal;
+std::vector<GLuint> g_VBO_Doors_TexCoord;
+std::vector<GLuint> g_EBO_Doors;
+GLuint g_TextureID_Door = 0;
 
 BuildingMesh g_BuildingMesh;
 
@@ -101,41 +142,66 @@ int g_i_LastMouseY = 0;
 
 // ===== SHADER COMPILATION =====
 GLuint CompileShader(const char* p_Source, GLenum shaderType) {
-    GLuint shader = glCreateShader(shaderType);
-    glShaderSource(shader, 1, &p_Source, nullptr);
-    glCompileShader(shader);
+    GLuint ui_Shader = glCreateShader(shaderType);
+    glShaderSource(ui_Shader, 1, &p_Source, nullptr);
+    glCompileShader(ui_Shader);
 
     int i_Success;
     char infoLog[512];
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &i_Success);
+    glGetShaderiv(ui_Shader, GL_COMPILE_STATUS, &i_Success);
     if (!i_Success) {
-        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        glGetShaderInfoLog(ui_Shader, 512, nullptr, infoLog);
         std::cerr << "Shader compilation failed: " << infoLog << std::endl;
     }
-    return shader;
+    return ui_Shader;
 }
 
 GLuint CreateShaderProgram() {
-    GLuint vertexShader = CompileShader(k_VertexShaderSource, GL_VERTEX_SHADER);
-    GLuint fragmentShader = CompileShader(k_FragmentShaderSource, GL_FRAGMENT_SHADER);
+    GLuint ui_VertexShader = CompileShader(k_VertexShaderSource, GL_VERTEX_SHADER);
+    GLuint ui_FragmentShader = CompileShader(k_FragmentShaderSource, GL_FRAGMENT_SHADER);
 
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vertexShader);
-    glAttachShader(program, fragmentShader);
-    glLinkProgram(program);
+    GLuint ui_Program = glCreateProgram();
+    glAttachShader(ui_Program, ui_VertexShader);
+    glAttachShader(ui_Program, ui_FragmentShader);
+    glLinkProgram(ui_Program);
 
     int i_Success;
     char infoLog[512];
-    glGetProgramiv(program, GL_LINK_STATUS, &i_Success);
+    glGetProgramiv(ui_Program, GL_LINK_STATUS, &i_Success);
     if (!i_Success) {
-        glGetProgramInfoLog(program, 512, nullptr, infoLog);
+        glGetProgramInfoLog(ui_Program, 512, nullptr, infoLog);
         std::cerr << "Shader program linking failed: " << infoLog << std::endl;
     }
 
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    glDeleteShader(ui_VertexShader);
+    glDeleteShader(ui_FragmentShader);
 
-    return program;
+    return ui_Program;
+}
+
+GLuint LoadTexture(const char* path) {
+    GLuint ui_TextureID;
+    glGenTextures(1, &ui_TextureID);
+    glBindTexture(GL_TEXTURE_2D, ui_TextureID);
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    int i_Width, i_Height, i_Channels;
+    unsigned char* p_Data = stbi_load(path, &i_Width, &i_Height, &i_Channels, 0);
+    if (p_Data) {
+        GLenum e_Format = (i_Channels == 3) ? GL_RGB : GL_RGBA;
+        glTexImage2D(GL_TEXTURE_2D, 0, e_Format, i_Width, i_Height, 0, e_Format, GL_UNSIGNED_BYTE, p_Data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        std::cout << "Texture loaded successfully: " << path << " (" << i_Width << "x" << i_Height << ")" << std::endl;
+    } else {
+        std::cerr << "Failed to load texture: " << path << std::endl;
+    }
+    stbi_image_free(p_Data);
+    
+    return ui_TextureID;
 }
 
 // ===== BUILDING GENERATION =====
@@ -195,9 +261,9 @@ void GenerateBuilding() {
 }
 
 void UploadMeshToGPU() {
-    if (g_VAO) glDeleteVertexArrays(1, &g_VAO);
     if (g_VBO) glDeleteBuffers(1, &g_VBO);
     if (g_VBO_Normal) glDeleteBuffers(1, &g_VBO_Normal);
+    if (g_VBO_TexCoord) glDeleteBuffers(1, &g_VBO_TexCoord);
     if (g_EBO) glDeleteBuffers(1, &g_EBO);
     
     glGenVertexArrays(1, &g_VAO);
@@ -221,6 +287,15 @@ void UploadMeshToGPU() {
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
     glEnableVertexAttribArray(1);
     
+    glGenBuffers(1, &g_VBO_TexCoord);
+    glBindBuffer(GL_ARRAY_BUFFER, g_VBO_TexCoord);
+    glBufferData(GL_ARRAY_BUFFER,
+                 g_BuildingMesh.texCoords.size() * sizeof(glm::vec2),
+                 g_BuildingMesh.texCoords.data(),
+                 GL_STATIC_DRAW);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+    glEnableVertexAttribArray(2);
+    
     glGenBuffers(1, &g_EBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
@@ -229,6 +304,126 @@ void UploadMeshToGPU() {
                  GL_STATIC_DRAW);
     
     glBindVertexArray(0);
+}
+
+void UploadWindowsToGPU() {
+    // Clear old resources
+    for (auto vao : g_VAO_Windows) glDeleteVertexArrays(1, &vao);
+    for (auto vbo : g_VBO_Windows) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Windows_Normal) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Windows_TexCoord) glDeleteBuffers(1, &vbo);
+    for (auto ebo : g_EBO_Windows) glDeleteBuffers(1, &ebo);
+    
+    g_VAO_Windows.clear();
+    g_VBO_Windows.clear();
+    g_VBO_Windows_Normal.clear();
+    g_VBO_Windows_TexCoord.clear();
+    g_EBO_Windows.clear();
+    
+    // Create VAO/VBO/EBO for each wall's windows
+    for (const auto& windowWall : g_BuildingMesh.windowWalls) {
+        if (windowWall.vertices.empty()) continue;
+        
+        GLuint vao, vbo, vbo_normal, vbo_texcoord, ebo;
+        
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+        
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, 
+                     windowWall.vertices.size() * sizeof(glm::vec3),
+                     windowWall.vertices.data(), 
+                     GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(0);
+        
+        glGenBuffers(1, &vbo_normal);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_normal);
+        glBufferData(GL_ARRAY_BUFFER,
+                     windowWall.normals.size() * sizeof(glm::vec3),
+                     windowWall.normals.data(),
+                     GL_STATIC_DRAW);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(1);
+        
+        glGenBuffers(1, &vbo_texcoord);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_texcoord);
+        glBufferData(GL_ARRAY_BUFFER,
+                     windowWall.texCoords.size() * sizeof(glm::vec2),
+                     windowWall.texCoords.data(),
+                     GL_STATIC_DRAW);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+        glEnableVertexAttribArray(2);
+        
+        glGenBuffers(1, &ebo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                     windowWall.indices.size() * sizeof(unsigned int),
+                     windowWall.indices.data(),
+                     GL_STATIC_DRAW);
+        
+        glBindVertexArray(0);
+        
+        g_VAO_Windows.push_back(vao);
+        g_VBO_Windows.push_back(vbo);
+        g_VBO_Windows_Normal.push_back(vbo_normal);
+        g_VBO_Windows_TexCoord.push_back(vbo_texcoord);
+        g_EBO_Windows.push_back(ebo);
+    }
+}
+
+void UploadDoorsToGPU() {
+    for (auto vao : g_VAO_Doors) glDeleteVertexArrays(1, &vao);
+    for (auto vbo : g_VBO_Doors) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Doors_Normal) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Doors_TexCoord) glDeleteBuffers(1, &vbo);
+    for (auto ebo : g_EBO_Doors) glDeleteBuffers(1, &ebo);
+
+    g_VAO_Doors.clear();
+    g_VBO_Doors.clear();
+    g_VBO_Doors_Normal.clear();
+    g_VBO_Doors_TexCoord.clear();
+    g_EBO_Doors.clear();
+
+    for (const auto& door : g_BuildingMesh.doors) {
+        if (door.vertices.empty()) continue;
+
+        GLuint vao, vbo, vbo_normal, vbo_texcoord, ebo;
+
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, door.vertices.size() * sizeof(glm::vec3), door.vertices.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        glGenBuffers(1, &vbo_normal);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_normal);
+        glBufferData(GL_ARRAY_BUFFER, door.normals.size() * sizeof(glm::vec3), door.normals.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(1);
+
+        glGenBuffers(1, &vbo_texcoord);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_texcoord);
+        glBufferData(GL_ARRAY_BUFFER, door.texCoords.size() * sizeof(glm::vec2), door.texCoords.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+        glEnableVertexAttribArray(2);
+
+        glGenBuffers(1, &ebo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, door.indices.size() * sizeof(unsigned int), door.indices.data(), GL_STATIC_DRAW);
+
+        glBindVertexArray(0);
+
+        g_VAO_Doors.push_back(vao);
+        g_VBO_Doors.push_back(vbo);
+        g_VBO_Doors_Normal.push_back(vbo_normal);
+        g_VBO_Doors_TexCoord.push_back(vbo_texcoord);
+        g_EBO_Doors.push_back(ebo);
+    }
 }
 
 bool InitSDLAndOpenGL() {
@@ -288,32 +483,44 @@ void HandleEvents() {
                     g_b_UseFlatRoof = !g_b_UseFlatRoof;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
+                    UploadDoorsToGPU();
                     break;
                 case SDLK_1:
                     g_i_BuildingExample = 0;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
+                    UploadDoorsToGPU();
                     break;
                 case SDLK_2:
                     g_i_BuildingExample = 1;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
+                    UploadDoorsToGPU();
                     break;
                 case SDLK_3:
                     g_i_BuildingExample = 2;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
+                    UploadDoorsToGPU();
                     break;
                 case SDLK_4:
                     g_i_BuildingExample = 3;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
+                    UploadDoorsToGPU();
                     break;
                 case SDLK_h:
                     g_f_BuildingHeight += 1.0f;
                     std::cout << "Building height: " << g_f_BuildingHeight << std::endl;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
+                    UploadDoorsToGPU();
                     break;
                 case SDLK_g:
                     g_f_BuildingHeight -= 1.0f;
@@ -321,12 +528,14 @@ void HandleEvents() {
                     std::cout << "Building height: " << g_f_BuildingHeight << std::endl;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
                     break;
                 case SDLK_r:
                     g_f_RoofHeight += 0.5f;
                     std::cout << "Roof height: " << g_f_RoofHeight << std::endl;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
                     break;
                 case SDLK_f:
                     g_f_RoofHeight -= 0.5f;
@@ -334,6 +543,7 @@ void HandleEvents() {
                     std::cout << "Roof height: " << g_f_RoofHeight << std::endl;
                     GenerateBuilding();
                     UploadMeshToGPU();
+                    UploadWindowsToGPU();
                     break;
                 case SDLK_w:
                     g_f_BaseWidth += 1.0f;
@@ -341,6 +551,8 @@ void HandleEvents() {
                     if (g_i_BuildingExample == 3) {
                         GenerateBuilding();
                         UploadMeshToGPU();
+                        UploadWindowsToGPU();
+                        UploadDoorsToGPU();
                     }
                     break;
                 case SDLK_q:
@@ -350,6 +562,8 @@ void HandleEvents() {
                     if (g_i_BuildingExample == 3) {
                         GenerateBuilding();
                         UploadMeshToGPU();
+                        UploadWindowsToGPU();
+                        UploadDoorsToGPU();
                     }
                     break;
                 case SDLK_e:
@@ -358,6 +572,8 @@ void HandleEvents() {
                     if (g_i_BuildingExample == 3) {
                         GenerateBuilding();
                         UploadMeshToGPU();
+                        UploadWindowsToGPU();
+                        UploadDoorsToGPU();
                     }
                     break;
                 case SDLK_a:
@@ -367,6 +583,8 @@ void HandleEvents() {
                     if (g_i_BuildingExample == 3) {
                         GenerateBuilding();
                         UploadMeshToGPU();
+                        UploadWindowsToGPU();
+                        UploadDoorsToGPU();
                     }
                     break;
                 case SDLK_UP:
@@ -473,15 +691,110 @@ void Render() {
     glUniform3fv(glGetUniformLocation(g_ShaderProgram, "viewPos"), 1, glm::value_ptr(viewPos));
     glUniform3fv(glGetUniformLocation(g_ShaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
     
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_TextureID);
+    glUniform1i(glGetUniformLocation(g_ShaderProgram, "texture1"), 0);
+    glUniform1i(glGetUniformLocation(g_ShaderProgram, "useTexture"), g_TextureID != 0);
+    
     glBindVertexArray(g_VAO);
     
     for (const auto& material : g_BuildingMesh.materials) {
+        bool isRoof = (material.name == "roof") && g_TextureID_Roof != 0;
+        glUniform1i(glGetUniformLocation(g_ShaderProgram, "isRoof"), isRoof ? 1 : 0);
+        glUniform1f(glGetUniformLocation(g_ShaderProgram, "roofUVScale"), isRoof ? 3.0f : 1.0f);
+        if (isRoof) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_TextureID_Roof);
+            glUniform1i(glGetUniformLocation(g_ShaderProgram, "texture1"), 0);
+            glUniform1i(glGetUniformLocation(g_ShaderProgram, "useTexture"), 1);
+        } else {
+            glUniform1i(glGetUniformLocation(g_ShaderProgram, "useTexture"), g_TextureID != 0);
+            if (g_TextureID != 0) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, g_TextureID);
+                glUniform1i(glGetUniformLocation(g_ShaderProgram, "texture1"), 0);
+            }
+        }
         glUniform3fv(glGetUniformLocation(g_ShaderProgram, "objColor"), 1, glm::value_ptr(material.color));
         glDrawElements(GL_TRIANGLES, material.indexCount, GL_UNSIGNED_INT, 
                       (void*)(material.firstIndex * sizeof(unsigned int)));
     }
 
     glBindVertexArray(0);
+    
+    if (!g_BuildingMesh.windowWalls.empty() && g_TextureID_Windows != 0) {
+        glm::vec3 viewPosWorld = glm::vec3(0.0f, 0.0f, g_f_ZoomDistance);
+        glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(model)));
+        
+        glDepthMask(GL_FALSE);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g_TextureID_Windows);
+        glUniform1i(glGetUniformLocation(g_ShaderProgram, "texture1"), 0);
+        glUniform1i(glGetUniformLocation(g_ShaderProgram, "useTexture"), 1);
+        glUniform1i(glGetUniformLocation(g_ShaderProgram, "isRoof"), 0);
+        glUniform1f(glGetUniformLocation(g_ShaderProgram, "roofUVScale"), 1.0f);
+        
+        for (size_t i = 0; i < g_BuildingMesh.windowWalls.size(); ++i) {
+            const auto& windowWall = g_BuildingMesh.windowWalls[i];
+            
+            glm::vec3 wallCenterWorld = glm::vec3(model * glm::vec4(windowWall.wallCenter, 1.0f));
+            glm::vec3 wallNormalWorld = glm::normalize(normalMatrix * windowWall.wallNormal);
+            glm::vec3 viewDir = glm::normalize(viewPosWorld - wallCenterWorld);
+            float dotProduct = glm::dot(wallNormalWorld, viewDir);
+            
+            if (dotProduct > 0.0f) {
+                glBindVertexArray(g_VAO_Windows[i]);
+                glDrawElements(GL_TRIANGLES, windowWall.indices.size(), GL_UNSIGNED_INT, 0);
+            }
+        }
+        
+        glBindVertexArray(0);
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+    }
+
+    if (!g_BuildingMesh.doors.empty() && g_TextureID_Door != 0) {
+        glm::vec3 viewPosWorld = glm::vec3(0.0f, 0.0f, g_f_ZoomDistance);
+        glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(model)));
+
+        glDepthMask(GL_FALSE);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g_TextureID_Door);
+        glUniform1i(glGetUniformLocation(g_ShaderProgram, "texture1"), 0);
+        glUniform1i(glGetUniformLocation(g_ShaderProgram, "useTexture"), 1);
+        glUniform1i(glGetUniformLocation(g_ShaderProgram, "isRoof"), 0);
+        glUniform1f(glGetUniformLocation(g_ShaderProgram, "roofUVScale"), 1.0f);
+
+        for (size_t i = 0; i < g_BuildingMesh.doors.size(); ++i) {
+            const auto& door = g_BuildingMesh.doors[i];
+            glm::vec3 doorCenterWorld = glm::vec3(model * glm::vec4(door.wallCenter, 1.0f));
+            glm::vec3 doorNormalWorld = glm::normalize(normalMatrix * door.wallNormal);
+            glm::vec3 viewDir = glm::normalize(viewPosWorld - doorCenterWorld);
+            float dotProduct = glm::dot(doorNormalWorld, viewDir);
+            if (dotProduct > 0.0f) {
+                glBindVertexArray(g_VAO_Doors[i]);
+                glDrawElements(GL_TRIANGLES, door.indices.size(), GL_UNSIGNED_INT, 0);
+            }
+        }
+
+        glBindVertexArray(0);
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+    }
 
     SDL_GL_SwapWindow(g_p_Window);
 }
@@ -491,7 +804,24 @@ void Cleanup() {
     if (g_VAO) glDeleteVertexArrays(1, &g_VAO);
     if (g_VBO) glDeleteBuffers(1, &g_VBO);
     if (g_VBO_Normal) glDeleteBuffers(1, &g_VBO_Normal);
+    if (g_VBO_TexCoord) glDeleteBuffers(1, &g_VBO_TexCoord);
     if (g_EBO) glDeleteBuffers(1, &g_EBO);
+    if (g_TextureID) glDeleteTextures(1, &g_TextureID);
+    
+    for (auto vao : g_VAO_Windows) glDeleteVertexArrays(1, &vao);
+    for (auto vbo : g_VBO_Windows) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Windows_Normal) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Windows_TexCoord) glDeleteBuffers(1, &vbo);
+    for (auto ebo : g_EBO_Windows) glDeleteBuffers(1, &ebo);
+    if (g_TextureID_Windows) glDeleteTextures(1, &g_TextureID_Windows);
+    if (g_TextureID_Roof) glDeleteTextures(1, &g_TextureID_Roof);
+    for (auto vao : g_VAO_Doors) glDeleteVertexArrays(1, &vao);
+    for (auto vbo : g_VBO_Doors) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Doors_Normal) glDeleteBuffers(1, &vbo);
+    for (auto vbo : g_VBO_Doors_TexCoord) glDeleteBuffers(1, &vbo);
+    for (auto ebo : g_EBO_Doors) glDeleteBuffers(1, &ebo);
+    if (g_TextureID_Door) glDeleteTextures(1, &g_TextureID_Door);
+    
     if (g_ShaderProgram) glDeleteProgram(g_ShaderProgram);
 
     if (g_GLContext) SDL_GL_DeleteContext(g_GLContext);
@@ -529,8 +859,15 @@ int main(int argc, char* argv[]) {
 
     g_ShaderProgram = CreateShaderProgram();
     
+    g_TextureID = LoadTexture("assets/textures/Plaster002_2K-JPG_Color.jpg");
+    g_TextureID_Roof = LoadTexture("assets/textures/210_clay roof texture seamless.jpg");
+    g_TextureID_Windows = LoadTexture("assets/textures/71_glass building windows texture.png");
+    g_TextureID_Door = LoadTexture("assets/textures/8_classic door.png");
+    
     GenerateBuilding();
     UploadMeshToGPU();
+    UploadWindowsToGPU();
+    UploadDoorsToGPU();
 
     while (!g_b_ShouldClose) {
         HandleEvents();
