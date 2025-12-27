@@ -1,0 +1,260 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions import Categorical
+import zmq
+import json
+import numpy as np
+import os
+from typing import Dict, List, Any, Optional
+from metrics_logger import log_game
+from copy import deepcopy
+
+# WAŻNE: Ten kod jest uproszczonym MAPPO ze względu na to że decyzja jest podejmowana tylko przez Mr X,
+# jest to zrobione po to aby kod szybciej działał i się uczył.
+
+# =================================================================
+# 1. KODER OBSERWACJI
+# =================================================================
+class ObservationEncoder:
+    def __init__(self, max_nodes: int = 200, max_players: int = 6):
+        self.max_nodes = max_nodes
+        self.max_players = max_players
+
+    def encode(self, game_state, players):
+        obs = []
+        obs += [
+            float(game_state.get('current_round', 0)),
+            float(game_state.get('current_player_index', 0)),
+            1.0 if game_state.get('is_reveal_round', False) else 0.0,
+            float(game_state.get('mr_x_last_known_position', -1)),
+            float(game_state.get('mr_x_last_known_round', -1)),
+        ]
+
+        for i in range(self.max_players):
+            if i < len(players):
+                p = players[i]
+                obs += [
+                    1.0 if p.get('is_mister_x', False) else 0.0,
+                    1.0 if p.get('is_visible', False) else 0.0,
+                ]
+                t = p.get('tickets', {})
+                obs += [float(t.get(k, 0)) for k in ['taxi','bus','metro','black']]
+                pos = p.get('position', -1)
+                obs.append(float(pos) / self.max_nodes)
+            else:
+                obs += [0.0] * (2 + 4 + 1)
+
+        return np.array(obs, dtype=np.float32)
+
+# =================================================================
+# 2. MODELE MAPPO
+# =================================================================
+class Actor(nn.Module):
+    def __init__(self, obs_dim, act_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, act_dim)
+        )
+
+    def forward(self, x):
+        return torch.softmax(self.net(x), dim=-1)
+
+
+class CentralizedCritic(nn.Module):
+    def __init__(self, joint_obs_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(joint_obs_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+# =================================================================
+# 3. MAPPO AGENT
+# =================================================================
+class MAPPOAgent:
+    def __init__(self, obs_dim, act_dim, n_agents, model_path=None):
+        self.n_agents = n_agents
+        self.obs_dim = obs_dim
+
+        if model_path is None:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(script_dir, "mappo_mrx.pth")
+        self.model_path = model_path
+
+        self.actors = nn.ModuleList([
+            Actor(obs_dim, act_dim) for _ in range(n_agents)
+        ])
+
+        self.actors_old = deepcopy(self.actors)
+        for a in self.actors_old:
+            a.eval()
+
+        self.critic = CentralizedCritic(obs_dim * n_agents)
+
+        self.optimizer = optim.Adam(
+            list(self.actors.parameters()) + list(self.critic.parameters()),
+            lr=3e-4
+        )
+
+        if os.path.exists(self.model_path):
+            print(f"[AI] Wczytano MAPPO z: {self.model_path}")
+            checkpoint = torch.load(self.model_path)
+            for i, actor in enumerate(self.actors):
+                actor.load_state_dict(checkpoint["actors"][i])
+            self.critic.load_state_dict(checkpoint["critic"])
+            self.optimizer.load_state_dict(checkpoint["optimizer"])
+
+        self.buffer = []
+        self.rollout_len = 128
+        self.step_counter = 0
+        self.gamma = 0.99
+        self.lam = 0.95
+
+    def select_action(self, obs, agent_id):
+        with torch.no_grad():
+            obs_t = torch.FloatTensor(obs)
+            probs = self.actors_old[agent_id](obs_t)
+            dist = Categorical(probs)
+            action = dist.sample()
+            return action.item(), dist.log_prob(action)
+
+
+    def store(self, joint_obs, actions, logps, reward, done):
+        with torch.no_grad():
+            value = self.critic(torch.FloatTensor(joint_obs)).item()
+        self.buffer.append((joint_obs, actions, logps, reward, done, value))
+        self.step_counter += 1
+
+    def compute_gae(self, rewards, values, dones):
+        advantages = []
+        gae = 0.0
+        values = values + [0.0]  # V(s_{T+1}) = 0
+
+        for t in reversed(range(len(rewards))):
+            delta = rewards[t] + self.gamma * values[t+1] * (1 - dones[t]) - values[t]
+            gae = delta + self.gamma * self.lam * (1 - dones[t]) * gae
+            advantages.insert(0, gae)
+
+        return torch.tensor(advantages, dtype=torch.float32)
+
+
+    def update(self):
+        if not self.buffer:
+            return
+
+        joint_obs, actions, logps, rewards, dones, values = zip(*self.buffer)
+
+        joint_obs = torch.FloatTensor(joint_obs)
+        rewards = list(rewards)
+        dones = list(dones)
+        values = list(values)
+
+        advantages = self.compute_gae(rewards, values, dones)
+        returns = advantages + torch.tensor(values)
+
+
+        loss = 0
+        for i in range(self.n_agents):
+            probs = self.actors[i](joint_obs[:, i*self.obs_dim:(i+1)*self.obs_dim])
+            dist = Categorical(probs)
+            new_logp = dist.log_prob(torch.tensor([a[i] for a in actions]))
+            ratio = torch.exp(new_logp - torch.stack([lp[i] for lp in logps]))
+            surr = torch.min(
+                ratio * advantages,
+                torch.clamp(ratio, 0.8, 1.2) * advantages
+            )
+            loss -= surr.mean()
+
+        values_pred = self.critic(joint_obs).squeeze()
+        loss += 0.5 * nn.MSELoss()(values_pred, returns.detach())
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        self.buffer.clear()
+        torch.save({
+            "actors": [a.state_dict() for a in self.actors],
+            "critic": self.critic.state_dict(),
+            "optimizer": self.optimizer.state_dict()
+        }, self.model_path)
+        
+        for i in range(self.n_agents):
+            self.actors_old[i].load_state_dict(self.actors[i].state_dict())
+            self.actors_old[i].eval()
+
+        print(f"[AI] Zapisano MAPPO do {self.model_path}")
+
+# =================================================================
+# 4. PĘTLA ZMQ
+# =================================================================
+encoder = ObservationEncoder()
+agent = None
+
+ctx = zmq.Context()
+sock = ctx.socket(zmq.REP)
+sock.bind("tcp://*:5555")
+
+print("AI MAPPO Server listening on 5555")
+
+try:
+    while True:
+        req = json.loads(sock.recv().decode())
+
+        if req.get("type") == "ping":
+            sock.send_json({"type": "pong"})
+            continue
+
+        obs = encoder.encode(req["game_state"], req["players"])
+
+        if agent is None:
+            n_agents = len(req["players"])
+            agent = MAPPOAgent(
+                obs_dim=len(obs),
+                act_dim=50,
+                n_agents=n_agents
+            )
+
+        joint_obs = np.concatenate([obs for _ in range(agent.n_agents)])
+        actions, logps = [], []
+
+        for i in range(agent.n_agents):
+            a, lp = agent.select_action(obs, i)
+            actions.append(a)
+            logps.append(lp)
+
+        reward = req.get("game_state", {}).get("reward", 0.0)
+        done = req.get("game_over", False)
+
+        agent.store(joint_obs, actions, logps, reward, done)
+
+        if done or agent.step_counter >= agent.rollout_len:
+            print(f"[AI] UPDATE | steps={agent.step_counter} done={done}")
+            agent.update()
+            agent.step_counter = 0
+
+
+        idx = actions[0]
+        moves = req.get("possible_moves", [])
+        idx = idx if idx < len(moves) else 0
+
+        sel = moves[idx] if moves else {}
+        sock.send_json({
+            "status": "ok",
+            "selected_index": idx,
+            "destination": sel.get("dest"),
+            "transport": sel.get("transport", 0)
+        })
+
+except KeyboardInterrupt:
+    print("Server stopped")
+finally:
+    sock.close()
+    ctx.term()
