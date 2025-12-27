@@ -120,13 +120,27 @@ void GameState::OnEnter(Core::Application* p_App) {
     m_b_GameActive = true;
     m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
 
-    // STWORZONY HANDSHAKE cpp z py PAMIETAC O DODAWANIU HANDSHKE DO .py serwerowych!!!
-    // wysyłanie jest ping odpowiedź pong
-    // Bridge is initialized ONLY in training mode (when Python AI servers are expected to be running)
-    if (p_App && p_App->IsTrainingMode()) {
+    // Bridge initialization for Python AI 
+    // Needed when: training mode OR any ML algorithm is selected in GUI
+    auto& settings = Core::Settings();
+    
+    // Check if MrX needs Python bridge (any ML algorithm)
+    bool needMrXBridge = p_App && (p_App->IsTrainingMode() 
+        || settings.e_AIMisterX == Core::AIAlgorithm::NeuralNet
+        || settings.e_AIMisterX == Core::AIAlgorithm::PPOMrX
+        || settings.e_AIMisterX == Core::AIAlgorithm::MAPPOMrX
+        || settings.e_AIMisterX == Core::AIAlgorithm::DiscreteSACMrX);
+    
+    // Check if Detectives need Python bridge (any ML algorithm)
+    bool needDetectiveBridge = p_App && (p_App->IsTrainingMode() 
+        || settings.e_AIDetectives == Core::AIAlgorithm::NeuralNetPolice
+        || settings.e_AIDetectives == Core::AIAlgorithm::PPOPolice
+        || settings.e_AIDetectives == Core::AIAlgorithm::MAPPOPolice
+        || settings.e_AIDetectives == Core::AIAlgorithm::DiscreteSACPolice);
+
+    if (needMrXBridge) {
         const std::string serverAddr = "tcp://localhost:5555";
         
-        // Sprawdzamy czy serwer żyje przed utworzeniem obiektu
         if (PythonBridge::ProbeServer(serverAddr)) {
             try {
                 ::g_pBridge = new PythonBridge(serverAddr);
@@ -139,8 +153,9 @@ void GameState::OnEnter(Core::Application* p_App) {
             std::cerr << "[GameState] Python server (MrX) NOT found at " << serverAddr << ". Bridge disabled.\n";
             ::g_pBridge = nullptr;
         }
+    }
 
-        // Second bridge for Detective AI on port 5556
+    if (needDetectiveBridge) {
         const std::string detectiveAddr = "tcp://localhost:5556";
         if (PythonBridge::ProbeServer(detectiveAddr)) {
             try {

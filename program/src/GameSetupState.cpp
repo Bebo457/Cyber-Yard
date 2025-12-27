@@ -87,6 +87,23 @@ namespace ScotlandYard {
                     }
                 };
 
+            // Row with 8 buttons (5 heuristic + 3 ML)
+            auto placeRow8 = [&](Row row, int idxFromTop,
+                const char* t0, const char* t1, const char* t2, const char* t3, const char* t4,
+                const char* t5, const char* t6, const char* t7) {
+
+                    float y = rowYTopDown(idxFromTop);
+                    const float smallW = 145.0f;
+                    const float gap = 10.0f;
+                    float totalW = 8.0f * smallW + 7.0f * gap;
+                    float x0 = (W - totalW) * 0.5f;
+
+                    const char* T[8] = { t0,t1,t2,t3,t4,t5,t6,t7 };
+                    for (int i = 0; i < 8; ++i) {
+                        m_vec_Buttons.push_back({ row, i, x0 + i * (smallW + gap), y, smallW, btnH, T[i] });
+                    }
+                };
+
 
 
             int idx = 0;
@@ -116,20 +133,48 @@ namespace ScotlandYard {
             }
 
             if (m_Page == Page::Algorithms) {
-
-                if (IsPvBot()) {
-                    // if human = MrX (m_i_Human==0) -> bot = Detectives
-                    if (m_i_Human == 0) {
-                        placeRow5(Row::Detectives, idx++, "D: Random", "D: Monte Carlo", "D: Minimax", "D: GSP", "D: FSE");
+                // m_i_AIType: 0 = Heuristic (5 options), 1 = ML (all 8 options: 5 heuristic + 3 ML)
+                if (m_i_AIType == 1) {
+                    // ML mode - show ALL options (heuristic + ML)
+                    if (IsPvBot()) {
+                        if (m_i_Human == 0) {
+                            // Human = MrX, Bot = Detectives - show 8 detective algorithms
+                            placeRow8(Row::Detectives, idx++, 
+                                "D: Random", "D: MC", "D: Minimax", "D: GSP", "D: FSE",
+                                "D: PPO", "D: MAPPO", "D: SAC");
+                        }
+                        else {
+                            // Human = Detectives, Bot = MrX - show 8 MrX algorithms
+                            placeRow8(Row::MrX, idx++, 
+                                "X: Random", "X: DistMax", "X: Decoy", "X: MC", "X: DFS",
+                                "X: PPO", "X: MAPPO", "X: SAC");
+                        }
                     }
                     else {
-                        placeRow5(Row::MrX, idx++, "X: Random", "X: Dist Max", "X: Decoy Mov", "X: Monte Carlo", "X: DFS");
+                        // BotvBot - show all 8 options for both
+                        placeRow8(Row::MrX, idx++, 
+                            "X: Random", "X: DistMax", "X: Decoy", "X: MC", "X: DFS",
+                            "X: PPO", "X: MAPPO", "X: SAC");
+                        placeRow8(Row::Detectives, idx++, 
+                            "D: Random", "D: MC", "D: Minimax", "D: GSP", "D: FSE",
+                            "D: PPO", "D: MAPPO", "D: SAC");
                     }
                 }
                 else {
-                    // BotvBot
-                    placeRow5(Row::MrX, idx++, "X: Random", "X: Dist Max", "X: Decoy Mov", "X: Monte Carlo", "X: DFS");
-                    placeRow5(Row::Detectives, idx++, "D: Random", "D: Monte Carlo", "D: Minimax", "D: GSP", "D: FSE");
+                    // Heuristic mode - show only 5 heuristic algorithm choices
+                    if (IsPvBot()) {
+                        if (m_i_Human == 0) {
+                            placeRow5(Row::Detectives, idx++, "D: Random", "D: Monte Carlo", "D: Minimax", "D: GSP", "D: FSE");
+                        }
+                        else {
+                            placeRow5(Row::MrX, idx++, "X: Random", "X: Dist Max", "X: Decoy Mov", "X: Monte Carlo", "X: DFS");
+                        }
+                    }
+                    else {
+                        // BotvBot
+                        placeRow5(Row::MrX, idx++, "X: Random", "X: Dist Max", "X: Decoy Mov", "X: Monte Carlo", "X: DFS");
+                        placeRow5(Row::Detectives, idx++, "D: Random", "D: Monte Carlo", "D: Minimax", "D: GSP", "D: FSE");
+                    }
                 }
 
                 PlaceFooter(idx++, "Back", "Start Game", W, rowYTopDown, btnH);
@@ -438,24 +483,32 @@ namespace ScotlandYard {
             case 2: S.e_Mode = GameMode::BotvBot; break;
             }
 
-            // mapping for Mr X
+            // mapping for Mr X (8 options: 0-4 heuristic, 5-7 ML)
             auto mapAI_MrX = [](int idx) {
                 switch (idx) {
+                case 0: return AIAlgorithm::Random;
                 case 1: return AIAlgorithm::DistanceMaximizationMrX;
                 case 2: return AIAlgorithm::DecoyMovementMrX;
                 case 3: return AIAlgorithm::MonteCarloMrX;
-                case 4: return AIAlgorithm::DFSMrX;      
+                case 4: return AIAlgorithm::DFSMrX;
+                case 5: return AIAlgorithm::PPOMrX;
+                case 6: return AIAlgorithm::MAPPOMrX;
+                case 7: return AIAlgorithm::DiscreteSACMrX;
                 default: return AIAlgorithm::Random;
                 }
             };
             
-            // mapping for Detectives
+            // mapping for Detectives (8 options: 0-4 heuristic, 5-7 ML)
             auto mapAI_Detectives = [](int idx) {
                 switch (idx) {
+                case 0: return AIAlgorithm::Random;
                 case 1: return AIAlgorithm::MonteCarloPolice;
                 case 2: return AIAlgorithm::MinimaxPolice;
                 case 3: return AIAlgorithm::GreedyShortestPathPolice;
-                case 4: return AIAlgorithm::FrontSearchEncirclementPolice;  
+                case 4: return AIAlgorithm::FrontSearchEncirclementPolice;
+                case 5: return AIAlgorithm::PPOPolice;
+                case 6: return AIAlgorithm::MAPPOPolice;
+                case 7: return AIAlgorithm::DiscreteSACPolice;
                 default: return AIAlgorithm::Random;
                 }
             };

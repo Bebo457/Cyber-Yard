@@ -7,8 +7,21 @@ namespace ScotlandYard {
         enum class GameMode : uint8_t { PvP, PvBot, BotvBot };
 
         // Random is working, TODO others
-        enum class AIAlgorithm : uint8_t { Random, NeuralNet, DistanceMaximizationMrX, DecoyMovementMrX, MonteCarloMrX, DFSMrX, 
-            MonteCarloPolice, MinimaxPolice, GreedyShortestPathPolice, FrontSearchEncirclementPolice, NeuralNetPolice};
+        // Heuristic: Random, DistMax, Decoy, MonteCarlo, DFS (MrX) / Random, MonteCarlo, Minimax, GSP, FSE (Detectives)
+        // ML: PPO, MAPPO, DiscreteSAC
+        enum class AIAlgorithm : uint8_t { 
+            Random, 
+            // MrX Heuristic
+            DistanceMaximizationMrX, DecoyMovementMrX, MonteCarloMrX, DFSMrX, 
+            // MrX ML
+            PPOMrX, MAPPOMrX, DiscreteSACMrX,
+            // Detectives Heuristic
+            MonteCarloPolice, MinimaxPolice, GreedyShortestPathPolice, FrontSearchEncirclementPolice, 
+            // Detectives ML
+            PPOPolice, MAPPOPolice, DiscreteSACPolice,
+            // Legacy (keep for backward compatibility)
+            NeuralNet, NeuralNetPolice
+        };
         enum class HumanSide : uint8_t { MrX, Detectives };
 
         struct GameSettings {

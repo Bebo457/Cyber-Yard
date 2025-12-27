@@ -4114,9 +4114,15 @@ MoveDecision AIPlayerController::CalculateBestMove(
             break;
         
         case Core::AIAlgorithm::NeuralNet:
+        case Core::AIAlgorithm::PPOMrX:
+        case Core::AIAlgorithm::MAPPOMrX:
+        case Core::AIAlgorithm::DiscreteSACMrX:
             decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
             break;
         case Core::AIAlgorithm::NeuralNetPolice:
+        case Core::AIAlgorithm::PPOPolice:
+        case Core::AIAlgorithm::MAPPOPolice:
+        case Core::AIAlgorithm::DiscreteSACPolice:
             decision = ExternalPythonAlgorithmPolice(p_Player, vec_PossibleMoves, gameState);
             break;
         
