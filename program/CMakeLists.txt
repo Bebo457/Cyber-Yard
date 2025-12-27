@@ -84,7 +84,6 @@ set(SOURCES
     # src/MapGeneratorPNG.cpp
     # src/MapGeneratorGraph.cpp
     # src/MapGeneratorJSON.cpp
-    src/MapGeneratorState.cpp
     src/GameSettings.cpp
     src/GameSetupState.cpp
     src/GraphManager.cpp
@@ -92,6 +91,8 @@ set(SOURCES
     src/GameStateNetwork.cpp
     src/Logger.cpp
     src/PythonBridge.cpp
+    src/TreeGenerator.cpp
+    src/TreePlacement.cpp
 )
 
 set(HEADERS
@@ -115,6 +116,8 @@ set(HEADERS
     include/NetworkManager.h
     include/Logger.h
     include/PythonBridge.h
+    include/TreeGenerator.h
+    include/TreePlacement.h
 )
 
 # EXE =================================================
@@ -286,6 +289,39 @@ endif()
 set_target_properties(BuildingVisualizer PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+# TREE VISUALIZER TEST EXECUTABLE =====
+add_executable(TreeVisualizer
+    src/TreeVisualizerTest.cpp
+    src/TreeGenerator.cpp
+    src/TreePlacement.cpp
+    src/MapGenerator.cpp
+)
+
+target_compile_definitions(TreeVisualizer PRIVATE ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
+
+target_include_directories(TreeVisualizer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${SDL2_INCLUDE_DIRS}
+    ${OPENGL_INCLUDE_DIR}
+    ${GLEW_INCLUDE_DIRS}
+)
+
+target_link_libraries(TreeVisualizer PRIVATE
+    ${SDL2_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+    ${GLEW_LIBRARIES}
+    glm::glm
+)
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(TreeVisualizer PRIVATE pthread dl)
+endif()
+
+set_target_properties(TreeVisualizer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 
 # COMPILER WARNINGS============================================
 
