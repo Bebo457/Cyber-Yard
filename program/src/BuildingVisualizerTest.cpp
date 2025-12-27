@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <random>
 
 #include "BuildingGenerator.h"
 
@@ -203,7 +204,7 @@ int g_i_BuildingExample = 0;
 float g_f_BuildingHeight = 10.0f;
 float g_f_RoofHeight = 3.0f;
 float g_f_BaseWidth = 10.0f;
-float g_f_BaseDepth = 5.0f;
+float g_f_BaseDepth = 6.0f;
 
 // Forward declarations for regeneration utilities
 void GenerateBuilding();
@@ -249,11 +250,11 @@ GLuint CompileShader(const char* p_Source, GLenum shaderType) {
     glCompileShader(ui_Shader);
 
     int i_Success;
-    char infoLog[512];
+    char s_InfoLog[512];
     glGetShaderiv(ui_Shader, GL_COMPILE_STATUS, &i_Success);
     if (!i_Success) {
-        glGetShaderInfoLog(ui_Shader, 512, nullptr, infoLog);
-        std::cerr << "Shader compilation failed: " << infoLog << std::endl;
+        glGetShaderInfoLog(ui_Shader, 512, nullptr, s_InfoLog);
+        std::cerr << "Shader compilation failed: " << s_InfoLog << std::endl;
     }
     return ui_Shader;
 }
@@ -265,12 +266,12 @@ GLuint CreateUIShader() {
     glAttachShader(program, vs);
     glAttachShader(program, fs);
     glLinkProgram(program);
-    int success = 0;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        char infoLog[512];
-        glGetProgramInfoLog(program, 512, nullptr, infoLog);
-        std::cerr << "UI shader link failed: " << infoLog << std::endl;
+    int i_Success = 0;
+    glGetProgramiv(program, GL_LINK_STATUS, &i_Success);
+    if (!i_Success) {
+        char s_InfoLog[512];
+        glGetProgramInfoLog(program, 512, nullptr, s_InfoLog);
+        std::cerr << "UI shader link failed: " << s_InfoLog << std::endl;
     }
     glDeleteShader(vs);
     glDeleteShader(fs);
@@ -340,7 +341,7 @@ void EnsureUIBuffers() {
 
 void DrawQuadPx(float x0, float y0, float x1, float y1, const glm::vec4& color) {
     EnsureUIBuffers();
-    float verts[12] = {
+    float f_Verts[12] = {
         x0, y0,
         x1, y0,
         x0, y1,
@@ -353,7 +354,7 @@ void DrawQuadPx(float x0, float y0, float x1, float y1, const glm::vec4& color) 
     glUniform2f(glGetUniformLocation(g_UIShaderProgram, "uScreenSize"), (float)g_i_WindowWidth, (float)g_i_WindowHeight);
     glBindVertexArray(g_UIVAO);
     glBindBuffer(GL_ARRAY_BUFFER, g_UIVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(f_Verts), f_Verts);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
     glUseProgram(0);
@@ -361,7 +362,7 @@ void DrawQuadPx(float x0, float y0, float x1, float y1, const glm::vec4& color) 
 
 void DrawTextPx(const std::string& text, float x, float y, float scale, const glm::vec4& color) {
     EnsureUIBuffers();
-    float cursor = x;
+    float f_Cursor = x;
     glUseProgram(g_UIShaderProgram);
     glUniform4f(glGetUniformLocation(g_UIShaderProgram, "uColor"), color.r, color.g, color.b, color.a);
     glUniform2f(glGetUniformLocation(g_UIShaderProgram, "uScreenSize"), (float)g_i_WindowWidth, (float)g_i_WindowHeight);
@@ -370,16 +371,16 @@ void DrawTextPx(const std::string& text, float x, float y, float scale, const gl
     for (char c : text) {
         auto it = g_Glyphs.find((char)std::toupper(static_cast<unsigned char>(c)));
         if (it == g_Glyphs.end()) {
-            cursor += 4.0f * scale;
+            f_Cursor += 4.0f * scale;
             continue;
         }
         const Glyph& g = it->second;
         for (int row = 0; row < 7; ++row) {
             for (int col = 0; col < 5; ++col) {
                 if (g.rows[row] & (1 << (4 - col))) {
-                    float px = cursor + col * scale;
+                    float px = f_Cursor + col * scale;
                     float py = y + row * scale;
-                    float verts[12] = {
+                    float f_Verts[12] = {
                         px, py,
                         px + scale, py,
                         px, py + scale,
@@ -387,12 +388,12 @@ void DrawTextPx(const std::string& text, float x, float y, float scale, const gl
                         px + scale, py + scale,
                         px, py + scale
                     };
-                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(f_Verts), f_Verts);
                     glDrawArrays(GL_TRIANGLES, 0, 6);
                 }
             }
         }
-        cursor += 6.0f * scale; 
+        f_Cursor += 6.0f * scale; 
     }
     glBindVertexArray(0);
     glUseProgram(0);
@@ -428,25 +429,124 @@ void BuildButtons() {
         y += btnH + gapY;
     };
 
-    addRow("WYS",
-        [](){ g_f_BuildingHeight = std::max(1.0f, g_f_BuildingHeight - 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); },
-        [](){ g_f_BuildingHeight += 1.0f; g_i_BuildingExample = 3; RegenerateAndUpload(); });
+    // Height limits: 5 .. 14, step 1
+    {
+        bool canMinus = g_f_BuildingHeight > 5.0f + 1e-6f;
+        bool canPlus = g_f_BuildingHeight < 14.0f - 1e-6f;
+        std::function<void()> onMinus = canMinus ? std::function<void()>([](){ g_f_BuildingHeight = std::max(5.0f, g_f_BuildingHeight - 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        std::function<void()> onPlus = canPlus ? std::function<void()>([](){ g_f_BuildingHeight = std::min(14.0f, g_f_BuildingHeight + 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        addRow("WYS", onMinus, onPlus);
+    }
 
-    addRow("DACH",
-        [](){ g_f_RoofHeight = std::max(0.5f, g_f_RoofHeight - 0.5f); g_i_BuildingExample = 3; RegenerateAndUpload(); },
-        [](){ g_f_RoofHeight += 0.5f; g_i_BuildingExample = 3; RegenerateAndUpload(); });
+    // Roof limits: 0.5 .. 4.0, step 0.5
+    {
+        bool canMinus = g_f_RoofHeight > 0.5f + 1e-6f;
+        bool canPlus = g_f_RoofHeight < 4.0f - 1e-6f;
+        std::function<void()> onMinus = canMinus ? std::function<void()>([](){ g_f_RoofHeight = std::max(0.5f, g_f_RoofHeight - 0.5f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        std::function<void()> onPlus = canPlus ? std::function<void()>([](){ g_f_RoofHeight = std::min(4.0f, g_f_RoofHeight + 0.5f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        addRow("DACH", onMinus, onPlus);
+    }
 
-    addRow("SZER",
-        [](){ g_f_BaseWidth = std::max(2.0f, g_f_BaseWidth - 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); },
-        [](){ g_f_BaseWidth += 1.0f; g_i_BuildingExample = 3; RegenerateAndUpload(); });
+    // Width limits: 7 .. 14, step 1
+    {
+        bool canMinus = g_f_BaseWidth > 7.0f + 1e-6f;
+        bool canPlus = g_f_BaseWidth < 14.0f - 1e-6f;
+        std::function<void()> onMinus = canMinus ? std::function<void()>([](){ g_f_BaseWidth = std::max(7.0f, g_f_BaseWidth - 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        std::function<void()> onPlus = canPlus ? std::function<void()>([](){ g_f_BaseWidth = std::min(14.0f, g_f_BaseWidth + 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        addRow("SZER", onMinus, onPlus);
+    }
 
-    addRow("GLEB",
-        [](){ g_f_BaseDepth = std::max(2.0f, g_f_BaseDepth - 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); },
-        [](){ g_f_BaseDepth += 1.0f; g_i_BuildingExample = 3; RegenerateAndUpload(); });
+    // Depth limits: 6 .. 14, step 1
+    {
+        bool canMinus = g_f_BaseDepth > 6.0f + 1e-6f;
+        bool canPlus = g_f_BaseDepth < 14.0f - 1e-6f;
+        std::function<void()> onMinus = canMinus ? std::function<void()>([](){ g_f_BaseDepth = std::max(6.0f, g_f_BaseDepth - 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        std::function<void()> onPlus = canPlus ? std::function<void()>([](){ g_f_BaseDepth = std::min(14.0f, g_f_BaseDepth + 1.0f); g_i_BuildingExample = 3; RegenerateAndUpload(); }) : std::function<void()>();
+        addRow("GLEB", onMinus, onPlus);
+    }
 
     int centerW = 110;
     int rowX = g_i_WindowWidth - panelRightMargin - (btnW * 2 + 40) - 16;
     
+    SDL_Rect rRandom{ rowX, y, btnW * 2 + 40, btnH };
+    g_Buttons.push_back({ rRandom, "RANDOM", [](){
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        auto frand = [&](float a, float b){ std::uniform_real_distribution<float> d(a,b); return d(gen); };
+        auto irand = [&](int a, int b){ std::uniform_int_distribution<int> d(a,b); return d(gen); };
+
+        // Probabilities
+        const float pWidthGreater = 0.85f; // prefer width > depth
+        const float pThreeLevels = 0.08f; // small chance for 3 window levels
+        const float pHighSizeBucket = 0.18f; // small chance to pick high (11..14) bucket for dims
+
+        // Height: mostly 5..12, small chance to be >12 (three levels)
+        if (frand(0.0f, 1.0f) < pThreeLevels) {
+            g_f_BuildingHeight = frand(12.1f, 14.0f);
+        } else {
+            g_f_BuildingHeight = frand(5.0f, 12.0f);
+        }
+
+        // Roof step 0.5
+        float rf = frand(0.5f, 4.0f);
+        g_f_RoofHeight = std::round(rf * 2.0f) / 2.0f;
+
+        // Depth: biased towards smaller values (reduces chance for 3 columns)
+        int baseDepth;
+        if (frand(0.0f,1.0f) < pHighSizeBucket) baseDepth = irand(11, 14);
+        else baseDepth = irand(6, 10);
+        g_f_BaseDepth = static_cast<float>(baseDepth);
+
+        // Width: with high prob make it >= depth (so width > depth likely)
+        if (frand(0.0f,1.0f) < pWidthGreater) {
+            int maxAdd = std::max(0, 14 - baseDepth);
+            if (maxAdd >= 1) {
+                int add = irand(1, std::min(4, maxAdd));
+                g_f_BaseWidth = static_cast<float>(baseDepth + add);
+            } else {
+                g_f_BaseWidth = static_cast<float>(baseDepth);
+            }
+        } else {
+            // independent width, biased similarly to depth
+            int baseWidth;
+            if (frand(0.0f,1.0f) < pHighSizeBucket) baseWidth = irand(11, 14);
+            else baseWidth = irand(6, 10);
+            g_f_BaseWidth = static_cast<float>(baseWidth);
+        }
+
+        // Random roof type (reduced probability for flat roof)
+        g_b_UseFlatRoof = (frand(0.0f, 1.0f) < 0.25f);
+
+        // Randomly pick textures if available
+        if (!g_FacadeTextures.empty()) {
+            g_i_FacadeIndex = irand(0, static_cast<int>(g_FacadeTextures.size()) - 1);
+            g_TextureID = g_FacadeTextures[g_i_FacadeIndex].textureId;
+        }
+        if (!g_WindowTextures.empty()) {
+            g_i_WindowIndex = irand(0, static_cast<int>(g_WindowTextures.size()) - 1);
+            g_TextureID_Windows = g_WindowTextures[g_i_WindowIndex].textureId;
+        }
+        if (!g_DoorTextures.empty()) {
+            g_i_DoorIndex = irand(0, static_cast<int>(g_DoorTextures.size()) - 1);
+            g_TextureID_Doors = g_DoorTextures[g_i_DoorIndex].textureId;
+        }
+
+        // Ivy: high chance if depth <= width
+        if (g_f_BaseDepth <= g_f_BaseWidth) {
+            g_b_ShowIvy = (frand(0.0f, 1.0f) < 0.85f);
+        } else {
+            g_b_ShowIvy = false;
+        }
+
+        // Side windows: small chance (reduced)
+        g_b_UseSideWindowTexture = (frand(0.0f, 1.0f) < 0.06f);
+
+        g_i_BuildingExample = 3;
+        RegenerateAndUpload();
+    } });
+
+    y += btnH + gapY;
+
     SDL_Rect rRoofToggle{ rowX, y, btnW * 2 + 40, btnH };
     g_Buttons.push_back({ rRoofToggle, "DACH PL/SPA", [](){ g_b_UseFlatRoof = !g_b_UseFlatRoof; g_i_BuildingExample = 3; RegenerateAndUpload(); } });
 
@@ -468,7 +568,12 @@ void BuildButtons() {
 
     y += btnH + gapY;
     SDL_Rect rIvy{ rowX, y, btnW * 2 + 40, btnH };
-    g_Buttons.push_back({ rIvy, "BLUSZCZ", [](){ g_b_ShowIvy = !g_b_ShowIvy; } });
+    {
+        bool canToggleIvy = g_f_BaseDepth <= g_f_BaseWidth;
+        std::function<void()> ivyCb = canToggleIvy ? std::function<void()>([](){ g_b_ShowIvy = !g_b_ShowIvy; RegenerateAndUpload(); }) : std::function<void()>();
+        g_Buttons.push_back({ rIvy, "BLUSZCZ", ivyCb });
+        if (!canToggleIvy) g_b_ShowIvy = false; 
+    }
 }
 
 bool HandleUIClick(int x, int y) {
@@ -551,11 +656,14 @@ void RenderUI() {
     drawLabel("GLEB");
 
     for (const auto& b : g_Buttons) {
-        DrawQuadPx((float)b.rectPx.x, (float)b.rectPx.y, (float)(b.rectPx.x + b.rectPx.w), (float)(b.rectPx.y + b.rectPx.h), glm::vec4(0.2f, 0.26f, 0.34f, 0.9f));
+        bool enabled = (bool)b.onClick;
+        glm::vec4 bg = enabled ? glm::vec4(0.2f, 0.26f, 0.34f, 0.9f) : glm::vec4(0.12f, 0.14f, 0.18f, 0.8f);
+        glm::vec4 textCol = enabled ? glm::vec4(1,1,1,1) : glm::vec4(0.6f,0.6f,0.6f,1);
+        DrawQuadPx((float)b.rectPx.x, (float)b.rectPx.y, (float)(b.rectPx.x + b.rectPx.w), (float)(b.rectPx.y + b.rectPx.h), bg);
         float tw = MeasureTextPx(b.label, 2.4f);
         float tx = b.rectPx.x + (b.rectPx.w - tw) * 0.5f;
         float ty = b.rectPx.y + b.rectPx.h * 0.2f;
-        DrawTextPx(b.label, tx, ty, 2.4f, glm::vec4(1,1,1,1));
+        DrawTextPx(b.label, tx, ty, 2.4f, textCol);
     }
 
     glDisable(GL_BLEND);
@@ -976,7 +1084,12 @@ void UploadIvyToGPU() {
     g_IvyWallCenter = glm::vec3(0.0f);
     g_IvyWallNormal = glm::vec3(0.0f, 1.0f, 0.0f);
 
-    if (g_f_BaseWidth < 6.0f || g_f_BaseWidth > 11.0f || g_f_BuildingHeight < 8.0f || g_f_BuildingHeight > 13.0f) {
+    if (g_f_BaseWidth < 7.0f || g_f_BaseWidth > 11.0f || g_f_BuildingHeight < 8.0f || g_f_BuildingHeight > 13.0f) {
+        return;
+    }
+
+    // Do not create ivy when building depth is greater than width
+    if (g_f_BaseDepth >= g_f_BaseWidth) {
         return;
     }
 
@@ -1104,6 +1217,8 @@ void RegenerateAndUpload() {
     UploadWindowsToGPU();
     UploadDoorsToGPU();
     UploadIvyToGPU();
+    // Rebuild UI buttons so enabled/disabled state reflects current parameter limits
+    BuildButtons();
 }
 
 bool InitSDLAndOpenGL() {
