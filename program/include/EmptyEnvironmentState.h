@@ -29,8 +29,11 @@ private:
     GLuint m_VAO_Plane = 0;
     GLuint m_VBO_Plane = 0;
     GLuint m_ShaderProgram = 0;
-    GLuint m_TextureID = 0;
-    bool m_b_HasMapTexture = false;
+
+    GLuint m_TexSidewalk = 0;
+    GLuint m_TexGrass = 0;
+    GLuint m_TexMask = 0;          
+    bool   m_b_UseMask = false;
 
     // Game state
     bool m_b_GameActive = true;

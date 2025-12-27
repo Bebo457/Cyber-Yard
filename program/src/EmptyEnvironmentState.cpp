@@ -18,15 +18,46 @@ void EmptyEnvironmentState::CreateShaders() {
         layout(location=0) in vec3 aPos;
         layout(location=1) in vec3 aNormal;
         layout(location=2) in vec2 aUV;
+
         uniform mat4 uMVP;
         out vec2 vUV;
-        void main(){ vUV=aUV; gl_Position = uMVP * vec4(aPos,1.0); }
+
+        void main(){
+            vUV = aUV;
+            gl_Position = uMVP * vec4(aPos,1.0);
+        }
     )";
+
     const char* fsSrc = R"(#version 330 core
-        in vec2 vUV; uniform sampler2D uTex; uniform vec4 uColor;
+        in vec2 vUV;
+
+        uniform sampler2D uSidewalk;
+        uniform sampler2D uGrass;
+        uniform sampler2D uMask;      
+        uniform int uUseMask;         
+        uniform vec2 uTileUV;         
+
         out vec4 FragColor;
-        void main(){ vec4 t = texture(uTex, vUV); FragColor = mix(uColor, vec4(1.0,1.0,1.0,1.0), t.a) * t; }
+
+        void main(){
+            vec2 tiledUV = vUV * uTileUV;
+
+            vec4 sidewalk = texture(uSidewalk, tiledUV);
+            vec4 grass    = texture(uGrass, tiledUV);
+
+            if(uUseMask == 1){
+                vec3 m = texture(uMask, vUV).rgb;
+
+                // parks = green = grass
+                float park = step(0.35, m.g);
+
+                FragColor = mix(sidewalk, grass, park);
+            } else {
+                FragColor = sidewalk;
+            }
+        }
     )";
+
     GLuint vs = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vs, 1, &vsSrc, nullptr);
     glCompileShader(vs);
@@ -39,9 +70,11 @@ void EmptyEnvironmentState::CreateShaders() {
     glAttachShader(m_ShaderProgram, vs);
     glAttachShader(m_ShaderProgram, fs);
     glLinkProgram(m_ShaderProgram);
+
     glDeleteShader(vs);
     glDeleteShader(fs);
 }
+
 
 void EmptyEnvironmentState::CreatePlane() {
     float f_PlaneVertices[] = {
@@ -74,6 +107,8 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         glEnable(GL_DEPTH_TEST);
         CreateShaders();
         CreatePlane();
+        m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.png"));
+        m_TexGrass = p_App->LoadTexture(p_App->GetAssetPath("textures/grass.png"));
         TryLoadGeneratedMap(p_App);
 
         // HUD setup: load camera icon and hook toggle
@@ -134,11 +169,11 @@ void EmptyEnvironmentState::OnExit(Core::Application* p_App) {
         glDeleteProgram(m_ShaderProgram);
         m_ShaderProgram = 0;
     }
-    if (m_TextureID) {
-        p_App->UnloadTexture(m_TextureID);
-        m_TextureID = 0;
-    }
-    m_b_HasMapTexture = false;
+    if (m_TexSidewalk) { p_App->UnloadTexture(m_TexSidewalk); m_TexSidewalk = 0; }
+    if (m_TexGrass) { p_App->UnloadTexture(m_TexGrass);    m_TexGrass = 0; }
+    if (m_TexMask) { p_App->UnloadTexture(m_TexMask);     m_TexMask = 0; }
+    m_b_UseMask = false;
+
 }
 
 void EmptyEnvironmentState::OnPause() {
@@ -152,12 +187,15 @@ void EmptyEnvironmentState::OnResume() {
 void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
     std::string s_Path = "generated_map.bmp";
     if (std::filesystem::exists(s_Path)) {
-        m_TextureID = p_App->LoadTexture(s_Path);
-        m_b_HasMapTexture = (m_TextureID != 0);
-    } else {
-        m_b_HasMapTexture = false;
+        m_TexMask = p_App->LoadTexture(s_Path);
+        m_b_UseMask = (m_TexMask != 0);
+    }
+    else {
+        m_b_UseMask = false;
+        m_TexMask = 0;
     }
 }
+
 
 void EmptyEnvironmentState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;  
@@ -242,18 +280,36 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
     glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
 
     glUseProgram(m_ShaderProgram);
-    GLuint i_LocMVP = glGetUniformLocation(m_ShaderProgram, "uMVP");
-    glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
 
+    GLint mvpLoc = glGetUniformLocation(m_ShaderProgram, "uMVP");
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+
+    // Tiling
+    GLint tileLoc = glGetUniformLocation(m_ShaderProgram, "uTileUV");
+    glUniform2f(tileLoc, 12.0f, 9.0f);
+
+    // Bind sidewalk
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_b_HasMapTexture ? m_TextureID : 0);
-    glUniform1i(glGetUniformLocation(m_ShaderProgram, "uTex"), 0);
-    glUniform4f(glGetUniformLocation(m_ShaderProgram, "uColor"), 0.8f, 0.8f, 0.85f, 1.0f);
+    glBindTexture(GL_TEXTURE_2D, m_TexSidewalk);
+    glUniform1i(glGetUniformLocation(m_ShaderProgram, "uSidewalk"), 0);
+
+    // Bind grass
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, m_TexGrass);
+    glUniform1i(glGetUniformLocation(m_ShaderProgram, "uGrass"), 1);
+
+    // Bind mask
+    glUniform1i(glGetUniformLocation(m_ShaderProgram, "uUseMask"), m_b_UseMask ? 1 : 0);
+    if (m_b_UseMask) {
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, m_TexMask);
+        glUniform1i(glGetUniformLocation(m_ShaderProgram, "uMask"), 2);
+    }
 
     glBindVertexArray(m_VAO_Plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
+
 
     // HUD
     UI::SetViewport(i_W, i_H);
