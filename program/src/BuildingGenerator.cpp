@@ -280,37 +280,71 @@ void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<gl
             vec_WallNormal = -vec_WallNormal;
         }
         
-        int i_NumWindows = 1;
-        if (f_WallLength < 6.0f) {
-            i_NumWindows = 1;
-        } else if (f_WallLength < 12.0f) {
-            i_NumWindows = 2;
-        } else {
-            i_NumWindows = 3;
-        }
+        // Decide how many windows fit; keep at least 1 when there is room, add more smoothly up to 4
+        float f_MinSpacing = 1.0f;
+        float f_EdgeMargin = (i == 0) ? 0.6f : 1.0f;
+        float f_Available = f_WallLength - 2.0f * f_EdgeMargin;
+        if (f_Available < f_WindowWidth) continue; // not enough space for even one
 
         if (i == 0) {
-            i_NumWindows = 2;
+            f_MinSpacing = 1.8f;
         }
-        
-        if (f_WallLength < f_WindowWidth * i_NumWindows * 1.5f) continue;
+
+        int i_MaxFit = static_cast<int>(std::floor((f_Available + f_MinSpacing) / (f_WindowWidth + f_MinSpacing)));
+        i_MaxFit = std::max(1, std::min(4, i_MaxFit));
+        int i_NumWindows = i_MaxFit;
         
         BuildingMesh::WindowWall windowWall;
         windowWall.wallNormal = vec_WallNormal;
         windowWall.wallCenter = vec_WallCenter;
         
         float f_BaseHeight = 3.0f; 
-        float f_Spacing = f_WallLength / (i_NumWindows + 1);
+        float f_Spacing = 0.0f;
+        if (i_NumWindows > 1) {
+            float f_Free = f_Available - f_WindowWidth * i_NumWindows;
+            f_Spacing = std::max(f_MinSpacing, f_Free / float(i_NumWindows - 1));
+        }
 
         std::vector<float> vec_WindowOffsets;
-        if (i == 0 && i_NumWindows == 2) {
-            float f_EdgeMargin = std::max(f_WindowWidth * 0.65f, f_WallLength * 0.22f);
-            vec_WindowOffsets.push_back(f_EdgeMargin);
-            vec_WindowOffsets.push_back(f_WallLength - f_EdgeMargin);
-        }
-        if (vec_WindowOffsets.empty()) {
+        if (i_NumWindows == 1) {
+            float f_Default = f_WallLength * 0.5f;
+            if (i == 0) {
+                float f_LowerBound = f_EdgeMargin + f_WindowWidth * 0.5f;
+                float f_UpperBound = f_WallLength - f_EdgeMargin - f_WindowWidth * 0.5f;
+                f_Default = std::clamp(f_Default, f_LowerBound, f_UpperBound);
+            }
+            vec_WindowOffsets.push_back(f_Default);
+        } else {
+            float f_Start = f_EdgeMargin + f_WindowWidth * 0.5f;
             for (int i_Window = 0; i_Window < i_NumWindows; ++i_Window) {
-                vec_WindowOffsets.push_back((i_Window + 1) * f_Spacing);
+                vec_WindowOffsets.push_back(f_Start + i_Window * (f_WindowWidth + f_Spacing));
+            }
+        }
+
+        if (i == 0 && vec_WindowOffsets.size() > 1) {
+            float f_DoorWidth = 2.2f;
+            float f_Buffer = 0.6f;
+            float f_MinCenterDistance = (f_DoorWidth * 0.5f) + (f_WindowWidth * 0.5f) + f_Buffer;
+            float f_DoorCenter = f_WallLength * 0.5f;
+            float f_LowerBound = f_EdgeMargin + f_WindowWidth * 0.5f;
+            float f_UpperBound = f_WallLength - f_EdgeMargin - f_WindowWidth * 0.5f;
+
+            for (auto& f_TAdjust : vec_WindowOffsets) {
+                if (std::fabs(f_TAdjust - f_DoorCenter) < f_MinCenterDistance) {
+                    if (f_TAdjust <= f_DoorCenter) {
+                        f_TAdjust = f_DoorCenter - f_MinCenterDistance;
+                    } else {
+                        f_TAdjust = f_DoorCenter + f_MinCenterDistance;
+                    }
+                }
+                f_TAdjust = std::max(f_LowerBound, std::min(f_TAdjust, f_UpperBound));
+            }
+
+            for (size_t idx = 1; idx < vec_WindowOffsets.size(); ++idx) {
+                float minAllowed = vec_WindowOffsets[idx - 1] + f_WindowWidth + f_MinSpacing;
+                if (vec_WindowOffsets[idx] < minAllowed) {
+                    vec_WindowOffsets[idx] = std::min(minAllowed, f_UpperBound);
+                }
             }
         }
         
@@ -318,7 +352,9 @@ void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<gl
             float f_T = vec_WindowOffsets[i_Window];
             glm::vec3 vec_WallPos = vec_P0 + vec_WallDir * f_T;
             
-            if (f_Height > 3.0f) {
+            bool b_SkipLower = (i == 0 && i_NumWindows == 1);
+
+            if (f_Height > 3.0f && !b_SkipLower) {
                 glm::vec3 vec_CenterLower = vec_WallPos + vec_Up * f_BaseHeight;
                 unsigned int i_BaseIdx = windowWall.vertices.size();
                 
