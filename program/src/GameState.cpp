@@ -4,6 +4,7 @@
 #include "GameConstants.h"
 #include "GameSettings.h"
 #include "PlayerController.h"
+
 #include <GL/glew.h>
 
 #include <random>
@@ -115,15 +116,26 @@ std::string GameState::BuildPlayerTicketsSuffix(int i_PlayerIndex) {
 void GameState::OnEnter(Core::Application* p_App) {
     m_p_App = p_App;
 
-    StartNetworkServer(1234);
-    // StartNetworkClient("localhost", 1234); //Odkomentwać aby zmienić na klienta
+    auto& settings = Core::Settings();
+    if (settings.onlineMode) {
+        if (settings.onlineIsServer) {
+            std::cout << "[GameState] Starting as SERVER on port " << settings.onlinePort << "\n";
+            StartNetworkServer(settings.onlinePort);
+        } else {
+            std::cout << "[GameState] Starting as CLIENT, connecting to " << settings.onlineHost 
+                      << ":" << settings.onlinePort << "\n";
+            StartNetworkClient(settings.onlineHost, settings.onlinePort);
+        }
+    } else {
+        std::cout << "[GameState] Offline mode (no network)\n";
+    }
 
     m_b_GameActive = true;
     m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_f_GlobalScale));
 
     // Bridge initialization for Python AI 
     // Needed when: training mode OR any ML algorithm is selected in GUI
-    auto& settings = Core::Settings();
+    
     
     // Check if MrX needs Python bridge (any ML algorithm)
     bool needMrXBridge = p_App && (p_App->IsTrainingMode() 
@@ -650,41 +662,45 @@ void GameState::OnEnter(Core::Application* p_App) {
 
     // Initialize players from graph data (random distinct nodes)
     // to nie powinno byc razem z openGL!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    m_vec_Players.clear();
+    
 
     GraphManager gm(Core::k_MaxNodes);
     gm.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
 
     int i_NodeCount = gm.GetNodeCount();
-    if (i_NodeCount <= 0) {
-        // fallback to simple hardcoded values if graph failed to load
-        m_vec_Players.emplace_back(Core::PlayerType::MisterX, 10);
-        m_vec_Players.emplace_back(Core::PlayerType::Detective, 1);
-        m_vec_Players.emplace_back(Core::PlayerType::Detective, 2);
-        m_vec_Players.emplace_back(Core::PlayerType::Detective, 3);
-        m_vec_Players.emplace_back(Core::PlayerType::Detective, 4);
-    }
-    else
-    {
-        std::random_device rd;
-        std::mt19937 rng(rd());
-        std::uniform_int_distribution<int> dist(1, i_NodeCount);
+        if (i_NodeCount <= 0 or !settings.onlineIsServer) {
+            // fallback to hardcoded positions
+            m_vec_Players.emplace_back(Core::PlayerType::MisterX, 10);
+            m_vec_Players.emplace_back(Core::PlayerType::Detective, 1);
+            m_vec_Players.emplace_back(Core::PlayerType::Detective, 2);
+            m_vec_Players.emplace_back(Core::PlayerType::Detective, 3);
+            m_vec_Players.emplace_back(Core::PlayerType::Detective, 4);
+        } else {
+            std::random_device rd;
+            std::mt19937 rng(rd());
+            std::uniform_int_distribution<int> dist(1, i_NodeCount);
 
-        auto pick_unique = [&](std::vector<int>& vec_Used) {
-            int i_V;
-            do { i_V = dist(rng); } while (std::find(vec_Used.begin(), vec_Used.end(), i_V) != vec_Used.end());
-            vec_Used.push_back(i_V);
-            return i_V;
-        };
+            auto pick_unique = [&](std::vector<int>& vec_Used) {
+                int i_V;
+                do { i_V = dist(rng); } while (std::find(vec_Used.begin(), vec_Used.end(), i_V) != vec_Used.end());
+                vec_Used.push_back(i_V);
+                return i_V;
+            };
 
-        std::vector<int> vec_Used;
-        int i_MrXNode = pick_unique(vec_Used);
-        m_vec_Players.emplace_back(Core::PlayerType::MisterX, i_MrXNode);
+            std::vector<int> vec_Used;
+            int i_MrXNode = pick_unique(vec_Used);
+            m_vec_Players.emplace_back(Core::PlayerType::MisterX, i_MrXNode);
 
-        for (int i = 0; i < Core::k_DetectiveCount; ++i) {
-            int i_DNode = pick_unique(vec_Used);
-            m_vec_Players.emplace_back(Core::PlayerType::Detective, i_DNode);
+            for (int i = 0; i < Core::k_DetectiveCount; ++i) {
+                int i_DNode = pick_unique(vec_Used);
+                m_vec_Players.emplace_back(Core::PlayerType::Detective, i_DNode);
+            }
         }
+    
+
+    if(!settings.onlineIsServer){
+        std::string msg = "PLAYER_LAYOUT|";
+        BroadcastMessage(msg);
     }
 
     m_vec_MovedThisRound.assign(m_vec_Players.size(), false);
@@ -1980,7 +1996,7 @@ void GameState::CheckEndOfGame(Winner winner) {
                std::cout << "[Game] Sent game end to Detective bridge for Detectives win.\n";
             }
         logger.logGameEnd("Detectives");
-        Core::ResetPythonRewardAccumulators();
+        // Core::ResetPythonRewardAccumulators();
 
     } else if (winner == Winner::MisterX) {
         std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
@@ -1997,7 +2013,7 @@ void GameState::CheckEndOfGame(Winner winner) {
                std::cout << "[Game] Sent game end to Detective bridge for MisterX win.\n";
         }
                 logger.logGameEnd("MisterX");
-            Core::ResetPythonRewardAccumulators();
+            // Core::ResetPythonRewardAccumulators();
 
     }
 
@@ -2524,6 +2540,8 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
         return;
     }
 
+    auto& settings = Core::Settings();
+
     auto arrowIt = std::find_if(m_vec_CurrentArrows.begin(), m_vec_CurrentArrows.end(),
                                 [i_DestinationNode](const DirectionArrow& a) {
                                     return a.i_DestinationNode == i_DestinationNode;
@@ -2586,8 +2604,15 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
 
     if (b_MoveSuccessful) {
         std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
-        std::string msg = std::to_string(i_PlayerIndex) + "_" + std::to_string(i_DestinationNode);
-        BroadcastMessage(msg);
+        std::string msg2 =
+            std::to_string(i_PlayerIndex) + "_" +
+            std::to_string(i_moveBuffor) + "_" +
+            std::to_string(i_DestinationNode) + "_" +
+            std::to_string(i_TransportType) + "_" +
+            std::to_string(b_MrXUsedBlack ? 1 : 0) + "_" +
+            std::to_string(m_b_MrXSecondMovePending.load() ? 1 : 0);
+        BroadcastMessage(msg2);
+        
         logger.logPlayerMove(i_PlayerIndex, i_moveBuffor , i_DestinationNode, i_TransportType); //todo zmienić pozycjateraz na odpowiednią zmienną
            // send to python for testing/logging (async)
         //   if (g_pBridge) {
@@ -2611,87 +2636,89 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
         //            }
         //        }).detach();
         //    }
+        if(settings.onlineIsServer or !settings.onlineMode) {
             m_i_SelectedPlayerIndex = -1;
             UI::ShowDetectivePopup(false);
             m_vec_CurrentArrows.clear();
 
-        bool b_Captured = false;
-        {
-            std::lock_guard<std::mutex> lock(m_mtx_Players);
-            b_Captured = CheckCapture();
-        }
-        if (b_Captured) {
-            CheckEndOfGame(Winner::Detectives);
-            return;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(m_mtx_Players);
-            auto& ref_Player = m_vec_Players[i_PlayerIndex];
-            if (ref_Player.GetType() == Core::PlayerType::MisterX) {
-                using UI::TicketMark;
-                TicketMark mark = TicketMark::None;
-                if (b_MrXUsedBlack) mark = TicketMark::Black;
-                else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
-                else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
-                else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
-
-                int i_TurnIdx = m_i_MrXTurn.load() + 1;
-                UI::SetSlotMark(i_TurnIdx, mark, true);
-                m_i_MrXTurn.store(i_TurnIdx);
-
-                bool b_UIDouble = UI::IsMrXDoubleSelected();
-                if (!b_MrXSecondMoveWasPending && !m_b_MrXSecondMovePending.load() && b_UIDouble && ref_Player.GetDoubleMoveTickets() > 0) {
-                    if (ref_Player.SpendDoubleMoveTicket()) {
-                        m_b_MrXSecondMovePending.store(true);
-                        ref_Player.SetActive(true);
-                    }
-                }
-
-                if (b_MrXSecondMoveWasPending) {
-                    m_b_MrXSecondMovePending.store(false);
-                    ref_Player.SetActive(false);
-                } else if (!m_b_MrXSecondMovePending.load()) {
-                    ref_Player.SetActive(false);
-                }
-
-                // If Mr X turn ended now, activate detectives
-                if (!ref_Player.IsActive()) {
-                    for (auto& p : m_vec_Players) {
-                        if (p.GetType() == Core::PlayerType::Detective) p.SetActive(true);
-                    }
-                }
-            } else {
-                // Detective moved - deactivate them
-                ref_Player.SetActive(false);
+            bool b_Captured = false;
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                b_Captured = CheckCapture();
             }
-        }
+            if (b_Captured) {
+                CheckEndOfGame(Winner::Detectives);
+                return;
+            }
 
-        {
-            std::lock_guard<std::mutex> lock(m_mtx_GameState);
-            if (!m_vec_MovedThisRound[i_PlayerIndex]) {
-                // If Mr X has a second move pending, don't mark as moved yet
-                bool b_IsMrX = false;
-                {
-                    std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
-                    b_IsMrX = (m_vec_Players[i_PlayerIndex].GetType() == Core::PlayerType::MisterX);
-                }
-                if (b_IsMrX && m_b_MrXSecondMovePending.load()) {
-                    // allow second move within the same round
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_Players);
+                auto& ref_Player = m_vec_Players[i_PlayerIndex];
+                if (ref_Player.GetType() == Core::PlayerType::MisterX) {
+                    using UI::TicketMark;
+                    TicketMark mark = TicketMark::None;
+                    if (b_MrXUsedBlack) mark = TicketMark::Black;
+                    else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
+                    else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
+                    else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
+
+                    int i_TurnIdx = m_i_MrXTurn.load() + 1;
+                    UI::SetSlotMark(i_TurnIdx, mark, true);
+                    m_i_MrXTurn.store(i_TurnIdx);
+
+                    bool b_UIDouble = UI::IsMrXDoubleSelected();
+                    if (!b_MrXSecondMoveWasPending && !m_b_MrXSecondMovePending.load() && b_UIDouble && ref_Player.GetDoubleMoveTickets() > 0) {
+                        if (ref_Player.SpendDoubleMoveTicket()) {
+                            m_b_MrXSecondMovePending.store(true);
+                            ref_Player.SetActive(true);
+                        }
+                    }
+
+                    if (b_MrXSecondMoveWasPending) {
+                        m_b_MrXSecondMovePending.store(false);
+                        ref_Player.SetActive(false);
+                    } else if (!m_b_MrXSecondMovePending.load()) {
+                        ref_Player.SetActive(false);
+                    }
+
+                    // If Mr X turn ended now, activate detectives
+                    if (!ref_Player.IsActive()) {
+                        for (auto& p : m_vec_Players) {
+                            if (p.GetType() == Core::PlayerType::Detective) p.SetActive(true);
+                        }
+                    }
                 } else {
-                    m_vec_MovedThisRound[i_PlayerIndex] = true;
-                    int i_Remaining = m_i_PlayersRemainingThisRound.load();
-                    if (i_Remaining > 0) {
-                        m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                    // Detective moved - deactivate them
+                    ref_Player.SetActive(false);
+                }
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(m_mtx_GameState);
+                if (!m_vec_MovedThisRound[i_PlayerIndex]) {
+                    // If Mr X has a second move pending, don't mark as moved yet
+                    bool b_IsMrX = false;
+                    {
+                        std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+                        b_IsMrX = (m_vec_Players[i_PlayerIndex].GetType() == Core::PlayerType::MisterX);
+                    }
+                    if (b_IsMrX && m_b_MrXSecondMovePending.load()) {
+                        // allow second move within the same round
+                    } else {
+                        m_vec_MovedThisRound[i_PlayerIndex] = true;
+                        int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                        if (i_Remaining > 0) {
+                            m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                        }
                     }
                 }
             }
-        }
 
-        AdvanceRoundIfComplete();
+            AdvanceRoundIfComplete();
 
-        // Clear UI selections after applying the move
-        UI::ClearMrXSelections();
+            // Clear UI selections after applying the move
+            UI::ClearMrXSelections();
+        } 
     }
 }
 
@@ -3114,6 +3141,24 @@ void GameState::AdvanceRoundIfComplete() {
         m_b_MrXSecondMovePending.store(false);
     }
     MarkDetectivesWithoutMoves();
+}
+
+std::string GameState::SerializePlayerStates(const std::vector<Core::Player>& players) const {
+    std::string result;
+
+    for (size_t i = 0; i < players.size(); ++i) {
+        const auto& p = players[i];
+        // Format: index:node:taxi:bus:metro:black:double;
+        result += std::to_string(i) + ":" +
+                  std::to_string(p.GetOccupiedNode()) + ":" +
+                  std::to_string(p.GetTaxiTickets()) + ":" +
+                  std::to_string(p.GetBusTickets()) + ":" +
+                  std::to_string(p.GetMetroTickets()) + ":" +
+                  std::to_string(p.GetBlackTickets()) + ":" +
+                  std::to_string(p.GetDoubleMoveTickets()) + ";";
+    }
+
+    return result;
 }
 
 } // namespace States

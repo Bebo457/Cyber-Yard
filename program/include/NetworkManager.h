@@ -29,6 +29,9 @@ public:
     void SendToServer(const std::string& message);
     bool PollMessage(NetworkMessage& outMsg);
 
+    bool IsServer() const { return m_Role == NetRole::Server; }
+    bool IsClient() const { return m_Role == NetRole::Client; }
+
     NetRole GetRole() const { return m_Role; } // <-- tu było błędnie
 
 private:

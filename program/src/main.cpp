@@ -113,6 +113,20 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Invalid games count '" << argv[i] << "'. Must be >= 1. Using 1.\n";
                 i_MaxGames = 1;
             }
+        } else if (s_Arg == "--server") {
+            Core::Settings().onlineMode = true;
+            Core::Settings().onlineIsServer = true;
+            std::cout << "[CLI] Online mode: SERVER\n";
+        } else if (s_Arg == "--client") {
+            Core::Settings().onlineMode = true;
+            Core::Settings().onlineIsServer = false;
+            std::cout << "[CLI] Online mode: CLIENT\n";
+        } else if (s_Arg == "--host" && i + 1 < argc) {
+            Core::Settings().onlineHost = argv[++i];
+            std::cout << "[CLI] Online host: " << Core::Settings().onlineHost << "\n";
+        } else if (s_Arg == "--port" && i + 1 < argc) {
+            Core::Settings().onlinePort = static_cast<uint16_t>(std::atoi(argv[++i]));
+            std::cout << "[CLI] Online port: " << Core::Settings().onlinePort << "\n";
         }
     }
 
