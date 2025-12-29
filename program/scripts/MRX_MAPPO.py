@@ -118,6 +118,9 @@ class MAPPOAgent:
         self.gamma = 0.99
         self.lam = 0.95
 
+        self.new_game = True
+
+
     def select_action(self, obs, agent_id):
         with torch.no_grad():
             obs_t = torch.FloatTensor(obs)
@@ -152,7 +155,7 @@ class MAPPOAgent:
 
         joint_obs, actions, logps, rewards, dones, values = zip(*self.buffer)
 
-        joint_obs = torch.FloatTensor(joint_obs)
+        joint_obs = torch.from_numpy(np.stack(joint_obs)).float()
         rewards = list(rewards)
         dones = list(dones)
         values = list(values)
@@ -206,10 +209,37 @@ print("AI MAPPO Server listening on 5555")
 
 try:
     while True:
-        req = json.loads(sock.recv().decode())
+        raw_msg = sock.recv().decode("utf-8").strip()
+        print(f"\n[RECEIVE] RAW MSG: {raw_msg}")
+
+        try:
+            req = json.loads(raw_msg)
+        except json.JSONDecodeError:
+            print("[ERROR] Invalid JSON payload from engine")
+            sock.send_json({"status": "error", "message": "Invalid JSON"})
+            continue
 
         if req.get("type") == "ping":
+            print("[INFO] Handshake: ping -> pong")
             sock.send_json({"type": "pong"})
+            continue
+
+        if "winner" in req or "[GameOver]" in raw_msg:
+            winner = req.get("winner", "")
+            final_reward = 1000.0 if winner == "MrX" else -1000.0
+            current_round = req.get("game_state", {}).get("current_round", 0)
+            print(f"[EVENT] Game Over! Winner: {winner if winner else 'N/A'}")
+
+            if agent and agent.buffer:
+                last_joint_obs, last_actions, last_logps, _, _, last_value = agent.buffer[-1]
+                agent.buffer[-1] = (last_joint_obs, last_actions, last_logps, final_reward, True, last_value)
+                agent.update()
+                agent.new_game = True
+                agent.step_counter = 0
+                print(f"[DATA] Final reward applied: {final_reward}")
+
+            log_game(winner=winner, mrx_reward=final_reward, rounds=current_round)
+            sock.send_json({"status": "ok"})
             continue
 
         obs = encoder.encode(req["game_state"], req["players"])
@@ -231,21 +261,27 @@ try:
             logps.append(lp)
 
         reward = req.get("game_state", {}).get("reward", 0.0)
+
+        if agent.new_game:
+            reward = 0.0
+            agent.new_game = False
+
         done = req.get("game_over", False)
 
         agent.store(joint_obs, actions, logps, reward, done)
+        print(f"[DATA] Stored step | reward={reward:.3f} done={done}")
 
         if done or agent.step_counter >= agent.rollout_len:
             print(f"[AI] UPDATE | steps={agent.step_counter} done={done}")
             agent.update()
             agent.step_counter = 0
 
-
-        idx = actions[0]
         moves = req.get("possible_moves", [])
-        idx = idx if idx < len(moves) else 0
+        raw_idx = actions[0]
+        idx = (raw_idx % len(moves)) if moves else 0
 
         sel = moves[idx] if moves else {}
+        print(f"[DECISION] Raw action={raw_idx} -> move #{idx} out of {len(moves)} options")
         sock.send_json({
             "status": "ok",
             "selected_index": idx,

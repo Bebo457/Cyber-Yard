@@ -3,6 +3,7 @@
 #include "StateManager.h"
 #include "GameConstants.h"
 #include "GameSettings.h"
+#include "PlayerController.h"
 #include <GL/glew.h>
 
 #include <random>
@@ -1979,6 +1980,7 @@ void GameState::CheckEndOfGame(Winner winner) {
                std::cout << "[Game] Sent game end to Detective bridge for Detectives win.\n";
             }
         logger.logGameEnd("Detectives");
+        Core::ResetPythonRewardAccumulators();
 
     } else if (winner == Winner::MisterX) {
         std::cout << "[Game] Mr X wins -- reached max rounds (" << m_i_Round.load() << ")\n";
@@ -1995,6 +1997,7 @@ void GameState::CheckEndOfGame(Winner winner) {
                std::cout << "[Game] Sent game end to Detective bridge for MisterX win.\n";
         }
                 logger.logGameEnd("MisterX");
+            Core::ResetPythonRewardAccumulators();
 
     }
 

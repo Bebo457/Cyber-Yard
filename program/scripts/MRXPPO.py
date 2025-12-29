@@ -8,7 +8,6 @@ import numpy as np
 import os
 from typing import Dict, List, Any, Optional
 from metrics_logger import log_game
-
 # =================================================================
 # 1. KODER OBSERWACJI
 # =================================================================
