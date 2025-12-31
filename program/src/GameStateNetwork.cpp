@@ -50,6 +50,7 @@ GameState::GameState()
     , m_VAO_FullscreenQuad(0)
     , m_VBO_FullscreenQuad(0)
     , m_i_SelectedPlayerIndex(-1)
+    , m_i_SelectedDestinationNode(-1)
     , m_ui_NextPickingID(0)
 {
     // any ctor-time initialization that needs to run can stay here

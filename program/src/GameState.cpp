@@ -1356,8 +1356,10 @@ void GameState::Render(Core::Application* p_App) {
     RenderStations(mat4_View, mat4_Projection);
     // Draw numeric labels on top of station circles
     RenderStationLabels(p_App, mat4_View, mat4_Projection);
+    RenderHighlightedDestinations(mat4_Projection, mat4_View);
     RenderPlayers(mat4_View, mat4_Projection);
-    RenderArrows(mat4_View, mat4_Projection);
+    // RenderArrows(mat4_View, mat4_Projection);
+    RenderTicketButtons(mat4_Projection, mat4_View);
     RenderHUD(p_App);
     RenderDebugOverlay(p_App);
     RenderPicking(p_App, mat4_View, mat4_Projection);
@@ -1700,6 +1702,109 @@ void GameState::RenderArrows(const glm::mat4& mat4_View, const glm::mat4& mat4_P
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View * mat4_ColoredModel));
         glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
         glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
+
+        glBindVertexArray(0);
+    }
+}
+
+void GameState::RenderHighlightedDestinations(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View) {
+    if (m_vec_CurrentDestinations.empty()) {
+        return;
+    }
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+
+    glUseProgram(m_ShaderProgram_Circle);
+    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
+    GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
+
+    for (const auto& dest : m_vec_CurrentDestinations) {
+        if (m_i_SelectedDestinationNode >= 0 && dest.i_NodeID != m_i_SelectedDestinationNode) {
+            continue;
+        }
+
+        glm::vec3 vec3_HighlightColor(0.8f, 0.1f, 0.1f);
+
+        float f_BaseRadius = 8.5f;
+        float f_PulseAmount = 0.8f * sinf(static_cast<float>(SDL_GetTicks()) * 0.003f);
+        float f_Radius = f_BaseRadius + f_PulseAmount;
+
+        glm::mat4 mat4_Model = glm::mat4(1.0f);
+        mat4_Model = glm::translate(mat4_Model, glm::vec3(dest.vec2_Position.x, 0.15f * m_f_GlobalScale, dest.vec2_Position.y));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(f_Radius, 0.2f, f_Radius));
+        mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
+
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_HighlightColor));
+
+        glBindVertexArray(m_VAO_Circle);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+        glBindVertexArray(0);
+    }
+
+    glDisable(GL_BLEND);
+}
+
+void GameState::RenderTicketButtons(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View) {
+    if (m_vec_CurrentTicketButtons.empty()) {
+        return;
+    }
+
+    glUseProgram(m_ShaderProgram_Circle);
+    GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
+    GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
+
+    for (const auto& btn : m_vec_CurrentTicketButtons) {
+        glm::vec3 vec3_Color;
+        switch (btn.i_TransportType) {
+            case Core::k_TransportTypeTaxi: vec3_Color = glm::vec3(1.0f, 1.0f, 0.0f); break;
+            case Core::k_TransportTypeBus: vec3_Color = glm::vec3(0.0f, 1.0f, 0.0f); break;
+            case Core::k_TransportTypeMetro: vec3_Color = glm::vec3(1.0f, 0.0f, 0.0f); break;
+            case Core::k_TransportTypeWater: vec3_Color = glm::vec3(0.0f, 0.4f, 1.0f); break;
+            default: vec3_Color = glm::vec3(0.5f); break;
+        }
+
+        if (!btn.b_Available) {
+            vec3_Color *= 0.3f;
+        }
+
+        glm::mat4 mat4_OutlineModel = glm::mat4(1.0f);
+        mat4_OutlineModel = glm::translate(mat4_OutlineModel, glm::vec3(btn.vec2_Position.x, 0.18f * m_f_GlobalScale, btn.vec2_Position.y));
+        mat4_OutlineModel = glm::scale(mat4_OutlineModel, glm::vec3(btn.f_Radius * 1.2f, 0.2f, btn.f_Radius * 1.2f));
+        mat4_OutlineModel = mat4_OutlineModel * m_mat4_GlobalScaleMatrix;
+
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_OutlineModel;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, 0.0f)));
+
+        glBindVertexArray(m_VAO_Circle);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+
+        glm::mat4 mat4_ButtonModel = glm::mat4(1.0f);
+        mat4_ButtonModel = glm::translate(mat4_ButtonModel, glm::vec3(btn.vec2_Position.x, 0.19f * m_f_GlobalScale, btn.vec2_Position.y));
+        mat4_ButtonModel = glm::scale(mat4_ButtonModel, glm::vec3(btn.f_Radius, 0.2f, btn.f_Radius));
+        mat4_ButtonModel = mat4_ButtonModel * m_mat4_GlobalScaleMatrix;
+
+        mat4_MVP = mat4_Projection * mat4_View * mat4_ButtonModel;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+
+        if (!btn.b_Available) {
+            glm::mat4 mat4_CrossModel = glm::mat4(1.0f);
+            mat4_CrossModel = glm::translate(mat4_CrossModel, glm::vec3(btn.vec2_Position.x, 0.20f * m_f_GlobalScale, btn.vec2_Position.y));
+            mat4_CrossModel = glm::scale(mat4_CrossModel, glm::vec3(btn.f_Radius * 0.8f, 0.2f, btn.f_Radius * 0.8f));
+            mat4_CrossModel = mat4_CrossModel * m_mat4_GlobalScaleMatrix;
+
+            mat4_MVP = mat4_Projection * mat4_View * mat4_CrossModel;
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+            glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.3f, 0.3f, 0.3f)));
+
+            glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+        }
 
         glBindVertexArray(0);
     }
@@ -2353,7 +2458,7 @@ void GameState::UpdateCameraPhysics(float f_DeltaTime) {
 
     //friction
     m_vec3_CameraVelocity *= k_CameraFriction;
-    if (glm::length(m_vec3_CameraVelocity) < 0.05f) {
+    if (glm::length(m_vec3_CameraVelocity) < 0.01f) {
         m_vec3_CameraVelocity = glm::vec3(0.0f);
     }
 
@@ -2415,6 +2520,137 @@ void GameState::UpdateArrowsForSelectedPlayer() {
         arrow.i_TransportType = conn.i_TransportType;
 
         m_vec_CurrentArrows.push_back(arrow);
+    }
+}
+
+void GameState::UpdateDestinationsForSelectedPlayer() {
+    m_vec_CurrentDestinations.clear();
+
+    if (m_i_SelectedPlayerIndex < 0 || m_i_SelectedPlayerIndex >= static_cast<int>(m_vec_Players.size())) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    const auto& player = m_vec_Players[m_i_SelectedPlayerIndex];
+    int i_CurrentNode = player.GetOccupiedNode();
+
+    if (i_CurrentNode < 0) {
+        return;
+    }
+
+    glm::vec2 vec2_CurrentPos(0.0f);
+    for (const auto& station : m_vec_CircleStations) {
+        if (station.stationID == i_CurrentNode) {
+            vec2_CurrentPos = station.position;
+            break;
+        }
+    }
+
+    auto connections = m_graph.GetConnections(i_CurrentNode);
+
+    std::map<int, std::vector<int>> nodeToTransports;
+    for (const auto& conn : connections) {
+        if ((conn.i_TransportType == Core::k_TransportTypeTaxi && player.GetTaxiTickets() > 0) ||
+            (conn.i_TransportType == Core::k_TransportTypeBus && player.GetBusTickets() > 0) ||
+            (conn.i_TransportType == Core::k_TransportTypeMetro && player.GetMetroTickets() > 0) ||
+            (conn.i_TransportType == Core::k_TransportTypeWater && player.GetBlackTickets() > 0)) {
+            nodeToTransports[conn.i_NodeId].push_back(conn.i_TransportType);
+        }
+    }
+
+    for (const auto& pair : nodeToTransports) {
+        int i_NodeID = pair.first;
+        const auto& transports = pair.second;
+
+        glm::vec2 vec2_NodePos(0.0f);
+        for (const auto& station : m_vec_CircleStations) {
+            if (station.stationID == i_NodeID) {
+                vec2_NodePos = station.position;
+                break;
+            }
+        }
+
+        DestinationNode dest;
+        dest.i_NodeID = i_NodeID;
+        dest.vec2_Position = vec2_NodePos;
+        dest.vec_AvailableTransports = transports;
+
+        m_vec_CurrentDestinations.push_back(dest);
+    }
+}
+
+void GameState::UpdateTicketButtonsForDestination(int i_DestinationNode) {
+    m_vec_CurrentTicketButtons.clear();
+
+    auto it = std::find_if(m_vec_CurrentDestinations.begin(), m_vec_CurrentDestinations.end(),
+                          [i_DestinationNode](const DestinationNode& d) {
+                              return d.i_NodeID == i_DestinationNode;
+                          });
+
+    if (it == m_vec_CurrentDestinations.end()) {
+        return;
+    }
+
+    const DestinationNode& dest = *it;
+    glm::vec2 vec2_NodePos = dest.vec2_Position;
+
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    const auto& player = m_vec_Players[m_i_SelectedPlayerIndex];
+    bool b_IsMrX = (player.GetType() == Core::PlayerType::MisterX);
+
+    std::vector<std::pair<int, bool>> transportOptions;
+    bool b_HasNonWaterTransport = false;
+
+    for (int transportType : dest.vec_AvailableTransports) {
+        bool b_HasTicket = false;
+        if (transportType == Core::k_TransportTypeTaxi) {
+            b_HasTicket = player.GetTaxiTickets() > 0;
+            b_HasNonWaterTransport = true;
+        } else if (transportType == Core::k_TransportTypeBus) {
+            b_HasTicket = player.GetBusTickets() > 0;
+            b_HasNonWaterTransport = true;
+        } else if (transportType == Core::k_TransportTypeMetro) {
+            b_HasTicket = player.GetMetroTickets() > 0;
+            b_HasNonWaterTransport = true;
+        } else if (transportType == Core::k_TransportTypeWater) {
+            b_HasTicket = player.GetBlackTickets() > 0;
+        }
+
+        transportOptions.push_back({transportType, b_HasTicket});
+    }
+
+    if (b_IsMrX && b_HasNonWaterTransport && player.GetBlackTickets() > 0) {
+        bool b_AlreadyHasWater = false;
+        for (int t : dest.vec_AvailableTransports) {
+            if (t == Core::k_TransportTypeWater) {
+                b_AlreadyHasWater = true;
+                break;
+            }
+        }
+        if (!b_AlreadyHasWater) {
+            transportOptions.push_back({Core::k_TransportTypeWater, true});
+        }
+    }
+
+    int i_NumButtons = static_cast<int>(transportOptions.size());
+    if (i_NumButtons == 0) {
+        return;
+    }
+
+    float f_ButtonRadius = 5.0f;
+    float f_OrbitalRadius = 0.6f * m_f_GlobalScale;
+
+    for (int i = 0; i < i_NumButtons; ++i) {
+        float f_Angle = (2.0f * 3.14159f * i) / i_NumButtons - 3.14159f / 2.0f;
+        glm::vec2 vec2_Offset(cosf(f_Angle) * f_OrbitalRadius, sinf(f_Angle) * f_OrbitalRadius);
+
+        TicketButton btn;
+        btn.vec2_Position = vec2_NodePos + vec2_Offset;
+        btn.i_TransportType = transportOptions[i].first;
+        btn.f_Radius = f_ButtonRadius;
+        btn.b_Available = transportOptions[i].second;
+
+        m_vec_CurrentTicketButtons.push_back(btn);
     }
 }
 
@@ -2496,7 +2732,9 @@ void GameState::HandlePlayerClick(int i_PlayerIndex) {
 
     if (b_CanSelect) {
         m_i_SelectedPlayerIndex = i_PlayerIndex;
-        UpdateArrowsForSelectedPlayer();
+        m_i_SelectedDestinationNode = -1;
+        UpdateDestinationsForSelectedPlayer();
+        m_vec_CurrentTicketButtons.clear();
     std::cout << "[GameState] Selected player " << i_PlayerIndex << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
         // Show a simple popup for detectives indicating which player was selected
         bool b_IsMrX = false;
@@ -2722,6 +2960,197 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
     }
 }
 
+void GameState::HandleDestinationClick(int i_DestinationNode) {
+    if (m_i_SelectedPlayerIndex < 0) {
+        return;
+    }
+
+    auto destIt = std::find_if(m_vec_CurrentDestinations.begin(), m_vec_CurrentDestinations.end(),
+                                [i_DestinationNode](const DestinationNode& d) {
+                                    return d.i_NodeID == i_DestinationNode;
+                                });
+    if (destIt == m_vec_CurrentDestinations.end()) {
+        return;
+    }
+
+    m_i_SelectedDestinationNode = i_DestinationNode;
+
+    int i_NumTransports = static_cast<int>(destIt->vec_AvailableTransports.size());
+
+    bool b_IsMrX = false;
+    bool b_HasBlackTickets = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mtx_Players);
+        const auto& player = m_vec_Players[m_i_SelectedPlayerIndex];
+        b_IsMrX = (player.GetType() == Core::PlayerType::MisterX);
+        b_HasBlackTickets = (player.GetBlackTickets() > 0);
+    }
+
+    bool b_HasNonWater = false;
+    bool b_HasWater = false;
+    for (int t : destIt->vec_AvailableTransports) {
+        if (t == Core::k_TransportTypeWater) {
+            b_HasWater = true;
+        } else {
+            b_HasNonWater = true;
+        }
+    }
+
+    int i_TotalButtons = i_NumTransports;
+    if (b_IsMrX && b_HasNonWater && b_HasBlackTickets && !b_HasWater) {
+        i_TotalButtons++;
+    }
+
+    if (i_TotalButtons == 1) {
+        HandleTicketButtonClick(destIt->vec_AvailableTransports[0]);
+        return;
+    }
+
+    UpdateTicketButtonsForDestination(i_DestinationNode);
+}
+
+void GameState::HandleTicketButtonClick(int i_TransportType) {
+    if (m_i_SelectedPlayerIndex < 0 || m_i_SelectedDestinationNode < 0) {
+        return;
+    }
+
+    int i_PlayerIndex = m_i_SelectedPlayerIndex;
+    int i_DestinationNode = m_i_SelectedDestinationNode;
+
+    bool b_MoveSuccessful = false;
+    bool b_MrXUsedBlack = false;
+    bool b_MrXSecondMoveWasPending = false;
+    int i_moveBuffor = -1;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mtx_Players);
+        auto& player = m_vec_Players[i_PlayerIndex];
+
+        bool b_TicketAvailable = true;
+        if (player.GetType() == Core::PlayerType::MisterX) {
+            b_MrXSecondMoveWasPending = m_b_MrXSecondMovePending.load();
+            bool b_UIBlack = UI::IsMrXBlackSelected();
+            bool b_ForceBlackForWater = (i_TransportType == Core::k_TransportTypeWater);
+            if ((b_UIBlack || b_ForceBlackForWater) && player.GetBlackTickets() > 0) {
+                b_TicketAvailable = player.SpendBlackTicket();
+                b_MrXUsedBlack = b_TicketAvailable;
+                if (b_ForceBlackForWater && !b_TicketAvailable) {
+                    std::cout << "[GameState] ERROR: Failed to spend black ticket for water transport!\n";
+                    return;
+                }
+            } else if (b_ForceBlackForWater) {
+                std::cout << "[GameState] Cannot use water transport: No black tickets available.\n";
+                return;
+            }
+        }
+        if (!b_MrXUsedBlack) {
+            if (i_TransportType == Core::k_TransportTypeTaxi) {
+                b_TicketAvailable = player.SpendTaxiTicket();
+            } else if (i_TransportType == Core::k_TransportTypeBus) {
+                b_TicketAvailable = player.SpendBusTicket();
+            } else if (i_TransportType == Core::k_TransportTypeMetro) {
+                b_TicketAvailable = player.SpendMetroTicket();
+            } else if (i_TransportType == Core::k_TransportTypeWater) {
+                std::cout << "[GameState] Error: Water transport requires black ticket.\n";
+                b_TicketAvailable = false;
+            }
+        }
+
+        if (!b_TicketAvailable) {
+            std::cout << "[GameState] No tickets available for this transport type.\n";
+            return;
+        }
+        i_moveBuffor = player.GetOccupiedNode();
+        player.MoveTo(i_DestinationNode);
+        b_MoveSuccessful = true;
+    }
+
+    if (b_MoveSuccessful) {
+        std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
+        std::string msg = std::to_string(i_PlayerIndex) + "_" + std::to_string(i_DestinationNode);
+        BroadcastMessage(msg);
+        logger.logPlayerMove(i_PlayerIndex, i_moveBuffor , i_DestinationNode, i_TransportType);
+
+        m_i_SelectedPlayerIndex = -1;
+        m_i_SelectedDestinationNode = -1;
+        UI::ShowDetectivePopup(false);
+        m_vec_CurrentDestinations.clear();
+        m_vec_CurrentTicketButtons.clear();
+
+        bool b_Captured = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_Players);
+            b_Captured = CheckCapture();
+        }
+        if (b_Captured) {
+            CheckEndOfGame(Winner::Detectives);
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_Players);
+            auto& ref_Player = m_vec_Players[i_PlayerIndex];
+            if (ref_Player.GetType() == Core::PlayerType::MisterX) {
+                using UI::TicketMark;
+                TicketMark mark = TicketMark::None;
+                if (b_MrXUsedBlack) mark = TicketMark::Black;
+                else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
+                else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
+                else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
+
+                int i_TurnIdx = m_i_MrXTurn.load() + 1;
+                UI::SetSlotMark(i_TurnIdx, mark, true);
+                m_i_MrXTurn.store(i_TurnIdx);
+
+                bool b_UIDouble = UI::IsMrXDoubleSelected();
+                if (!b_MrXSecondMoveWasPending && !m_b_MrXSecondMovePending.load() && b_UIDouble && ref_Player.GetDoubleMoveTickets() > 0) {
+                    if (ref_Player.SpendDoubleMoveTicket()) {
+                        m_b_MrXSecondMovePending.store(true);
+                        ref_Player.SetActive(true);
+                    }
+                }
+
+                if (b_MrXSecondMoveWasPending) {
+                    m_b_MrXSecondMovePending.store(false);
+                    ref_Player.SetActive(false);
+                } else if (!m_b_MrXSecondMovePending.load()) {
+                    ref_Player.SetActive(false);
+                }
+
+                if (!ref_Player.IsActive()) {
+                    for (auto& p : m_vec_Players) {
+                        if (p.GetType() == Core::PlayerType::Detective) p.SetActive(true);
+                    }
+                }
+            } else {
+                ref_Player.SetActive(false);
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_GameState);
+            if (!m_vec_MovedThisRound[i_PlayerIndex]) {
+                bool b_IsMrX = false;
+                {
+                    std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+                    b_IsMrX = (m_vec_Players[i_PlayerIndex].GetType() == Core::PlayerType::MisterX);
+                }
+                if (b_IsMrX && m_b_MrXSecondMovePending.load()) {
+                } else {
+                    m_vec_MovedThisRound[i_PlayerIndex] = true;
+                    int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                    if (i_Remaining > 0) {
+                        m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                    }
+                }
+            }
+        }
+
+        AdvanceRoundIfComplete();
+        UI::ClearMrXSelections();
+    }
+}
+
 void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
     m_map_PickingIDToClickable.clear();
     m_ui_NextPickingID = 0;
@@ -2752,7 +3181,10 @@ void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
 
     if (ui_ClickedID == 0) {
         m_i_SelectedPlayerIndex = -1;
+        m_i_SelectedDestinationNode = -1;
         m_vec_CurrentArrows.clear();
+        m_vec_CurrentDestinations.clear();
+        m_vec_CurrentTicketButtons.clear();
         UI::ShowDetectivePopup(false);
         return;
     }
@@ -2768,6 +3200,10 @@ void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
         HandlePlayerClick(clickable.i_Index);
     } else if (clickable.e_Type == ClickableType::Arrow) {
         HandleArrowClick(clickable.i_Index, clickable.i_Data);
+    } else if (clickable.e_Type == ClickableType::Destination) {
+        HandleDestinationClick(clickable.i_Data);
+    } else if (clickable.e_Type == ClickableType::TicketButton) {
+        HandleTicketButtonClick(clickable.i_Index);
     }
 }
 
@@ -2879,6 +3315,7 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
         }
     }
 
+    /* STRZAŁKI MY BELOVED
     for (const auto& arrow : m_vec_CurrentArrows) {
         uint32_t ui_ID = RegisterClickable(ClickableType::Arrow, m_i_SelectedPlayerIndex, arrow.i_DestinationNode);
         glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
@@ -2894,6 +3331,44 @@ void GameState::RenderPickingPass(const glm::mat4& mat4_Projection, const glm::m
 
         glBindVertexArray(m_VAO_Arrow);
         glDrawArrays(GL_TRIANGLES, 0, m_i_ArrowVertexCount);
+    }
+    */
+
+    // Render destination nodes for picking
+    for (const auto& dest : m_vec_CurrentDestinations) {
+        uint32_t ui_ID = RegisterClickable(ClickableType::Destination, m_i_SelectedPlayerIndex, dest.i_NodeID);
+        glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
+
+        glm::mat4 mat4_Model = glm::mat4(1.0f);
+        mat4_Model = glm::translate(mat4_Model, glm::vec3(dest.vec2_Position.x, 0.15f * m_f_GlobalScale, dest.vec2_Position.y));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(9.5f, 0.2f, 9.5f));
+        mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
+
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+        glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+        glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
+
+        glBindVertexArray(m_VAO_Circle);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+    }
+
+    // Render ticket buttons for picking
+    for (size_t i = 0; i < m_vec_CurrentTicketButtons.size(); ++i) {
+        const auto& btn = m_vec_CurrentTicketButtons[i];
+        uint32_t ui_ID = RegisterClickable(ClickableType::TicketButton, btn.i_TransportType, m_i_SelectedDestinationNode);
+        glm::vec3 vec3_PickingColor = IDToColor(ui_ID);
+
+        glm::mat4 mat4_Model = glm::mat4(1.0f);
+        mat4_Model = glm::translate(mat4_Model, glm::vec3(btn.vec2_Position.x, 0.19f * m_f_GlobalScale, btn.vec2_Position.y));
+        mat4_Model = glm::scale(mat4_Model, glm::vec3(btn.f_Radius * 1.2f, 0.2f, btn.f_Radius * 1.2f));
+        mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
+
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+        glUniformMatrix4fv(i_MvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+        glUniform3fv(i_ColorLoc, 1, glm::value_ptr(vec3_PickingColor));
+
+        glBindVertexArray(m_VAO_Circle);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
     }
 
     glBindVertexArray(0);
