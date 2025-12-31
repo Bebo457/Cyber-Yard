@@ -1724,22 +1724,37 @@ void GameState::RenderHighlightedDestinations(const glm::mat4& mat4_Projection, 
             continue;
         }
 
-        glm::vec3 vec3_HighlightColor(0.8f, 0.1f, 0.1f);
-
         float f_BaseRadius = 8.5f;
-        float f_PulseAmount = 0.8f * sinf(static_cast<float>(SDL_GetTicks()) * 0.003f);
+        float f_PulseAmount = 0.3f * sinf(static_cast<float>(SDL_GetTicks()) * 0.003f);
         float f_Radius = f_BaseRadius + f_PulseAmount;
 
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glLineWidth(2.5f);
+
+        glm::vec3 vec3_BlackOutline(0.0f, 0.0f, 0.0f);
+        glm::mat4 mat4_OutlineModel = glm::mat4(1.0f);
+        mat4_OutlineModel = glm::translate(mat4_OutlineModel, glm::vec3(dest.vec2_Position.x, 0.14f * m_f_GlobalScale, dest.vec2_Position.y));
+        mat4_OutlineModel = glm::scale(mat4_OutlineModel, glm::vec3(f_Radius + 1.0f, 0.2f, f_Radius + 1.0f));
+        mat4_OutlineModel = mat4_OutlineModel * m_mat4_GlobalScaleMatrix;
+
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_OutlineModel;
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+        glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_BlackOutline));
+
+        glBindVertexArray(m_VAO_Circle);
+        glDrawArrays(GL_LINE_LOOP, 1, m_i_CircleVertexCount - 1);
+
+        glBlendFunc(GL_ONE, GL_ONE);
+        glm::vec3 vec3_HighlightColor(0.0f, 1.5f, 1.5f);
         glm::mat4 mat4_Model = glm::mat4(1.0f);
         mat4_Model = glm::translate(mat4_Model, glm::vec3(dest.vec2_Position.x, 0.15f * m_f_GlobalScale, dest.vec2_Position.y));
         mat4_Model = glm::scale(mat4_Model, glm::vec3(f_Radius, 0.2f, f_Radius));
         mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
 
-        glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+        mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
         glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
         glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_HighlightColor));
 
-        glBindVertexArray(m_VAO_Circle);
         glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
         glBindVertexArray(0);
     }
