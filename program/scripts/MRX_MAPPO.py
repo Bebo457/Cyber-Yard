@@ -83,6 +83,7 @@ class MAPPOAgent:
     def __init__(self, obs_dim, act_dim, n_agents, model_path=None):
         self.n_agents = n_agents
         self.obs_dim = obs_dim
+        self.act_dim = act_dim
 
         if model_path is None:
             script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -119,21 +120,27 @@ class MAPPOAgent:
         self.lam = 0.95
 
         self.new_game = True
+        self.episode_reward = 0.0
 
-
-    def select_action(self, obs, agent_id):
+    def select_action(self, obs, agent_id, action_mask):
         with torch.no_grad():
             obs_t = torch.FloatTensor(obs)
-            probs = self.actors_old[agent_id](obs_t)
+            logits = self.actors_old[agent_id].net(obs_t)
+
+            mask = torch.FloatTensor(action_mask)  # 1 = legal, 0 = illegal
+            masked_logits = logits + (mask + 1e-8).log()
+
+            probs = torch.softmax(masked_logits, dim=-1)
             dist = Categorical(probs)
             action = dist.sample()
             return action.item(), dist.log_prob(action)
 
-
-    def store(self, joint_obs, actions, logps, reward, done):
+    def store(self, joint_obs, actions, logps, reward, done, action_mask):
         with torch.no_grad():
             value = self.critic(torch.FloatTensor(joint_obs)).item()
-        self.buffer.append((joint_obs, actions, logps, reward, done, value))
+        self.buffer.append(
+            (joint_obs, actions, logps, reward, done, value, action_mask)
+        )
         self.step_counter += 1
 
     def compute_gae(self, rewards, values, dones):
@@ -153,7 +160,8 @@ class MAPPOAgent:
         if not self.buffer:
             return
 
-        joint_obs, actions, logps, rewards, dones, values = zip(*self.buffer)
+        joint_obs, actions, logps, rewards, dones, values, masks = zip(*self.buffer)
+
 
         joint_obs = torch.from_numpy(np.stack(joint_obs)).float()
         rewards = list(rewards)
@@ -162,19 +170,27 @@ class MAPPOAgent:
 
         advantages = self.compute_gae(rewards, values, dones)
         returns = advantages + torch.tensor(values)
-
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         loss = 0
         for i in range(self.n_agents):
-            probs = self.actors[i](joint_obs[:, i*self.obs_dim:(i+1)*self.obs_dim])
-            dist = Categorical(probs)
+            obs_i = joint_obs[:, i * self.obs_dim:(i + 1) * self.obs_dim]
+            logits = self.actors[i].net(obs_i)
+
+            mask = torch.FloatTensor(masks[0])  # ta sama maska dla całego rolloutu
+            masked_logits = logits + (mask + 1e-8).log()
+
+            dist = Categorical(logits=masked_logits)
             new_logp = dist.log_prob(torch.tensor([a[i] for a in actions]))
+
             ratio = torch.exp(new_logp - torch.stack([lp[i] for lp in logps]))
             surr = torch.min(
                 ratio * advantages,
                 torch.clamp(ratio, 0.8, 1.2) * advantages
             )
+            entropy = dist.entropy().mean()
             loss -= surr.mean()
+            loss -= 0.01 * entropy
 
         values_pred = self.critic(joint_obs).squeeze()
         loss += 0.5 * nn.MSELoss()(values_pred, returns.detach())
@@ -230,15 +246,32 @@ try:
             current_round = req.get("game_state", {}).get("current_round", 0)
             print(f"[EVENT] Game Over! Winner: {winner if winner else 'N/A'}")
 
+            total_episode_reward = final_reward
+            if agent:
+                total_episode_reward += agent.episode_reward
+
             if agent and agent.buffer:
-                last_joint_obs, last_actions, last_logps, _, _, last_value = agent.buffer[-1]
-                agent.buffer[-1] = (last_joint_obs, last_actions, last_logps, final_reward, True, last_value)
+                last_joint_obs, last_actions, last_logps, _, _, last_value, last_mask = agent.buffer[-1]
+
+                agent.buffer[-1] = (
+                    last_joint_obs,
+                    last_actions,
+                    last_logps,
+                    final_reward,
+                    True,
+                    last_value,
+                    last_mask
+                )
+
                 agent.update()
                 agent.new_game = True
                 agent.step_counter = 0
                 print(f"[DATA] Final reward applied: {final_reward}")
 
-            log_game(winner=winner, mrx_reward=final_reward, rounds=current_round)
+            if agent:
+                agent.episode_reward = 0.0
+
+            log_game(winner=winner, mrx_reward=total_episode_reward, rounds=current_round)
             sock.send_json({"status": "ok"})
             continue
 
@@ -252,13 +285,19 @@ try:
                 n_agents=n_agents
             )
 
+        moves = req.get("possible_moves", [])
+        action_mask = [1.0 if i < len(moves) else 0.0 for i in range(agent.act_dim)]
+
         joint_obs = np.concatenate([obs for _ in range(agent.n_agents)])
         actions, logps = [], []
 
         for i in range(agent.n_agents):
-            a, lp = agent.select_action(obs, i)
+            a, lp = agent.select_action(obs, i, action_mask)
             actions.append(a)
             logps.append(lp)
+
+        idx = actions[0]
+        sel = moves[idx]
 
         reward = req.get("game_state", {}).get("reward", 0.0)
 
@@ -266,9 +305,11 @@ try:
             reward = 0.0
             agent.new_game = False
 
+        agent.episode_reward += reward
+
         done = req.get("game_over", False)
 
-        agent.store(joint_obs, actions, logps, reward, done)
+        agent.store(joint_obs, actions, logps, reward, done, action_mask)
         print(f"[DATA] Stored step | reward={reward:.3f} done={done}")
 
         if done or agent.step_counter >= agent.rollout_len:
@@ -276,12 +317,8 @@ try:
             agent.update()
             agent.step_counter = 0
 
-        moves = req.get("possible_moves", [])
-        raw_idx = actions[0]
-        idx = (raw_idx % len(moves)) if moves else 0
-
         sel = moves[idx] if moves else {}
-        print(f"[DECISION] Raw action={raw_idx} -> move #{idx} out of {len(moves)} options")
+        print(f"[DECISION] move #{idx} out of {len(moves)} options")
         sock.send_json({
             "status": "ok",
             "selected_index": idx,

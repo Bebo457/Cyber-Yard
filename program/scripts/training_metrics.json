@@ -1,142 +1,100 @@
 {
   "games": [
     {
-      "timestamp": "2025-12-29T09:44:49.342410",
+      "timestamp": "2025-12-31T12:03:02.864230",
       "winner": "Detectives",
-      "mrx_reward": -100.0,
+      "mrx_reward": -978.75,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T09:46:04.870887",
+      "timestamp": "2025-12-31T12:03:32.997496",
       "winner": "Detectives",
-      "mrx_reward": -100.0,
+      "mrx_reward": -896.9,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T09:50:37.552903",
+      "timestamp": "2025-12-31T12:04:50.575056",
       "winner": "Detectives",
-      "mrx_reward": -100.0,
+      "mrx_reward": -892.1,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T09:55:59.274178",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2025-12-29T09:59:02.783778",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2025-12-29T09:59:20.531259",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2025-12-29T10:02:35.687025",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2025-12-29T10:03:17.534564",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2025-12-29T10:21:04.677833",
+      "timestamp": "2025-12-31T12:07:35.534872",
       "winner": "Detectives",
       "mrx_reward": -1000.0,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:21:48.079795",
+      "timestamp": "2025-12-31T12:08:03.193841",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -913.6,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:22:34.874081",
+      "timestamp": "2025-12-31T12:10:30.737827",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -844.8,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:25:11.882114",
+      "timestamp": "2025-12-31T12:12:39.551606",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -868.65,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:26:19.350327",
+      "timestamp": "2025-12-31T12:13:00.039409",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -909.15,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:30:49.961152",
+      "timestamp": "2025-12-31T12:14:53.460108",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -888.85,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:33:42.956868",
+      "timestamp": "2025-12-31T12:15:11.566544",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -928.7,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:35:57.467692",
+      "timestamp": "2025-12-31T12:15:41.430346",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -929.05,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:36:13.099929",
+      "timestamp": "2025-12-31T12:16:00.434057",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -955.5,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:37:11.937401",
+      "timestamp": "2025-12-31T12:28:28.398203",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -981.5,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2025-12-29T10:43:49.497562",
+      "timestamp": "2025-12-31T12:29:05.195766",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2025-12-29T10:44:16.351986",
-      "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -934.65,
       "det_reward": 0,
       "rounds": 0
     }
