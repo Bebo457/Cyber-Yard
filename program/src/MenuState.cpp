@@ -2,6 +2,7 @@
 #include "Application.h"
 #include "StateManager.h"
 #include "HUDOverlay.h"
+#include "GameSettings.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -33,6 +34,7 @@ namespace States {
 
     void MenuState::BuildMainMenu() {
         m_b_NewGameSubmenu = false;
+        m_b_OnlineGameSubmenu = false;
 
         m_Buttons[0].m_s_Text = "New Game";
         m_Buttons[1].m_s_Text = "Load Game";
@@ -57,6 +59,18 @@ namespace States {
         for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
     }
 
+    void MenuState::BuildOnlineMenu(){
+        m_b_OnlineGameSubmenu = true;
+
+        m_Buttons[0].m_s_Text = "Host Game";
+        m_Buttons[1].m_s_Text = "Join Game";
+        m_Buttons[2].m_s_Text = "Settings";
+        m_Buttons[3].m_s_Text = "Back";
+
+        m_i_SelectedOption = 0;
+        m_i_HoverOption = -1;
+        for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
+    }
 
 void MenuState::OnEnter(Core::Application* p_App) {
     m_i_SelectedOption = 0;
@@ -325,6 +339,7 @@ void MenuState::Render(Core::Application* p_App) {
 
 
 void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
+    auto& settings = Core::Settings();
     if (event.type == SDL_KEYDOWN) {
         switch (event.key.keysym.sym) {
         case SDLK_UP:
@@ -340,7 +355,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                     p_App->GetStateManager()->ChangeState("setup", p_App);
                     break;
                 case 1: // Online LAN
-                    p_App->GetStateManager()->ChangeState("setup", p_App);
+                    BuildOnlineMenu();
                     break;
                 case 2: // Map Generator
                     p_App->GetStateManager()->ChangeState("mapgen", p_App);
@@ -350,20 +365,41 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                     break;
                 }
             }
-            else {
-                switch (m_i_SelectedOption) {
-                case 0: // New Game
-                    BuildNewGameMenu();  // Submenu change
-                    break;
-                case 1: // Load Game
-                    break;
-                case 2: // Settings
-                    break;
-                case 3: // Exit
-                    p_App->RequestExit();  // END
-                    break;
+            else if (m_b_NewGameSubmenu) {
+                    switch (m_i_SelectedOption) {
+                    case 0: // Local
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
+                        break;
+                    case 1: // Online LAN
+                        settings.onlineMode = true;
+                        BuildOnlineMenu();
+                        break;
+                    case 2: // Map Generator
+                        p_App->GetStateManager()->ChangeState("mapgen", p_App);
+                        break;
+                    case 3: // Back
+                        BuildMainMenu();
+                        break;
+                    }
                 }
-            }
+            else if (m_b_OnlineGameSubmenu) {
+                switch (m_i_SelectedOption) {
+                    case 0: // Host Game
+                        settings.onlineIsServer = true;
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
+                        break;
+                    case 1: // Join Game
+                        settings.onlineIsServer = false;
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
+                        break;
+                    case 2: // Settings
+                        
+                        break;
+                    case 3: // Back
+                        BuildMainMenu();
+                        break;
+                    }
+                }
             break;
         case SDLK_ESCAPE:
             if (m_b_NewGameSubmenu) BuildMainMenu();
@@ -399,16 +435,35 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                         break;
                     }
                 }
-                else {
+                else if (m_b_NewGameSubmenu and !m_b_OnlineGameSubmenu) {
                     switch (i) {
                     case 0: // Local
                         p_App->GetStateManager()->ChangeState("setup", p_App);
                         break;
                     case 1: // Online LAN
-                        p_App->GetStateManager()->ChangeState("setup", p_App);
+                        settings.onlineMode = true;
+                        BuildOnlineMenu();
                         break;
                     case 2: // Map Generator
                         p_App->GetStateManager()->ChangeState("mapgen", p_App);
+                        break;
+                    case 3: // Back
+                        BuildMainMenu();
+                        break;
+                    }
+                }
+                else if (m_b_OnlineGameSubmenu) {
+                    switch (i) {
+                    case 0: // Host Game
+                        settings.onlineIsServer = true;
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
+                        break;
+                    case 1: // Join Game
+                        settings.onlineIsServer = false;
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
+                        break;
+                    case 2: // Settings
+                        
                         break;
                     case 3: // Back
                         BuildMainMenu();

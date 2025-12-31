@@ -54,6 +54,7 @@ public:
     void BroadcastMessage(const std::string& msg);
 
 
+
 private:
 
     bool m_b_GameActive;
@@ -265,6 +266,13 @@ private:
 
     // Network manager
     std::unique_ptr<Net::NetworkManager> m_pNetworkManager;
+
+    // Serialize the current players into a string to send to clients
+    std::string SerializePlayerStates(const std::vector<Core::Player>& players) const;
+
+    // Deserialize a string received from the server and update local players
+    void DeserializePlayerStates(const std::string& data, std::vector<Core::Player>& players);
+
 };
 
 } // namespace States

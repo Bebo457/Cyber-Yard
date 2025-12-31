@@ -27,9 +27,11 @@ public:
 
 private:
     bool m_b_NewGameSubmenu = false;
+    bool m_b_OnlineGameSubmenu = false;
 
     void BuildMainMenu();
     void BuildNewGameMenu();
+    void BuildOnlineMenu();
 
     int m_i_SelectedOption;
     int m_i_HoverOption;

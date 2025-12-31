@@ -13,6 +13,7 @@ NetworkManager::~NetworkManager() {
     enet_deinitialize();
 }
 
+
 bool NetworkManager::StartServer(uint16_t port) {
     if (m_Role != NetRole::None) return false;
 
@@ -49,6 +50,14 @@ bool NetworkManager::StartClient(const std::string& host, uint16_t port) {
     m_Peer = enet_host_connect(m_Host, &address, 2, 0);
     if (!m_Peer) {
         std::cerr << "[Network] Could not connect to server.\n";
+        return false;
+    }
+
+    ENetEvent event;
+    if (enet_host_service(m_Host, &event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT) {
+        std::cout << "[Network] Connected to server\n";
+    } else {
+        std::cerr << "[Network] Connection to server failed (timeout)\n";
         return false;
     }
 
@@ -129,3 +138,4 @@ void NetworkManager::NetworkLoop() {
         }
     }
 }
+
