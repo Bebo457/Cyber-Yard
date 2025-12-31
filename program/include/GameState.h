@@ -4,6 +4,7 @@
 #include "IGameState.h"
 #include "GameConstants.h"
 #include "MapDataLoader.h"
+#include "WaterRenderer.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -78,6 +79,9 @@ private:
     GLuint m_VAO_Circle;
     GLuint m_VBO_Circle;
     int m_i_CircleVertexCount;
+
+    std::unique_ptr<Rendering::WaterRenderer> u_WaterRenderer;
+    float m_f_Time = 0.0f;
     std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
     struct StationCircle {
         glm::vec2 position;
