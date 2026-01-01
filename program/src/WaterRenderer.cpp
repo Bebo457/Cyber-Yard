@@ -175,15 +175,15 @@ void WaterRenderer::CreateShaders() {
             float f_FlowOffset = uTime * f_FlowSpeed;
 
             // wobble
-            float f_MusgraveScale = 1.5;
-            float f_MusgraveSpeed = 0.15;
+            float f_MusgraveScale = 0.5;
+            float f_MusgraveSpeed = 0.1;
             vec2 uv_MusgraveInput = vUV * f_MusgraveScale + uTime * f_MusgraveSpeed;
             float f_WobbleX = musgrave(uv_MusgraveInput, 3) * 2.0 - 1.0;
             float f_WobbleY = musgrave(uv_MusgraveInput + vec2(100.0, 50.0), 3) * 2.0 - 1.0;
 
             vec2 uv_Animated = vUV;
-            uv_Animated.x += f_FlowOffset + f_WobbleX * f_WobbleAmount * 0.15;
-            uv_Animated.y += f_WobbleY * f_WobbleAmount * 0.3;
+            uv_Animated.x += f_FlowOffset + f_WobbleX * f_WobbleAmount * 1.0;
+            uv_Animated.y += f_WobbleY * f_WobbleAmount * 1.0;
 
             // Voronoi F1 and F2
             vec2 vec2_Voronoi1 = voronoi(uv_Animated * uVoronoiScale1, uVoronoiPowerExponent);
@@ -393,50 +393,36 @@ void WaterRenderer::Render(const glm::mat4& mat4_ViewProjection, float f_Time, c
         return;
     }
 
-    // 4x4 parameter test grid ---------------------------------------------------
-    float f_QuadSize = 4.0f;
-    float f_Spacing = 0.5f;
-    float f_StartX = -6.0f;
-    float f_StartZ = 0.0f;
+    // test water quad
+    float f_QuadSize = 8.0f;
+    float f_X = -10.0f;
+    float f_Z = 8.0f;
 
-    float f_Scale1Values[4] = {2.0f, 5.0f, 8.0f, 12.0f};
-    float f_Scale2Values[4] = {2.0f, 5.0f, 8.0f, 12.0f};
+    // Render caustics layer
+    glm::mat4 mat4_CausticsModel = glm::translate(glm::mat4(1.0f), glm::vec3(f_X, m_f_WaterHeight - m_f_CausticsDepth, f_Z));
+    mat4_CausticsModel = glm::scale(mat4_CausticsModel, glm::vec3(f_QuadSize, 1.0f, f_QuadSize));
+    mat4_CausticsModel = mat4_GlobalScale * mat4_CausticsModel;
+    glm::mat4 mat4_CausticsMVP = mat4_ViewProjection * mat4_CausticsModel;
 
-    for (int row = 0; row < 4; row++) {
-        for (int col = 0; col < 4; col++) {
-            float f_X = f_StartX + col * (f_QuadSize + f_Spacing);
-            float f_Z = f_StartZ + row * (f_QuadSize + f_Spacing);
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_CausticsMVP));
+    glUniform1i(causticsLayerLoc, 1);
 
-            glUniform1f(voronoi1Loc, f_Scale1Values[row]);
-            glUniform1f(voronoi2Loc, f_Scale2Values[col]);
+    glBindVertexArray(m_VAO_Quad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
 
-            // Render caustics layer
-            glm::mat4 mat4_CausticsModel = glm::translate(glm::mat4(1.0f), glm::vec3(f_X, m_f_WaterHeight - m_f_CausticsDepth, f_Z));
-            mat4_CausticsModel = glm::scale(mat4_CausticsModel, glm::vec3(f_QuadSize, 1.0f, f_QuadSize));
-            mat4_CausticsModel = mat4_GlobalScale * mat4_CausticsModel;
-            glm::mat4 mat4_CausticsMVP = mat4_ViewProjection * mat4_CausticsModel;
+    // Render top surface
+    glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f), glm::vec3(f_X, m_f_WaterHeight, f_Z));
+    mat4_Model = glm::scale(mat4_Model, glm::vec3(f_QuadSize, 1.0f, f_QuadSize));
+    mat4_Model = mat4_GlobalScale * mat4_Model;
+    glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_Model;
 
-            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_CausticsMVP));
-            glUniform1i(causticsLayerLoc, 1);
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+    glUniform1i(causticsLayerLoc, 0);
 
-            glBindVertexArray(m_VAO_Quad);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            glBindVertexArray(0);
-
-            // Render top surface
-            glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f), glm::vec3(f_X, m_f_WaterHeight, f_Z));
-            mat4_Model = glm::scale(mat4_Model, glm::vec3(f_QuadSize, 1.0f, f_QuadSize));
-            mat4_Model = mat4_GlobalScale * mat4_Model;
-            glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_Model;
-
-            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
-            glUniform1i(causticsLayerLoc, 0);
-
-            glBindVertexArray(m_VAO_Quad);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            glBindVertexArray(0);
-        }
-    }
+    glBindVertexArray(m_VAO_Quad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
 
     //restore OpenGL state
     glDepthMask(b_DepthMaskWas);

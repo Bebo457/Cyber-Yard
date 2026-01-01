@@ -42,16 +42,16 @@ private:
 
     float m_f_WaterHeight = 0.1f;
     float m_f_VoronoiScale1 = 8.0f;
-    float m_f_VoronoiScale2 = 5.0f;
+    float m_f_VoronoiScale2 = 12.0f;
     float m_f_RippleDensity = 1.9f;
     float m_f_CausticsDepth = 0.5f;
     glm::vec3 m_vec3_WaterColor = glm::vec3(0.1f, 0.3f, 0.5f);
     glm::vec3 m_vec3_FoamColor = glm::vec3(1.0f, 1.0f, 1.0f);
 
-    float m_f_VoronoiPowerExponent = 0.7f;    // lower = rounder
-    float m_f_VoronoiEdgeSmooth = 0.3f;       //edge smoothstep range
-    float m_f_FoamThresholdMin = 0.2f;        // foam threshold min
-    float m_f_FoamThresholdMax = 0.6f;        // foam threshold max
+    float m_f_VoronoiPowerExponent = 0.5f;    // lower = rounder
+    float m_f_VoronoiEdgeSmooth = 0.4f;       //edge smoothstep range
+    float m_f_FoamThresholdMin = 0.1f;        // foam threshold min
+    float m_f_FoamThresholdMax = 0.2f;        // foam threshold max
 
     bool m_b_Initialized = false;
 };
