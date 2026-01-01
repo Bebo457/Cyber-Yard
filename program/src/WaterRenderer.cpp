@@ -79,89 +79,137 @@ void WaterRenderer::CreateShaders() {
 
         uniform float uTime;
         uniform float uWaterHeight;
+        uniform float uVoronoiScale1;
+        uniform float uVoronoiScale2;
+        uniform float uRippleDensity;
+        uniform int uIsCausticsLayer;
+        uniform vec3 uWaterColor;
+        uniform vec3 uFoamColor;
+        uniform float uVoronoiPowerExponent;
+        uniform float uVoronoiEdgeSmooth;
+        uniform float uFoamThresholdMin;
+        uniform float uFoamThresholdMax;
         out vec4 FragColor;
 
-        // Voronoi noise helper
+        // Hash functions , voronoi noise generator
         vec2 hash2(vec2 p) {
             p = vec2(dot(p, vec2(127.1, 311.7)),
                      dot(p, vec2(269.5, 183.3)));
             return fract(sin(p) * 43758.5453);
         }
 
-        float voronoi(vec2 uv) {
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        // musgrave displacement noise
+        float valueNoise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f); // Smoothstep
+
+            float a = hash(i);
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
+
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        // Musgrave (fBm)
+        float musgrave(vec2 p, int octaves) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            float frequency = 1.0;
+
+            for (int i = 0; i < octaves; i++) {
+                value += amplitude * valueNoise(p * frequency);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+
+            return value;
+        }
+
+        vec2 voronoi(vec2 uv, float powerExponent) {
             vec2 i = floor(uv);
             vec2 f = fract(uv);
 
-            float f_MinDist = 1.0;
+            float f_MinDist1 = 8.0;  // F1 - closest point
+            float f_MinDist2 = 8.0;  // F2 - second closest point
 
             for (int y = -1; y <= 1; y++) {
                 for (int x = -1; x <= 1; x++) {
                     vec2 neighbor = vec2(float(x), float(y));
                     vec2 point = hash2(i + neighbor);
 
-                    // Animate the points slightly
-                    point = 0.5 + 0.5 * sin(uTime * 0.5 + 6.2831 * point);
+                    //animate points
+                    point = 0.5 + 0.3 * sin(uTime * 0.3 + 6.2831 * point);
 
                     vec2 diff = neighbor + point - f;
                     float f_Dist = length(diff);
-                    f_MinDist = min(f_MinDist, f_Dist);
+
+                    f_Dist = pow(f_Dist, powerExponent);
+
+                    // F1 and F2 edge extraction
+                    if (f_Dist < f_MinDist1) {
+                        f_MinDist2 = f_MinDist1;
+                        f_MinDist1 = f_Dist;
+                    } else if (f_Dist < f_MinDist2) {
+                        f_MinDist2 = f_Dist;
+                    }
                 }
             }
 
-            return f_MinDist;
+            return vec2(f_MinDist1, f_MinDist2);
         }
 
         void main() {
             // Animation parameters
-            float f_FlowSpeed = 0.15;
-            float f_WobbleSpeed1 = 0.4;
-            float f_WobbleSpeed2 = 0.6;
+            float f_FlowSpeed = 0.15 * uRippleDensity;
+            float f_WobbleSpeed1 = 0.4 * uRippleDensity;
+            float f_WobbleSpeed2 = 0.6 * uRippleDensity;
             float f_WobbleAmount = 0.3;
 
-            // Linear movement along X axis
+            // Linear movement
             float f_FlowOffset = uTime * f_FlowSpeed;
 
-            // Wobble perpendicular to flow (along Y axis) using two cyclic functions
-            float f_WobbleOffset = sin(uTime * f_WobbleSpeed1) * f_WobbleAmount +
-                                   cos(uTime * f_WobbleSpeed2) * f_WobbleAmount * 0.5;
+            // wobble
+            float f_MusgraveScale = 1.5;
+            float f_MusgraveSpeed = 0.15;
+            vec2 uv_MusgraveInput = vUV * f_MusgraveScale + uTime * f_MusgraveSpeed;
+            float f_WobbleX = musgrave(uv_MusgraveInput, 3) * 2.0 - 1.0;
+            float f_WobbleY = musgrave(uv_MusgraveInput + vec2(100.0, 50.0), 3) * 2.0 - 1.0;
 
-            // Animated UV coordinates
             vec2 uv_Animated = vUV;
-            uv_Animated.x += f_FlowOffset;
-            uv_Animated.y += f_WobbleOffset;
+            uv_Animated.x += f_FlowOffset + f_WobbleX * f_WobbleAmount * 0.15;
+            uv_Animated.y += f_WobbleY * f_WobbleAmount * 0.3;
 
-            // Generate Voronoi pattern at two scales for detail
-            float f_VoronoiScale1 = 8.0;
-            float f_VoronoiScale2 = 16.0;
+            // Voronoi F1 and F2
+            vec2 vec2_Voronoi1 = voronoi(uv_Animated * uVoronoiScale1, uVoronoiPowerExponent);
+            vec2 vec2_Voronoi2 = voronoi(uv_Animated * uVoronoiScale2, uVoronoiPowerExponent);
 
-            float f_Voronoi1 = voronoi(uv_Animated * f_VoronoiScale1);
-            float f_Voronoi2 = voronoi(uv_Animated * f_VoronoiScale2);
+            float f_Edges1 = vec2_Voronoi1.y - vec2_Voronoi1.x;
+            float f_Edges2 = vec2_Voronoi2.y - vec2_Voronoi2.x;
+            f_Edges1 = smoothstep(0.0, uVoronoiEdgeSmooth, f_Edges1);
+            f_Edges2 = smoothstep(0.0, uVoronoiEdgeSmooth, f_Edges2);
 
-            // Combine voronoi layers for foam pattern
-            float f_Foam = f_Voronoi1 * 0.7 + f_Voronoi2 * 0.3;
+            float f_Foam = f_Edges1 * 0.6 + f_Edges2 * 0.4;
 
-            // Create foam edges (white where voronoi is low)
-            float f_FoamEdge = smoothstep(0.1, 0.3, f_Foam);
+            float f_FoamEdge = smoothstep(uFoamThresholdMin, uFoamThresholdMax, f_Foam);
 
-            // Top water layer - transparent blue-green with white foam
-            vec3 vec3_WaterColor = vec3(0.1, 0.4, 0.5);
-            vec3 vec3_FoamColor = vec3(1.0, 1.0, 1.0);
+            if (uIsCausticsLayer == 1) {
+                //bottom caustics layer
+                float f_ShadowIntensity = 1.0 - f_FoamEdge;
+                vec3 vec3_ShadowColor = vec3(0.0, 0.0, 0.0);
+                float f_ShadowAlpha = f_ShadowIntensity * 0.6;
+                FragColor = vec4(vec3_ShadowColor, f_ShadowAlpha);
+            } else {
+                vec3 vec3_TopColor = mix(uFoamColor, uWaterColor, f_FoamEdge);
+                float f_TopAlpha = 0.6;
 
-            vec3 vec3_TopColor = mix(vec3_FoamColor, vec3_WaterColor, f_FoamEdge);
-            float f_TopAlpha = 0.6;
-
-            // Calculate Y distance from water surface for caustics
-            float f_DistFromSurface = abs(vWorldPos.y - uWaterHeight);
-            float f_CausticsStrength = 1.0 - clamp(f_DistFromSurface / 0.5, 0.0, 1.0);
-
-            // Bottom caustics layer - darker version with higher contrast
-            float f_CausticPattern = pow(1.0 - f_Foam, 2.0) * f_CausticsStrength;
-            vec3 vec3_CausticColor = vec3(0.05, 0.15, 0.2) + vec3_TopColor * f_CausticPattern * 0.3;
-
-            // Blend top and caustics based on view angle
-            vec3 vec3_FinalColor = vec3_TopColor * 0.7 + vec3_CausticColor * 0.3;
-
-            FragColor = vec4(vec3_FinalColor, f_TopAlpha);
+                FragColor = vec4(vec3_TopColor, f_TopAlpha);
+            }
         }
     )";
 
@@ -314,28 +362,81 @@ void WaterRenderer::Render(const glm::mat4& mat4_ViewProjection, float f_Time, c
     glDisable(GL_CULL_FACE);
     glUseProgram(m_ShaderProgram);
 
-    glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f), glm::vec3(-6.0f, m_f_WaterHeight, 8.0f));
-    mat4_Model = glm::scale(mat4_Model, glm::vec3(8.0f, 1.0f, 8.0f));
-    mat4_Model = mat4_GlobalScale * mat4_Model;
-    glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_Model;
-
     GLint mvpLoc = glGetUniformLocation(m_ShaderProgram, "uMVP");
-    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
-
     GLint timeLoc = glGetUniformLocation(m_ShaderProgram, "uTime");
-    glUniform1f(timeLoc, f_Time);
-
     GLint heightLoc = glGetUniformLocation(m_ShaderProgram, "uWaterHeight");
+    GLint voronoi1Loc = glGetUniformLocation(m_ShaderProgram, "uVoronoiScale1");
+    GLint voronoi2Loc = glGetUniformLocation(m_ShaderProgram, "uVoronoiScale2");
+    GLint rippleLoc = glGetUniformLocation(m_ShaderProgram, "uRippleDensity");
+    GLint causticsLayerLoc = glGetUniformLocation(m_ShaderProgram, "uIsCausticsLayer");
+    GLint waterColorLoc = glGetUniformLocation(m_ShaderProgram, "uWaterColor");
+    GLint foamColorLoc = glGetUniformLocation(m_ShaderProgram, "uFoamColor");
+    GLint powerExpLoc = glGetUniformLocation(m_ShaderProgram, "uVoronoiPowerExponent");
+    GLint edgeSmoothLoc = glGetUniformLocation(m_ShaderProgram, "uVoronoiEdgeSmooth");
+    GLint foamMinLoc = glGetUniformLocation(m_ShaderProgram, "uFoamThresholdMin");
+    GLint foamMaxLoc = glGetUniformLocation(m_ShaderProgram, "uFoamThresholdMax");
+
+    glUniform1f(timeLoc, f_Time);
     glUniform1f(heightLoc, m_f_WaterHeight);
+    glUniform1f(voronoi1Loc, m_f_VoronoiScale1);
+    glUniform1f(voronoi2Loc, m_f_VoronoiScale2);
+    glUniform1f(rippleLoc, m_f_RippleDensity);
+    glUniform3fv(waterColorLoc, 1, glm::value_ptr(m_vec3_WaterColor));
+    glUniform3fv(foamColorLoc, 1, glm::value_ptr(m_vec3_FoamColor));
+    glUniform1f(powerExpLoc, m_f_VoronoiPowerExponent);
+    glUniform1f(edgeSmoothLoc, m_f_VoronoiEdgeSmooth);
+    glUniform1f(foamMinLoc, m_f_FoamThresholdMin);
+    glUniform1f(foamMaxLoc, m_f_FoamThresholdMax);
 
     if (m_VAO_Quad == 0) {
         std::cerr << "WaterRenderer: Invalid VAO" << std::endl;
         return;
     }
 
-    glBindVertexArray(m_VAO_Quad);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
+    // 4x4 parameter test grid ---------------------------------------------------
+    float f_QuadSize = 4.0f;
+    float f_Spacing = 0.5f;
+    float f_StartX = -6.0f;
+    float f_StartZ = 0.0f;
+
+    float f_Scale1Values[4] = {2.0f, 5.0f, 8.0f, 12.0f};
+    float f_Scale2Values[4] = {2.0f, 5.0f, 8.0f, 12.0f};
+
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) {
+            float f_X = f_StartX + col * (f_QuadSize + f_Spacing);
+            float f_Z = f_StartZ + row * (f_QuadSize + f_Spacing);
+
+            glUniform1f(voronoi1Loc, f_Scale1Values[row]);
+            glUniform1f(voronoi2Loc, f_Scale2Values[col]);
+
+            // Render caustics layer
+            glm::mat4 mat4_CausticsModel = glm::translate(glm::mat4(1.0f), glm::vec3(f_X, m_f_WaterHeight - m_f_CausticsDepth, f_Z));
+            mat4_CausticsModel = glm::scale(mat4_CausticsModel, glm::vec3(f_QuadSize, 1.0f, f_QuadSize));
+            mat4_CausticsModel = mat4_GlobalScale * mat4_CausticsModel;
+            glm::mat4 mat4_CausticsMVP = mat4_ViewProjection * mat4_CausticsModel;
+
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_CausticsMVP));
+            glUniform1i(causticsLayerLoc, 1);
+
+            glBindVertexArray(m_VAO_Quad);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+
+            // Render top surface
+            glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f), glm::vec3(f_X, m_f_WaterHeight, f_Z));
+            mat4_Model = glm::scale(mat4_Model, glm::vec3(f_QuadSize, 1.0f, f_QuadSize));
+            mat4_Model = mat4_GlobalScale * mat4_Model;
+            glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_Model;
+
+            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+            glUniform1i(causticsLayerLoc, 0);
+
+            glBindVertexArray(m_VAO_Quad);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+        }
+    }
 
     //restore OpenGL state
     glDepthMask(b_DepthMaskWas);
@@ -364,17 +465,38 @@ void WaterRenderer::RenderPolygon(const std::vector<glm::vec2>& vec_BoundaryPoin
     glDisable(GL_CULL_FACE);
     glUseProgram(m_ShaderProgram);
 
+    GLint mvpLoc = glGetUniformLocation(m_ShaderProgram, "uMVP");
+    GLint timeLoc = glGetUniformLocation(m_ShaderProgram, "uTime");
+    GLint heightLoc = glGetUniformLocation(m_ShaderProgram, "uWaterHeight");
+    GLint voronoi1Loc = glGetUniformLocation(m_ShaderProgram, "uVoronoiScale1");
+    GLint voronoi2Loc = glGetUniformLocation(m_ShaderProgram, "uVoronoiScale2");
+    GLint rippleLoc = glGetUniformLocation(m_ShaderProgram, "uRippleDensity");
+    GLint causticsLayerLoc = glGetUniformLocation(m_ShaderProgram, "uIsCausticsLayer");
+    GLint waterColorLoc = glGetUniformLocation(m_ShaderProgram, "uWaterColor");
+    GLint foamColorLoc = glGetUniformLocation(m_ShaderProgram, "uFoamColor");
+    GLint powerExpLoc = glGetUniformLocation(m_ShaderProgram, "uVoronoiPowerExponent");
+    GLint edgeSmoothLoc = glGetUniformLocation(m_ShaderProgram, "uVoronoiEdgeSmooth");
+    GLint foamMinLoc = glGetUniformLocation(m_ShaderProgram, "uFoamThresholdMin");
+    GLint foamMaxLoc = glGetUniformLocation(m_ShaderProgram, "uFoamThresholdMax");
+
+    glUniform1f(timeLoc, f_Time);
+    glUniform1f(heightLoc, m_f_WaterHeight);
+    glUniform1f(voronoi1Loc, m_f_VoronoiScale1);
+    glUniform1f(voronoi2Loc, m_f_VoronoiScale2);
+    glUniform1f(rippleLoc, m_f_RippleDensity);
+    glUniform3fv(waterColorLoc, 1, glm::value_ptr(m_vec3_WaterColor));
+    glUniform3fv(foamColorLoc, 1, glm::value_ptr(m_vec3_FoamColor));
+    glUniform1f(powerExpLoc, m_f_VoronoiPowerExponent);
+    glUniform1f(edgeSmoothLoc, m_f_VoronoiEdgeSmooth);
+    glUniform1f(foamMinLoc, m_f_FoamThresholdMin);
+    glUniform1f(foamMaxLoc, m_f_FoamThresholdMax);
+
+    // Render polygon (top layer only for now)
     glm::mat4 mat4_Model = mat4_GlobalScale;
     glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_Model;
 
-    GLint mvpLoc = glGetUniformLocation(m_ShaderProgram, "uMVP");
     glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
-
-    GLint timeLoc = glGetUniformLocation(m_ShaderProgram, "uTime");
-    glUniform1f(timeLoc, f_Time);
-
-    GLint heightLoc = glGetUniformLocation(m_ShaderProgram, "uWaterHeight");
-    glUniform1f(heightLoc, m_f_WaterHeight);
+    glUniform1i(causticsLayerLoc, 0);
 
     glBindVertexArray(m_VAO_Polygon);
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vec_BoundaryPoints.size() * 3));
@@ -389,6 +511,34 @@ void WaterRenderer::RenderPolygon(const std::vector<glm::vec2>& vec_BoundaryPoin
 
 void WaterRenderer::SetWaterHeight(float f_Height) {
     m_f_WaterHeight = f_Height;
+}
+
+void WaterRenderer::SetVoronoiScale(float f_Scale1, float f_Scale2) {
+    m_f_VoronoiScale1 = f_Scale1;
+    m_f_VoronoiScale2 = f_Scale2;
+}
+
+void WaterRenderer::SetRippleDensity(float f_Density) {
+    m_f_RippleDensity = f_Density;
+}
+
+void WaterRenderer::SetCausticsDepth(float f_Depth) {
+    m_f_CausticsDepth = f_Depth;
+}
+
+void WaterRenderer::SetWaterColor(const glm::vec3& vec3_Color) {
+    m_vec3_WaterColor = vec3_Color;
+}
+
+void WaterRenderer::SetFoamColor(const glm::vec3& vec3_Color) {
+    m_vec3_FoamColor = vec3_Color;
+}
+
+void WaterRenderer::SetVoronoiSmoothness(float f_PowerExponent, float f_EdgeSmooth, float f_FoamThresholdMin, float f_FoamThresholdMax) {
+    m_f_VoronoiPowerExponent = f_PowerExponent;
+    m_f_VoronoiEdgeSmooth = f_EdgeSmooth;
+    m_f_FoamThresholdMin = f_FoamThresholdMin;
+    m_f_FoamThresholdMax = f_FoamThresholdMax;
 }
 
 } // namespace Rendering
