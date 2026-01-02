@@ -127,8 +127,10 @@ class MAPPOAgent:
             obs_t = torch.FloatTensor(obs)
             logits = self.actors_old[agent_id].net(obs_t)
 
-            mask = torch.FloatTensor(action_mask)  # 1 = legal, 0 = illegal
-            masked_logits = logits + (mask + 1e-8).log()
+            mask = torch.tensor(action_mask, dtype=torch.float32)
+            if mask.sum() <= 0:
+                mask = torch.ones_like(mask)
+            masked_logits = logits.masked_fill(mask < 0.5, -1e9)
 
             probs = torch.softmax(masked_logits, dim=-1)
             dist = Categorical(probs)
@@ -169,16 +171,29 @@ class MAPPOAgent:
         values = list(values)
 
         advantages = self.compute_gae(rewards, values, dones)
-        returns = advantages + torch.tensor(values)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        returns = advantages + torch.tensor(values, dtype=torch.float32)
+
+        if advantages.numel() > 1:
+            adv_mean = advantages.mean()
+            adv_std = advantages.std(unbiased=False)
+            if adv_std > 1e-8:
+                advantages = (advantages - adv_mean) / (adv_std + 1e-8)
+            else:
+                advantages = advantages - adv_mean
+        else:
+            advantages = advantages - advantages.mean()
 
         loss = 0
+        mask_tensor = torch.tensor(np.array(masks, dtype=np.float32))
+        zero_rows = (mask_tensor.sum(dim=1, keepdim=True) <= 0)
+        if zero_rows.any():
+            mask_tensor = mask_tensor.masked_fill(zero_rows, 1.0)
+        mask_tensor = mask_tensor.to(joint_obs.device)
         for i in range(self.n_agents):
             obs_i = joint_obs[:, i * self.obs_dim:(i + 1) * self.obs_dim]
             logits = self.actors[i].net(obs_i)
 
-            mask = torch.FloatTensor(masks[0])  # ta sama maska dla całego rolloutu
-            masked_logits = logits + (mask + 1e-8).log()
+            masked_logits = logits.masked_fill(mask_tensor < 0.5, -1e9)
 
             dist = Categorical(logits=masked_logits)
             new_logp = dist.log_prob(torch.tensor([a[i] for a in actions]))
@@ -192,7 +207,7 @@ class MAPPOAgent:
             loss -= surr.mean()
             loss -= 0.01 * entropy
 
-        values_pred = self.critic(joint_obs).squeeze()
+        values_pred = self.critic(joint_obs).view(-1)
         loss += 0.5 * nn.MSELoss()(values_pred, returns.detach())
 
         self.optimizer.zero_grad()
@@ -286,6 +301,11 @@ try:
             )
 
         moves = req.get("possible_moves", [])
+        if not moves:
+            print("[WARN] Engine przesłał pustą listę ruchów - brak decyzji")
+            sock.send_json({"status": "ok", "selected_index": None})
+            continue
+
         action_mask = [1.0 if i < len(moves) else 0.0 for i in range(agent.act_dim)]
 
         joint_obs = np.concatenate([obs for _ in range(agent.n_agents)])
@@ -297,6 +317,11 @@ try:
             logps.append(lp)
 
         idx = actions[0]
+        if idx >= len(moves):
+            print(f"[WARN] idx {idx} poza zakresem -> używam ostatniego ruchu")
+            idx = len(moves) - 1
+        if idx < 0:
+            idx = 0
         sel = moves[idx]
 
         reward = req.get("game_state", {}).get("reward", 0.0)
