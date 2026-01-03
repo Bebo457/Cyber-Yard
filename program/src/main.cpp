@@ -14,6 +14,10 @@ ScotlandYard::Core::AIAlgorithm ParseMrXAlgorithm(const std::string& s_Algo) {
     if (s_Algo == "decoy") return AIAlgorithm::DecoyMovementMrX;
     if (s_Algo == "montecarlo") return AIAlgorithm::MonteCarloMrX;
     if (s_Algo == "dfs") return AIAlgorithm::DFSMrX;
+    // ML algorithms
+    if (s_Algo == "ppo") return AIAlgorithm::PPOMrX;
+    if (s_Algo == "mappo") return AIAlgorithm::MAPPOMrX;
+    if (s_Algo == "sac") return AIAlgorithm::DiscreteSACMrX;
 
     std::cerr << "Invalid MrX algorithm '" << s_Algo << "'. Using Random.\n";
     return AIAlgorithm::Random;
@@ -28,6 +32,10 @@ ScotlandYard::Core::AIAlgorithm ParseDetectivesAlgorithm(const std::string& s_Al
     if (s_Algo == "greedy") return AIAlgorithm::GreedyShortestPathPolice;
     if (s_Algo == "frontsearch") return AIAlgorithm::FrontSearchEncirclementPolice;
     if (s_Algo == "neural" || s_Algo == "neuralnetpolice") return AIAlgorithm::NeuralNetPolice;
+    // ML algorithms
+    if (s_Algo == "ppo") return AIAlgorithm::PPOPolice;
+    if (s_Algo == "mappo") return AIAlgorithm::MAPPOPolice;
+    if (s_Algo == "sac") return AIAlgorithm::DiscreteSACPolice;
 
     std::cerr << "Invalid Detectives algorithm '" << s_Algo << "'. Using Random.\n";
     return AIAlgorithm::Random;
