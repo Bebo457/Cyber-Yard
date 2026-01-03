@@ -32,7 +32,7 @@ private:
 
     GLuint m_TexSidewalk = 0;
     GLuint m_TexGrass = 0;
-    GLuint m_TexMask = 0;          
+    GLuint m_TexMask = 0;
     bool   m_b_UseMask = false;
 
     // Game state

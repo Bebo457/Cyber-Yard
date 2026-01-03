@@ -198,7 +198,7 @@ void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
 
 
 void EmptyEnvironmentState::Update(float f_DeltaTime) {
-    if (!m_b_GameActive) return;  
+    if (!m_b_GameActive) return;
     if (!m_b_Camera3D) return;
 
     // Angle friction and limits
@@ -309,7 +309,6 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
     glBindVertexArray(m_VAO_Plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
-
 
     // HUD
     UI::SetViewport(i_W, i_H);

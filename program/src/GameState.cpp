@@ -658,6 +658,11 @@ void GameState::OnEnter(Core::Application* p_App) {
         ScotlandYard::UI::SetRound(1);
     }
 
+    // Water renderer initialization
+    u_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
+    u_WaterRenderer->Initialize();
+    u_WaterRenderer->SetWaterHeight(0.1f);
+
     }  // End of OpenGL initialization guard
 
     // Initialize players from graph data (random distinct nodes)
@@ -1094,6 +1099,11 @@ void GameState::OnExit(Core::Application* p_App) {
     }
 
     if (!p_App || !p_App->IsTrainingMode()) {
+    if (u_WaterRenderer) {
+        u_WaterRenderer->Cleanup();
+        u_WaterRenderer.reset();
+    }
+
     if (m_VAO_Plane) {
         glDeleteVertexArrays(1, &m_VAO_Plane);
         m_VAO_Plane = 0;
@@ -1260,6 +1270,8 @@ void GameState::OnResume() {
 void GameState::Update(float f_DeltaTime) {
     if (!m_b_GameActive) return;
 
+    m_f_Time += f_DeltaTime;
+
     //Obsługa wiadomości sieciowych
     PollNetworkMessages(); 
 
@@ -1376,6 +1388,12 @@ void GameState::Render(Core::Application* p_App) {
     }
 
     RenderBoard(p_App, mat4_View, mat4_Projection);
+
+    //water rendering
+    if (u_WaterRenderer) {
+        u_WaterRenderer->Render(mat4_Projection * mat4_View, m_f_Time, m_mat4_GlobalScaleMatrix);
+    }
+
     RenderEdges(mat4_View, mat4_Projection);
     RenderStations(mat4_View, mat4_Projection);
     // Draw numeric labels on top of station circles

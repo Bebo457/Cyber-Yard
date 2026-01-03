@@ -93,6 +93,7 @@ set(SOURCES
     src/PythonBridge.cpp
     src/TreeGenerator.cpp
     src/TreePlacement.cpp
+    src/WaterRenderer.cpp
 )
 
 set(HEADERS
@@ -118,6 +119,7 @@ set(HEADERS
     include/PythonBridge.h
     include/TreeGenerator.h
     include/TreePlacement.h
+    include/WaterRenderer.h
 )
 
 # EXE =================================================
