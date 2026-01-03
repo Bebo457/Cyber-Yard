@@ -826,8 +826,16 @@ namespace UI {
         float f_TX0, f_TX1, f_TY0, f_TY1, f_BX0, f_BX1, f_BY0, f_BY1;
         computeBars(f_TX0, f_TX1, f_TY0, f_TY1, f_BX0, f_BX1, f_BY0, f_BY1);
 
+        int i_SavedW = g_i_ViewportWidth;
+        int i_SavedH = g_i_ViewportHeight;
+
+        glViewport(0, 0, p_App->GetWidth(), p_App->GetHeight());
+        SetViewport(p_App->GetWidth(), p_App->GetHeight());
         drawTopBar(f_TX0, f_TY0, f_TX1, f_TY1, p_App);
         drawBottomBar(f_BX0, f_BY0, f_BX1, f_BY1, p_App);
+
+        SetViewport(i_SavedW, i_SavedH);
+        p_App->UpdateUIScaling();
 
         if (g_b_ShowMrXButtons.load()) {
             int i_W = p_App->GetVirtualWidth();

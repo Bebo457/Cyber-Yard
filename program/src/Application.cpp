@@ -268,6 +268,33 @@ void Application::UpdateUIScaling() {
     glViewport(m_i_ViewportOffsetX, m_i_ViewportOffsetY, i_ViewportWidth, i_ViewportHeight);
 }
 
+void Application::TransformMouseToVirtual(int mouseX, int mouseY, float& virtualX, float& virtualY) const {
+    float f_ReferenceAspect = static_cast<float>(m_i_ReferenceWidth) / static_cast<float>(m_i_ReferenceHeight);
+    float f_CurrentAspect = static_cast<float>(m_i_Width) / static_cast<float>(m_i_Height);
+
+    int i_ViewportWidth, i_ViewportHeight;
+    int i_OffsetX, i_OffsetY;
+
+    if (f_CurrentAspect > f_ReferenceAspect) {
+        i_ViewportHeight = m_i_Height;
+        i_ViewportWidth = static_cast<int>(m_i_Height * f_ReferenceAspect);
+        i_OffsetX = (m_i_Width - i_ViewportWidth) / 2;
+        i_OffsetY = 0;
+    } else {
+        i_ViewportWidth = m_i_Width;
+        i_ViewportHeight = static_cast<int>(m_i_Width / f_ReferenceAspect);
+        i_OffsetX = 0;
+        i_OffsetY = (m_i_Height - i_ViewportHeight) / 2;
+    }
+
+    // viewport offset
+    float adjustedX = static_cast<float>(mouseX - i_OffsetX);
+    float adjustedY = static_cast<float>(mouseY - i_OffsetY);
+
+    virtualX = (adjustedX / static_cast<float>(i_ViewportWidth)) * static_cast<float>(m_i_VirtualWidth);
+    virtualY = (adjustedY / static_cast<float>(i_ViewportHeight)) * static_cast<float>(m_i_VirtualHeight);
+}
+
 void Application::Update(float f_DeltaTime) {
     m_p_StateManager->Update(f_DeltaTime);
 }

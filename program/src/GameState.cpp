@@ -1376,25 +1376,26 @@ void GameState::Render(Core::Application* p_App) {
         m_vec3_CameraPosition = m_vec3_Saved3DCameraPosition;
         glm::vec3 vec3_Target = m_vec3_CameraPosition + m_vec3_CameraFront;
         mat4_View = glm::lookAt(m_vec3_CameraPosition, vec3_Target, m_vec3_CameraUp);
-        mat4_Projection = glm::perspective(glm::radians(45.0f), float(m_i_Width)/m_i_Height, 0.1f,100.0f);
+        float f_VirtualAspect = float(p_App->GetVirtualWidth()) / float(p_App->GetVirtualHeight());
+        mat4_Projection = glm::perspective(glm::radians(45.0f), f_VirtualAspect, 0.1f,100.0f);
     } else {
         m_vec3_CameraVelocity = glm::vec3(0.0f);
         glm::vec3 vec3_CameraPos = glm::vec3(11.0f * m_f_GlobalScale, 5.0f * m_f_GlobalScale, 8.0f * m_f_GlobalScale);
         glm::vec3 vec3_CameraTarget = glm::vec3(11.0f * m_f_GlobalScale, 0.0f, 8.0f * m_f_GlobalScale);
         glm::vec3 vec3_CameraUp = glm::vec3(0, 0, -1);
         mat4_View = glm::lookAt(vec3_CameraPos, vec3_CameraTarget, vec3_CameraUp);
-        float f_Aspect = float(m_i_Width)/m_i_Height;
+        float f_VirtualAspect = float(p_App->GetVirtualWidth()) / float(p_App->GetVirtualHeight());
         float f_HalfHeight = 10.0f * m_f_GlobalScale;
-        float f_HalfWidth = f_HalfHeight * f_Aspect;
+        float f_HalfWidth = f_HalfHeight * f_VirtualAspect;
         mat4_Projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 10.0f);
     }
 
     RenderBoard(p_App, mat4_View, mat4_Projection);
 
     //water rendering
-    if (u_WaterRenderer) {
-        u_WaterRenderer->Render(mat4_Projection * mat4_View, m_f_Time, m_mat4_GlobalScaleMatrix);
-    }
+    //if (u_WaterRenderer) {
+    //    u_WaterRenderer->Render(mat4_Projection * mat4_View, m_f_Time, m_mat4_GlobalScaleMatrix);
+    //}
 
     RenderEdges(mat4_View, mat4_Projection);
     RenderStations(mat4_View, mat4_Projection);
@@ -2061,6 +2062,10 @@ void GameState::RenderPicking(Core::Application* p_App, const glm::mat4& mat4_Vi
     RenderPickingPass(mat4_Projection, mat4_View);
     ApplyDilationPass();
 
+    if (p_App) {
+        p_App->UpdateUIScaling();
+    }
+
     int i_WindowWidth = p_App->GetWidth();
     int i_WindowHeight = p_App->GetHeight();
 
@@ -2329,14 +2334,28 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     }
 
     if (event.type == SDL_MOUSEBUTTONDOWN) {
-        int i_X = event.button.x;
-        int i_Y = event.button.y;
+        // Transform mouse coordinates to virtual space for UI
+        float f_VirtualX, f_VirtualY;
+        if (p_App) {
+            p_App->TransformMouseToVirtual(event.button.x, event.button.y, f_VirtualX, f_VirtualY);
+        } else {
+            f_VirtualX = static_cast<float>(event.button.x);
+            f_VirtualY = static_cast<float>(event.button.y);
+        }
+
+        int i_X_Virtual = static_cast<int>(f_VirtualX);
+        int i_Y_Virtual = static_cast<int>(f_VirtualY);
+
+        // Keep screen coordinates for color picking (framebuffer is in screen space)
+        int i_X_Screen = event.button.x;
+        int i_Y_Screen = event.button.y;
+
         if (m_b_ShowEndGameModal.load()) {
-            int i_H = p_App ? p_App->GetHeight() : 0;
-            int i_PxY = i_Y;
+            int i_H = p_App ? p_App->GetVirtualHeight() : 0;
+            int i_PxY = i_Y_Virtual;
             int i_FlippedY = i_H - i_PxY;
 
-            if (i_X >= m_i_EndModalBtnX0 && i_X <= m_i_EndModalBtnX1 &&
+            if (i_X_Virtual >= m_i_EndModalBtnX0 && i_X_Virtual <= m_i_EndModalBtnX1 &&
                 i_FlippedY >= m_i_EndModalBtnY0 && i_FlippedY <= m_i_EndModalBtnY1) {
                 m_b_RequestMenuChange.store(true);
                 m_b_ShowEndGameModal.store(false);
@@ -2346,10 +2365,10 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             return;
         }
 
-        UI::HandleMouseClick(i_X, i_Y);
+        UI::HandleMouseClick(i_X_Virtual, i_Y_Virtual);
 
         if (event.button.button == SDL_BUTTON_LEFT) {
-            HandleColorPicking(i_X, i_Y);
+            HandleColorPicking(i_X_Screen, i_Y_Screen, p_App);
         }
     }
 
@@ -2360,9 +2379,17 @@ void GameState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
 
     if (event.type == SDL_MOUSEMOTION) {
         if (m_b_ShowEndGameModal.load()) {
-            int i_X = event.motion.x;
-            int i_Y = event.motion.y;
-            int i_H = p_App ? p_App->GetHeight() : 0;
+            float f_VirtualX, f_VirtualY;
+            if (p_App) {
+                p_App->TransformMouseToVirtual(event.motion.x, event.motion.y, f_VirtualX, f_VirtualY);
+            } else {
+                f_VirtualX = static_cast<float>(event.motion.x);
+                f_VirtualY = static_cast<float>(event.motion.y);
+            }
+
+            int i_X = static_cast<int>(f_VirtualX);
+            int i_Y = static_cast<int>(f_VirtualY);
+            int i_H = p_App ? p_App->GetVirtualHeight() : 0;
             int i_FlippedY = i_H - i_Y;
             bool b_Hover = (i_X >= m_i_EndModalBtnX0 && i_X <= m_i_EndModalBtnX1 &&
                             i_FlippedY >= m_i_EndModalBtnY0 && i_FlippedY <= m_i_EndModalBtnY1);
@@ -3228,7 +3255,7 @@ void GameState::HandleTicketButtonClick(int i_TransportType) {
     }
 }
 
-void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
+void GameState::HandleColorPicking(int i_MouseX, int i_MouseY, Core::Application* p_App) {
     m_map_PickingIDToClickable.clear();
     m_ui_NextPickingID = 0;
 
@@ -3236,17 +3263,22 @@ void GameState::HandleColorPicking(int i_MouseX, int i_MouseY) {
     if (m_b_Camera3D) {
         glm::vec3 vec3_CameraTarget = m_vec3_CameraPosition + m_vec3_CameraFront;
         view = glm::lookAt(m_vec3_CameraPosition, vec3_CameraTarget, m_vec3_CameraUp);
-        projection = glm::perspective(glm::radians(45.0f), (float)m_i_Width / (float)m_i_Height, 0.1f, 100.0f);
+        float f_VirtualAspect = p_App ? (float)p_App->GetVirtualWidth() / (float)p_App->GetVirtualHeight() : (float)m_i_Width / (float)m_i_Height;
+        projection = glm::perspective(glm::radians(45.0f), f_VirtualAspect, 0.1f, 100.0f);
     } else {
         view = glm::lookAt(glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-        float f_Aspect = (float)m_i_Width / (float)m_i_Height;
+        float f_VirtualAspect = p_App ? (float)p_App->GetVirtualWidth() / (float)p_App->GetVirtualHeight() : (float)m_i_Width / (float)m_i_Height;
         float f_HalfHeight = 1.1f;
-        float f_HalfWidth = f_HalfHeight * f_Aspect;
+        float f_HalfWidth = f_HalfHeight * f_VirtualAspect;
         projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 20.0f);
     }
 
     RenderPickingPass(projection, view);
     ApplyDilationPass();
+
+    if (p_App) {
+        p_App->UpdateUIScaling();
+    }
 
     int i_PickY = m_i_Height - i_MouseY;
     unsigned char pixel[3];

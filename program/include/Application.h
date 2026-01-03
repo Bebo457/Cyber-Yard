@@ -52,6 +52,9 @@ public:
     int GetViewportOffsetX() const { return m_i_ViewportOffsetX; }
     int GetViewportOffsetY() const { return m_i_ViewportOffsetY; }
 
+    void TransformMouseToVirtual(int mouseX, int mouseY, float& virtualX, float& virtualY) const;
+    void UpdateUIScaling();
+
     const std::map<char, Character>& GetCharacterMap() const { return m_map_Characters; }
     GLuint GetTextShaderProgram() const { return m_ShaderProgram_Text; }
     GLuint GetTextVAO() const { return m_VAO_Text; }
@@ -77,8 +80,6 @@ private:
     void ShutdownFreeType();
     bool InitializeHUDResources();
     void ShutdownHUDResources();
-
-    void UpdateUIScaling();
 
 private:
     std::string m_s_Title;

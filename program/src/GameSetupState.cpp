@@ -275,8 +275,9 @@ namespace ScotlandYard {
 
             // CLICK
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                float mx = (float)e.button.x;
-                float my = (float)e.button.y;
+                // Transform mouse coordinates to virtual space
+                float mx, my;
+                app->TransformMouseToVirtual(e.button.x, e.button.y, mx, my);
                 float myBL = (float)app->GetVirtualHeight() - my;
 
                 for (const auto& b : m_vec_Buttons) {

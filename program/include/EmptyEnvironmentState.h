@@ -1,10 +1,12 @@
 #pragma once
 
 #include "IGameState.h"
+#include "WaterRenderer.h"
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <string>
+#include <memory>
 
 namespace ScotlandYard { namespace Core { class Application; } }
 
@@ -35,9 +37,14 @@ private:
     GLuint m_TexMask = 0;
     bool   m_b_UseMask = false;
 
+    // Water renderer
+    std::unique_ptr<Rendering::WaterRenderer> m_p_WaterRenderer;
+    float m_f_Time = 0.0f;
+    glm::mat4 m_mat4_GlobalScaleMatrix = glm::mat4(1.0f);
+
     // Game state
     bool m_b_GameActive = true;
-    
+
     // Camera system (mirrors GameState behavior)
     bool m_b_Camera3D = true;
     glm::vec3 m_vec3_CameraPosition{0.0f, 2.2f, 6.0f};

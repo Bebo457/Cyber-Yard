@@ -250,7 +250,7 @@ private:
     void UpdateArrowsForSelectedPlayer();
     void RenderPickingPass(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View);
     void ApplyDilationPass();
-    void HandleColorPicking(int i_MouseX, int i_MouseY);
+    void HandleColorPicking(int i_MouseX, int i_MouseY, Core::Application* p_App);
     void HandlePlayerClick(int i_PlayerIndex);
     void HandleArrowClick(int i_PlayerIndex, int i_DestinationNode);
     void HandleDestinationClick(int i_DestinationNode);

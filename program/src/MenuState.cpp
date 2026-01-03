@@ -410,11 +410,12 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
     }
     else if (event.type == SDL_MOUSEBUTTONDOWN) {
     if (event.button.button == SDL_BUTTON_LEFT) {
-        float f_MouseX = static_cast<float>(event.button.x);
-        float f_MouseY = static_cast<float>(event.button.y);
 
-        float f_WindowHeight = static_cast<float>(p_App->GetHeight());
-        f_MouseY = f_WindowHeight - f_MouseY;
+        float f_MouseX, f_MouseY;
+        p_App->TransformMouseToVirtual(event.button.x, event.button.y, f_MouseX, f_MouseY);
+
+        float f_VirtualHeight = static_cast<float>(p_App->GetVirtualHeight());
+        f_MouseY = f_VirtualHeight - f_MouseY;
 
         for (int i = 0; i < MenuState::BUTTON_COUNT; i++) {
             if (f_MouseX >= m_Buttons[i].m_f_X && f_MouseX <= m_Buttons[i].m_f_X + m_Buttons[i].m_f_Width &&

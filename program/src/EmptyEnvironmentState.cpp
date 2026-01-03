@@ -104,6 +104,8 @@ void EmptyEnvironmentState::CreatePlane() {
 
 void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
     if (p_App && !p_App->IsTrainingMode()) {
+        const_cast<Core::Application*>(p_App)->UpdateUIScaling();
+
         glEnable(GL_DEPTH_TEST);
         CreateShaders();
         CreatePlane();
@@ -134,6 +136,12 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         std::vector<UI::TicketSlot> vec_Slots(UI::k_TicketSlotCount);
         UI::SetTicketStates(vec_Slots);
         UI::SetRound(1);
+
+        // water renderer
+        m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
+        m_p_WaterRenderer->Initialize();
+        m_p_WaterRenderer->SetWaterHeight(0.1f);
+        m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
     }
     
     UI::SetPauseCallback([this]() {
@@ -174,6 +182,11 @@ void EmptyEnvironmentState::OnExit(Core::Application* p_App) {
     if (m_TexMask) { p_App->UnloadTexture(m_TexMask);     m_TexMask = 0; }
     m_b_UseMask = false;
 
+    if (m_p_WaterRenderer) {
+        m_p_WaterRenderer->Cleanup();
+        m_p_WaterRenderer.reset();
+    }
+
 }
 
 void EmptyEnvironmentState::OnPause() {
@@ -198,6 +211,8 @@ void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
 
 
 void EmptyEnvironmentState::Update(float f_DeltaTime) {
+    m_f_Time += f_DeltaTime;
+
     if (!m_b_GameActive) return;
     if (!m_b_Camera3D) return;
 
@@ -253,8 +268,8 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
     glClearColor(0.12f, 0.13f, 0.15f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    int i_W = p_App->GetWidth();
-    int i_H = p_App->GetHeight();
+    int i_W = p_App->GetVirtualWidth();
+    int i_H = p_App->GetVirtualHeight();
 
     glm::mat4 mat4_View, mat4_Projection;
 
@@ -310,8 +325,13 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 
+    // Render water
+    if (m_p_WaterRenderer) {
+        m_p_WaterRenderer->Render(mat4_Projection * mat4_View, m_f_Time, m_mat4_GlobalScaleMatrix);
+    }
+
     // HUD
-    UI::SetViewport(i_W, i_H);
+    UI::SetViewport(p_App->GetVirtualWidth(), p_App->GetVirtualHeight());
     UI::RenderHUD(p_App);
 
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
