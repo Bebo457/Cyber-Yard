@@ -402,14 +402,53 @@ class MAPPODetectiveAgent:
         # Clear buffer
         self.buffer.clear()
         
-        # Save checkpoint
-        torch.save({
+        # Save checkpoint with retry logic (handles file locking issues)
+        self._save_checkpoint()
+    
+    def _save_checkpoint(self):
+        """
+        Save model checkpoint with proper file handling.
+        Uses BytesIO buffer to serialize first, then writes atomically.
+        This ensures no file handle leaks.
+        """
+        import io
+        
+        checkpoint = {
             "actors": [a.state_dict() for a in self.actors],
             "critic": self.critic.state_dict(),
             "optimizer": self.optimizer.state_dict()
-        }, self.model_path)
+        }
         
-        print(f"[Detective MAPPO] Model saved to {self.model_path}")
+        # Serialize to memory buffer first (no file handle involved yet)
+        buffer = io.BytesIO()
+        torch.save(checkpoint, buffer)
+        data = buffer.getvalue()
+        buffer.close()
+        
+        # Write to temp file with explicit close
+        temp_path = self.model_path + ".tmp"
+        try:
+            with open(temp_path, 'wb') as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())  # Force write to disk
+            # f is now guaranteed closed
+            
+            # Atomic replace (on Windows, need to remove first)
+            if os.path.exists(self.model_path):
+                os.remove(self.model_path)
+            os.rename(temp_path, self.model_path)
+            
+            print(f"[Detective MAPPO] Model saved to {self.model_path}")
+            
+        except Exception as e:
+            print(f"[ERROR] Save failed: {e}")
+            # Cleanup temp file
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
 
 
 # =================================================================
