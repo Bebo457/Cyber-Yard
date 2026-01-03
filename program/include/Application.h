@@ -44,6 +44,14 @@ public:
     void SetGameConsoleEnabled(bool enabled) { m_b_GameConsoleEnabled = enabled; }
     StateManager* GetStateManager() const { return m_p_StateManager.get(); }
 
+    int GetReferenceWidth() const { return m_i_ReferenceWidth; }
+    int GetReferenceHeight() const { return m_i_ReferenceHeight; }
+    float GetUIScale() const { return m_f_UIScale; }
+    int GetVirtualWidth() const { return m_i_VirtualWidth; }
+    int GetVirtualHeight() const { return m_i_VirtualHeight; }
+    int GetViewportOffsetX() const { return m_i_ViewportOffsetX; }
+    int GetViewportOffsetY() const { return m_i_ViewportOffsetY; }
+
     const std::map<char, Character>& GetCharacterMap() const { return m_map_Characters; }
     GLuint GetTextShaderProgram() const { return m_ShaderProgram_Text; }
     GLuint GetTextVAO() const { return m_VAO_Text; }
@@ -70,10 +78,21 @@ private:
     bool InitializeHUDResources();
     void ShutdownHUDResources();
 
+    void UpdateUIScaling();
+
 private:
     std::string m_s_Title;
     int m_i_Width;
     int m_i_Height;
+    int m_i_ReferenceWidth;
+    int m_i_ReferenceHeight;
+
+    //UI scaling values
+    float m_f_UIScale;
+    int m_i_VirtualWidth;
+    int m_i_VirtualHeight;
+    int m_i_ViewportOffsetX;
+    int m_i_ViewportOffsetY;
 
     SDL_Window* m_p_Window;
     SDL_GLContext m_gl_Context;

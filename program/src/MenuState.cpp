@@ -180,7 +180,7 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glUseProgram(shaderProgram);
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(glm::ortho(0.0f, (float)i_WindowWidth, 0.0f, (float)i_WindowHeight)));
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(glm::ortho(0.0f, (float)p_App->GetVirtualWidth(), 0.0f, (float)p_App->GetVirtualHeight())));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_WhiteTexture);
@@ -256,8 +256,8 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
 void MenuState::Render(Core::Application* p_App) {
     if (p_App->IsTrainingMode()) return;
 
-    int i_WindowWidth = p_App->GetWidth();
-    int i_WindowHeight = p_App->GetHeight();
+    int i_WindowWidth = p_App->GetVirtualWidth();
+    int i_WindowHeight = p_App->GetVirtualHeight();
     const auto& characters = p_App->GetCharacterMap();
 
     glClearColor(0.16f, 0.18f, 0.2f, 1.0f);

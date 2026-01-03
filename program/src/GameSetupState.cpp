@@ -30,8 +30,8 @@ namespace ScotlandYard {
         void GameSetupState::Layout(Core::Application* app) {
             m_vec_Buttons.clear();
 
-            const int W = app->GetWidth();
-            const int H = app->GetHeight();
+            const int W = app->GetVirtualWidth();
+            const int H = app->GetVirtualHeight();
 
             const float btnW = 380.0f;
             const float btnH = 54.0f;
@@ -260,7 +260,7 @@ namespace ScotlandYard {
             if (e.type == SDL_MOUSEMOTION) {
                 float mx = (float)e.motion.x;
                 float my = (float)e.motion.y;
-                float myBL = (float)app->GetHeight() - my;
+                float myBL = (float)app->GetVirtualHeight() - my;
 
                 m_i_Hover = -1;
                 for (int i = 0; i < (int)m_vec_Buttons.size(); ++i) {
@@ -277,7 +277,7 @@ namespace ScotlandYard {
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 float mx = (float)e.button.x;
                 float my = (float)e.button.y;
-                float myBL = (float)app->GetHeight() - my;
+                float myBL = (float)app->GetVirtualHeight() - my;
 
                 for (const auto& b : m_vec_Buttons) {
                     if (mx >= b.f_X && mx <= b.f_X + b.f_W && myBL >= b.f_Y && myBL <= b.f_Y + b.f_H) {
@@ -368,7 +368,7 @@ namespace ScotlandYard {
 
             // TITLE
             ScotlandYard::UI::DrawTextCenteredPx("Setup Your Game",
-                20, app->GetHeight() - 120, app->GetWidth() - 20, app->GetHeight() - 60, { 1,1,1,1 }, app, 0.f);
+                20, app->GetVirtualHeight() - 120, app->GetVirtualWidth() - 20, app->GetVirtualHeight() - 60, { 1,1,1,1 }, app, 0.f);
 
             // buttons drawing with selected option
             for (const auto& b : m_vec_Buttons) {
@@ -403,7 +403,7 @@ namespace ScotlandYard {
                     if (y1 - y0 < minH) y1 = y0 + minH;
 
                     const float x0 = 40.0f;
-                    const float x1 = (float)app->GetWidth() - 40.0f;
+                    const float x1 = (float)app->GetVirtualWidth() - 40.0f;
 
                     // background of tooltip
                     ScotlandYard::UI::Color plate{ 0.f, 0.f, 0.f, 0.35f };
@@ -427,7 +427,7 @@ namespace ScotlandYard {
                 }
                 if (humanTop > -1e8f) {
                     ScotlandYard::UI::DrawTextCenteredPx(
-                        "Choose who you want to play:", 0, humanTop + 2.0f, (float)app->GetWidth(), humanTop + 35.0f,
+                        "Choose who you want to play:", 0, humanTop + 2.0f, (float)app->GetVirtualWidth(), humanTop + 35.0f,
                         { 1,1,1,0.85f }, app, -4.0f
                     );
                 }
@@ -447,7 +447,7 @@ namespace ScotlandYard {
                     // centred tooltip
                     const float marginX = 40.0f;
                     float x0 = std::max(0.f, rowMinX - marginX);
-                    float x1 = std::min((float)app->GetWidth(), rowMaxX + marginX);
+                    float x1 = std::min((float)app->GetVirtualWidth(), rowMaxX + marginX);
                     const float midY = rowMinY + (rowMaxY - rowMinY) * 0.5f;
                     const float hBox = 34.0f;
                     float y0 = midY - hBox * 0.5f;

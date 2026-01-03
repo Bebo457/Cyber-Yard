@@ -28,6 +28,13 @@ Application::Application(const std::string& title, int width, int height, bool t
     : m_s_Title(title)
     , m_i_Width(width)
     , m_i_Height(height)
+    , m_i_ReferenceWidth(width)
+    , m_i_ReferenceHeight(height)
+    , m_f_UIScale(1.0f)
+    , m_i_VirtualWidth(width)
+    , m_i_VirtualHeight(height)
+    , m_i_ViewportOffsetX(0)
+    , m_i_ViewportOffsetY(0)
     , m_p_Window(nullptr)
     , m_gl_Context(nullptr)
     , m_b_Running(false)
@@ -81,7 +88,7 @@ bool Application::Initialize() {
         SDL_WINDOWPOS_CENTERED,
         m_i_Width,
         m_i_Height,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
 
     if (!m_p_Window) {
@@ -109,7 +116,7 @@ bool Application::Initialize() {
     }
 
     SDL_GL_SetSwapInterval(1);
-    glViewport(0, 0, m_i_Width, m_i_Height);
+    UpdateUIScaling();
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
@@ -226,8 +233,39 @@ void Application::HandleEvents() {
         if (event.type == SDL_QUIT) {
             m_b_Running = false;
         }
+        else if (event.type == SDL_WINDOWEVENT) {
+            if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                m_i_Width = event.window.data1;
+                m_i_Height = event.window.data2;
+                UpdateUIScaling();
+            }
+        }
         m_p_StateManager->HandleEvent(event, this);
     }
+}
+
+void Application::UpdateUIScaling() {
+    m_i_VirtualWidth = m_i_ReferenceWidth;
+    m_i_VirtualHeight = m_i_ReferenceHeight;
+    float f_ReferenceAspect = static_cast<float>(m_i_ReferenceWidth) / static_cast<float>(m_i_ReferenceHeight);
+    float f_CurrentAspect = static_cast<float>(m_i_Width) / static_cast<float>(m_i_Height);
+
+    int i_ViewportWidth, i_ViewportHeight;
+    if (f_CurrentAspect > f_ReferenceAspect) {
+        i_ViewportHeight = m_i_Height;
+        i_ViewportWidth = static_cast<int>(m_i_Height * f_ReferenceAspect);
+        m_i_ViewportOffsetX = (m_i_Width - i_ViewportWidth) / 2;
+        m_i_ViewportOffsetY = 0;
+        m_f_UIScale = static_cast<float>(m_i_Height) / static_cast<float>(m_i_ReferenceHeight);
+    } else {
+        i_ViewportWidth = m_i_Width;
+        i_ViewportHeight = static_cast<int>(m_i_Width / f_ReferenceAspect);
+        m_i_ViewportOffsetX = 0;
+        m_i_ViewportOffsetY = (m_i_Height - i_ViewportHeight) / 2;
+        m_f_UIScale = static_cast<float>(m_i_Width) / static_cast<float>(m_i_ReferenceWidth);
+    }
+
+    glViewport(m_i_ViewportOffsetX, m_i_ViewportOffsetY, i_ViewportWidth, i_ViewportHeight);
 }
 
 void Application::Update(float f_DeltaTime) {

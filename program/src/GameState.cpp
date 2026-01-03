@@ -2079,8 +2079,8 @@ void GameState::RenderEndGameModal(Core::Application* p_App) {
     if (!b_BlendWas) glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    int i_W = p_App->GetWidth();
-    int i_H = p_App->GetHeight();
+    int i_W = p_App->GetVirtualWidth();
+    int i_H = p_App->GetVirtualHeight();
     float f_ModalWpx = std::min(UI::HUDStyle::k_ModalMaxWidthPx, float(i_W) * UI::HUDStyle::k_ModalWidthRatio);
     float f_ModalHpx = std::min(UI::HUDStyle::k_ModalMaxHeightPx, float(i_H) * UI::HUDStyle::k_ModalHeightRatio);
     float f_Left = (i_W - f_ModalWpx) * 0.5f;

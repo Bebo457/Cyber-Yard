@@ -830,8 +830,8 @@ namespace UI {
         drawBottomBar(f_BX0, f_BY0, f_BX1, f_BY1, p_App);
 
         if (g_b_ShowMrXButtons.load()) {
-            int i_W = p_App->GetWidth();
-            int i_H = p_App->GetHeight();
+            int i_W = p_App->GetVirtualWidth();
+            int i_H = p_App->GetVirtualHeight();
 
             float f_TopBarBottomPx = ndcY_to_px(f_TY0);
 
@@ -891,8 +891,8 @@ namespace UI {
 
         // Detective selection popup
         if (g_b_ShowDetectivePopup.load()) {
-            int i_W = p_App->GetWidth();
-            int i_H = p_App->GetHeight();
+            int i_W = p_App->GetVirtualWidth();
+            int i_H = p_App->GetVirtualHeight();
 
             float f_TopBarBottomPx = ndcY_to_px(f_TY0);
 
@@ -1001,8 +1001,8 @@ namespace UI {
 
             drawRoundedRect(-1.0f, -1.0f, 1.0f, 1.0f, {0.0f, 0.0f, 0.0f, 0.5f}, 0.0f, p_App);
 
-            int i_W = p_App->GetWidth();
-            int i_H = p_App->GetHeight();
+            int i_W = p_App->GetVirtualWidth();
+            int i_H = p_App->GetVirtualHeight();
             float f_ModalWpx = std::min(640.0f, float(i_W) * 0.5f);
             float f_ModalHpx = std::min(240.0f, float(i_H) * 0.35f);
             float f_Left = (i_W - f_ModalWpx) * 0.5f;

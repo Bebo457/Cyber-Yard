@@ -328,7 +328,7 @@ void EmptyEnvironmentState::RenderText(const std::string& s_Text, float f_X, flo
     glUseProgram(i_Program);
     glUniform3f(glGetUniformLocation(i_Program, "textColor"), f_R, f_G, f_B);
     glUniformMatrix4fv(glGetUniformLocation(i_Program, "projection"), 1, GL_FALSE,
-        glm::value_ptr(glm::ortho(0.0f, (float)p_App->GetWidth(), 0.0f, (float)p_App->GetHeight())));
+        glm::value_ptr(glm::ortho(0.0f, (float)p_App->GetVirtualWidth(), 0.0f, (float)p_App->GetVirtualHeight())));
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(i_VAO);
 
