@@ -944,6 +944,36 @@ std::vector<Edge> GenerateStreetNetwork(
     for (int i = 0; i < i_Tier3Count && i < (int)tier3Candidates.size(); ++i) {
         vec_Streets.push_back(tier3Candidates[i]);
     }
+
+    // 9. TIER 3+ - Dodatkowe uliczki (alleys) między istniejącymi drogami
+    std::vector<Edge> tier3extra;
+    for (const auto& existingStreet : vec_Streets) {
+        int n1 = existingStreet.i_Node1;
+        int n2 = existingStreet.i_Node2;
+        // Generuj punkty pośrednie na ulicy jako nowe węzły? NIE - dodaj nowe krótkie połączenia do pobliskich
+        // Znajdź pobliskie węzły w promieniu 40-80px, niepołączone jeszcze
+        for (size_t k = 0; k < vec_GridPoints.size(); ++k) {
+            if (k == n1 || k == n2) continue;
+            float dist1 = hypot(vec_GridPoints[n1].x - vec_GridPoints[k].x, vec_GridPoints[n1].y - vec_GridPoints[k].y);
+            float dist2 = hypot(vec_GridPoints[n2].x - vec_GridPoints[k].x, vec_GridPoints[n2].y - vec_GridPoints[k].y);
+            if (dist1 > 30.0f && dist1 < 60.0f && dist2 > 100.0f) {  // Boczne uliczki prostopadle-ish
+                bool alreadyConnected = false;
+                for (const auto& st : vec_Streets) {
+                    if ((st.i_Node1 == n1 && st.i_Node2 == k) || (st.i_Node1 == k && st.i_Node2 == n1)) {
+                        alreadyConnected = true; break;
+                    }
+                }
+                if (!alreadyConnected && !LineIntersectsRiver(vec_GridPoints[n1], vec_GridPoints[k], vec_RiverPath, vec_Bridges)) {
+                    tier3extra.push_back(Edge(n1, k, dist1, 3));
+                }
+            }
+        }
+    }
+    std::sort(tier3extra.begin(), tier3extra.end(), [](const Edge& a, const Edge& b){ return a.f_Length < b.f_Length; });
+    for (int i = 0; i < std::min(20, (int)tier3extra.size()); ++i) {  // Dodaj do 20 extra uliczek
+        vec_Streets.push_back(tier3extra[i]);
+    }
+
     
     // Podsumowanie
     int actual[4] = {0, 0, 0, 0};
