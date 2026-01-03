@@ -200,6 +200,7 @@ void GameState::OnEnter(Core::Application* p_App) {
 
 
     // Pozycje kółek z pliku CSV
+    m_vec_CircleStations.clear();
     auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
         for (auto& station : vec_StationData) {
         station.vec2_Position.x *= m_f_GlobalScale;
@@ -673,7 +674,7 @@ void GameState::OnEnter(Core::Application* p_App) {
     gm.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
 
     int i_NodeCount = gm.GetNodeCount();
-        if (i_NodeCount <= 0 or !settings.onlineIsServer) {
+        if (i_NodeCount <= 0 || !settings.onlineIsServer) {
             // fallback to hardcoded positions
             m_vec_Players.emplace_back(Core::PlayerType::MisterX, 10);
             m_vec_Players.emplace_back(Core::PlayerType::Detective, 1);
@@ -759,6 +760,7 @@ void GameState::OnEnter(Core::Application* p_App) {
     }
 
     // --- Console interaction in background thread: allow moving a player to a connected node ---
+    m_graph = GraphManager(Core::k_MaxNodes);
     m_graph.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
     // Load optional edge geometry (normalized polylines)
     m_graph.LoadEdgeGeometryCSV(Core::GetMapPath(Core::k_EdgeGeometryRelativePath), true);
@@ -2949,7 +2951,7 @@ void GameState::HandleArrowClick(int i_PlayerIndex, int i_DestinationNode) {
         //            }
         //        }).detach();
         //    }
-        if(settings.onlineIsServer or !settings.onlineMode) {
+        if(settings.onlineIsServer || !settings.onlineMode) {
             m_i_SelectedPlayerIndex = -1;
             UI::ShowDetectivePopup(false);
             m_vec_CurrentArrows.clear();
