@@ -693,13 +693,37 @@ void GameState::OnEnter(Core::Application* p_App) {
             };
 
             std::vector<int> vec_Used;
-            int i_MrXNode = pick_unique(vec_Used);
-            m_vec_Players.emplace_back(Core::PlayerType::MisterX, i_MrXNode);
+            std::vector<int> vec_DetectiveNodes;
 
+            // spawn detectives
             for (int i = 0; i < Core::k_DetectiveCount; ++i) {
                 int i_DNode = pick_unique(vec_Used);
+                vec_DetectiveNodes.push_back(i_DNode);
                 m_vec_Players.emplace_back(Core::PlayerType::Detective, i_DNode);
             }
+
+            //  forbidden position list
+            std::vector<int> vec_Forbidden = vec_DetectiveNodes;
+            for (int i_DetNode : vec_DetectiveNodes) {
+                std::vector<Core::Node*> vec_Neighbors = m_graph.GetNeighbors(i_DetNode);
+                for (Core::Node* p_Neighbor : vec_Neighbors) {
+                    if (p_Neighbor) {
+                        vec_Forbidden.push_back(p_Neighbor->i_Id);
+                    }
+                }
+            }
+
+            //spawn Mr. X
+            auto pick_mrx = [&]() {
+                int i_V;
+                do {
+                    i_V = dist(rng);
+                } while (std::find(vec_Forbidden.begin(), vec_Forbidden.end(), i_V) != vec_Forbidden.end());
+                return i_V;
+            };
+
+            int i_MrXNode = pick_mrx();
+            m_vec_Players.insert(m_vec_Players.begin(), Core::Player(Core::PlayerType::MisterX, i_MrXNode));
         }
     
 
@@ -2177,24 +2201,42 @@ bool GameState::CheckCapture() const {
 
 bool GameState::CheckIfDetectivesCanMove() {
     std::lock_guard<std::mutex> lock(m_mtx_Players);
-    
+
     // Sprawdź każdego detektywa
     for (size_t i = 0; i < m_vec_Players.size(); ++i) {
         if (m_vec_Players[i].GetType() == Core::PlayerType::Detective) {
             std::vector<Core::PossibleMove> vec_Moves = GetPossibleMovesForPlayer(static_cast<int>(i));
-            
+
             // Jeśli chociaż jeden detektyw ma możliwy ruch, zwróć true
             if (!vec_Moves.empty()) {
                 return true;
             }
         }
     }
-    
+
     // Żaden detektyw nie ma możliwych ruchów
     std::cout << "[Game] No detective can move - Mr X wins!\n";
     m_b_DetectivesLostDueToNoMoves = true;
     CheckEndOfGame(Winner::MisterX);
     return false;
+}
+
+bool GameState::CheckIfMrXCanMove() {
+    std::lock_guard<std::mutex> lock(m_mtx_Players);
+    for (size_t i = 0; i < m_vec_Players.size(); ++i) {
+        if (m_vec_Players[i].GetType() == Core::PlayerType::MisterX) {
+            std::vector<Core::PossibleMove> vec_Moves = GetPossibleMovesForPlayer(static_cast<int>(i));
+            if (!vec_Moves.empty()) {
+                return true;
+            }
+
+            // Mr. X has no valid moves - detectives win
+            std::cout << "[Game] Mr X is trapped and cannot move\n";
+            CheckEndOfGame(Winner::Detectives);
+            return false;
+        }
+    }
+    return true;
 }
 
 void GameState::MarkDetectivesWithoutMoves() {
@@ -3648,6 +3690,12 @@ void GameState::AdvanceRoundIfComplete() {
         }
         m_b_MrXSecondMovePending.store(false);
     }
+
+    // Check if Mr. X can move at the start of the round
+    if (!CheckIfMrXCanMove()) {
+        return;
+    }
+
     MarkDetectivesWithoutMoves();
 }
 

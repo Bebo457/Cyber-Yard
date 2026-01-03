@@ -267,6 +267,7 @@ private:
     std::vector<Core::PossibleMove> GetPossibleMovesForPlayer(int i_PlayerIndex);
     void AdvanceRoundIfComplete();
     bool CheckIfDetectivesCanMove();
+    bool CheckIfMrXCanMove();
     void MarkDetectivesWithoutMoves();
 
     // Render functions
