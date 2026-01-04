@@ -5,21 +5,24 @@
 #include "GameConstants.h"
 #include "MapDataLoader.h"
 #include "WaterRenderer.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include "GraphManager.h"
+#include "PlayerController.h"
+#include "Player.h"
+#include "Logger.h"
+
 #include <vector>
 #include <map>
 #include <SDL2/SDL.h>
-#include "Player.h"
-#include "PlayerController.h"
-#include "GraphManager.h"
 #include <thread>
 #include <mutex>
 #include <atomic>
 #include <memory>
 #include <string>
-#include "Logger.h"
+
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 namespace ScotlandYard {
 namespace Core {

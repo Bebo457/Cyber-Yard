@@ -37,6 +37,18 @@ private:
     GLuint m_TexMask = 0;
     bool   m_b_UseMask = false;
 
+    // Road mesh
+    GLuint m_VAO_Road = 0;
+    GLuint m_VBO_Road = 0;
+    GLuint m_EBO_Road = 0;
+    GLuint m_ShaderRoad = 0;
+    int    m_RoadIndexCount = 0;
+    
+
+    // Road material/texture
+    GLuint m_TexRoad = 0;
+
+
     // Water renderer
     std::unique_ptr<Rendering::WaterRenderer> m_p_WaterRenderer;
     float m_f_Time = 0.0f;
@@ -77,6 +89,7 @@ private:
     void AccelerateCameraLeft(float f_DeltaTime);
     void AccelerateCameraRight(float f_DeltaTime);
     void UpdateCameraPhysics(float f_DeltaTime);
+    void CreateTestRoad(Core::Application* p_App);
 };
 
 } // namespace States

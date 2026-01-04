@@ -94,6 +94,7 @@ set(SOURCES
     src/TreeGenerator.cpp
     src/TreePlacement.cpp
     src/WaterRenderer.cpp
+    src/RoadGenerator.cpp
 )
 
 set(HEADERS
@@ -120,6 +121,7 @@ set(HEADERS
     include/TreeGenerator.h
     include/TreePlacement.h
     include/WaterRenderer.h
+    include/RoadGenerator.h
 )
 
 # EXE =================================================
