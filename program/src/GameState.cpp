@@ -3594,7 +3594,21 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
                     const auto& p = m_vec_Players[j];
                     Core::PlayerInfo info;
 
-                    info.i_Position = p.GetOccupiedNode();
+                    int i_Node = p.GetOccupiedNode();
+                    bool b_NodeValid = (gameState.p_Graph && gameState.p_Graph->IsValidNode(i_Node));
+                    if (!b_NodeValid) {
+                        int i_MaxNode = (gameState.p_Graph) ? gameState.p_Graph->GetNodeCount() : Core::k_MaxNodes;
+                        if (i_MaxNode <= 0) {
+                            i_MaxNode = Core::k_MaxNodes;
+                        }
+                        int i_Clamped = std::clamp(i_Node, 1, i_MaxNode);
+                        if (i_Clamped != i_Node) {
+                            std::cout << "[GameState] Normalized invalid node " << i_Node
+                                      << " -> " << i_Clamped << " for player index " << j << "\n";
+                        }
+                        i_Node = i_Clamped;
+                    }
+                    info.i_Position = i_Node;
                     info.b_IsMisterX = (p.GetType() == Core::PlayerType::MisterX);
                     info.i_TaxiTickets = p.GetTaxiTickets();
                     info.i_BusTickets = p.GetBusTickets();
