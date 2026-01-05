@@ -95,6 +95,8 @@ set(SOURCES
     src/TreePlacement.cpp
     src/WaterRenderer.cpp
     src/RoadGenerator.cpp
+    src/SampleMapDataGenerator.cpp
+    src/MapDataSerializer.cpp
 )
 
 set(HEADERS
@@ -122,6 +124,9 @@ set(HEADERS
     include/TreePlacement.h
     include/WaterRenderer.h
     include/RoadGenerator.h
+    include/GeneratedMapData.h
+    include/SampleMapDataGenerator.h
+    include/MapDataSerializer.h
 )
 
 # EXE =================================================
