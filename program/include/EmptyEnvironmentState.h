@@ -2,6 +2,7 @@
 
 #include "IGameState.h"
 #include "WaterRenderer.h"
+#include "GeneratedMapData.h"
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -37,6 +38,18 @@ private:
     GLuint m_TexMask = 0;
     bool   m_b_UseMask = false;
 
+    // Road mesh
+    GLuint m_VAO_Road = 0;
+    GLuint m_VBO_Road = 0;
+    GLuint m_EBO_Road = 0;
+    GLuint m_ShaderRoad = 0;
+    int    m_RoadIndexCount = 0;
+    
+
+    // Road material/texture
+    GLuint m_TexRoad = 0;
+
+
     // Water renderer
     std::unique_ptr<Rendering::WaterRenderer> m_p_WaterRenderer;
     float m_f_Time = 0.0f;
@@ -65,18 +78,25 @@ private:
     static constexpr float k_MinCameraAngle = -1.55f;
     static constexpr float k_MaxCameraAngle = -0.2915f;
 
+    // Map data
+    MapGen::GeneratedMapData m_MapData;
+    bool m_b_MapDataLoaded = false;
+
     // Private methods
     void CreatePlane();
     void CreateShaders();
     void TryLoadGeneratedMap(Core::Application* p_App);
+    void LoadSampleMapData(); // NEW: Load sample map data
+    void RenderMapData(Core::Application* p_App); // NEW: Render map objects
     void RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale,
                     float f_R, float f_G, float f_B, Core::Application* p_App);
-    
+
     void AccelerateCameraForward(float f_DeltaTime);
     void AccelerateCameraBackward(float f_DeltaTime);
     void AccelerateCameraLeft(float f_DeltaTime);
     void AccelerateCameraRight(float f_DeltaTime);
     void UpdateCameraPhysics(float f_DeltaTime);
+    void CreateTestRoad(Core::Application* p_App);
 };
 
 } // namespace States

@@ -2,10 +2,15 @@
 #include "Application.h"
 #include "StateManager.h"
 #include "HUDOverlay.h"
+#include "RoadGenerator.h"
+#include "SampleMapDataGenerator.h"
+#include "MapDataSerializer.h"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <filesystem>
+#include <iostream>
 
 namespace ScotlandYard {
 namespace States {
@@ -14,6 +19,7 @@ EmptyEnvironmentState::EmptyEnvironmentState() {}
 EmptyEnvironmentState::~EmptyEnvironmentState() = default;
 
 void EmptyEnvironmentState::CreateShaders() {
+    // --- OLD SHADER (keep as is) ---
     const char* vsSrc = R"(#version 330 core
         layout(location=0) in vec3 aPos;
         layout(location=1) in vec3 aNormal;
@@ -73,8 +79,52 @@ void EmptyEnvironmentState::CreateShaders() {
 
     glDeleteShader(vs);
     glDeleteShader(fs);
-}
 
+    // --- NEW HARD-MASK SHADER FOR ROAD ---
+    const char* roadVsSrc = R"(#version 330 core
+        layout(location=0) in vec3 aPos;
+        layout(location=1) in vec3 aNormal;
+        layout(location=2) in vec2 aUV;
+
+        uniform mat4 uMVP;
+        out vec2 vUV;
+
+        void main() {
+            vUV = aUV;
+            gl_Position = uMVP * vec4(aPos, 1.0);
+        }
+    )";
+
+    const char* roadFsSrc = R"(#version 330 core
+        in vec2 vUV;
+
+        uniform sampler2D uRoad;      // only one texture
+        uniform vec2 uTileUV;
+
+        out vec4 FragColor;
+
+        void main() {
+            vec2 tiledUV = vUV * uTileUV;
+            FragColor = texture(uRoad, tiledUV);
+        }
+    )";
+
+    GLuint roadVs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(roadVs, 1, &roadVsSrc, nullptr);
+    glCompileShader(roadVs);
+
+    GLuint roadFs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(roadFs, 1, &roadFsSrc, nullptr);
+    glCompileShader(roadFs);
+
+    m_ShaderRoad = glCreateProgram();  // <-- new member variable GLuint m_ShaderRoad
+    glAttachShader(m_ShaderRoad, roadVs);
+    glAttachShader(m_ShaderRoad, roadFs);
+    glLinkProgram(m_ShaderRoad);
+
+    glDeleteShader(roadVs);
+    glDeleteShader(roadFs);
+}
 
 void EmptyEnvironmentState::CreatePlane() {
     float f_PlaneVertices[] = {
@@ -103,7 +153,10 @@ void EmptyEnvironmentState::CreatePlane() {
 }
 
 void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
-    if (p_App && !p_App->IsTrainingMode()) {
+    bool test=true;
+    CreateTestRoad(p_App);
+
+    if (p_App && !p_App->IsTrainingMode() and test==true) {
         const_cast<Core::Application*>(p_App)->UpdateUIScaling();
 
         glEnable(GL_DEPTH_TEST);
@@ -112,6 +165,9 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.png"));
         m_TexGrass = p_App->LoadTexture(p_App->GetAssetPath("textures/grass.png"));
         TryLoadGeneratedMap(p_App);
+
+        // NEW: Load sample map data for testing
+        LoadSampleMapData();
 
         // HUD setup: load camera icon and hook toggle
         std::string s_IconPath = p_App->GetAssetPath("icons/camera_icon.png");
@@ -187,6 +243,11 @@ void EmptyEnvironmentState::OnExit(Core::Application* p_App) {
         m_p_WaterRenderer.reset();
     }
 
+    if (m_VBO_Road) { glDeleteBuffers(1, &m_VBO_Road); m_VBO_Road = 0; }
+    if (m_EBO_Road) { glDeleteBuffers(1, &m_EBO_Road); m_EBO_Road = 0; }
+    if (m_VAO_Road) { glDeleteVertexArrays(1, &m_VAO_Road); m_VAO_Road = 0; }
+    if (m_TexRoad) { p_App->UnloadTexture(m_TexRoad); m_TexRoad = 0; }
+
 }
 
 void EmptyEnvironmentState::OnPause() {
@@ -208,7 +269,6 @@ void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
         m_TexMask = 0;
     }
 }
-
 
 void EmptyEnvironmentState::Update(float f_DeltaTime) {
     m_f_Time += f_DeltaTime;
@@ -324,6 +384,30 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
     glBindVertexArray(m_VAO_Plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+
+    // --- Render road ---
+    if (m_VAO_Road && m_TexRoad) {
+        glUseProgram(m_ShaderRoad);
+
+        // MVP matrix
+        GLint mvpLoc = glGetUniformLocation(m_ShaderRoad, "uMVP");
+        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View));
+
+        // Tiling
+        GLint tileLoc = glGetUniformLocation(m_ShaderRoad, "uTileUV");
+        glUniform2f(tileLoc, 2.0f, 2.0f); // adjust repeats as needed
+
+        // Bind road texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_TexRoad);
+        glUniform1i(glGetUniformLocation(m_ShaderRoad, "uRoad"), 0);
+
+        // Draw the road mesh
+        glBindVertexArray(m_VAO_Road);
+        glDrawElements(GL_TRIANGLES, m_RoadIndexCount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+
 
     // Render water
     if (m_p_WaterRenderer) {
@@ -475,6 +559,164 @@ void EmptyEnvironmentState::HandleEvent(const SDL_Event& ev, Core::Application* 
         UI::HandleMouseMotion(ev.motion.x, ev.motion.y);
     }
 }
+
+void EmptyEnvironmentState::CreateTestRoad(Core::Application* p_App) {
+    std::vector<glm::vec2> roadPoints;
+
+    int segments = 20;
+    float radius = 10.0f; // larger radius
+    glm::vec2 center(0.0f, 0.0f);
+    for (int i = 0; i <= segments; ++i) {
+        float angle = glm::half_pi<float>() * i / segments; // 90 degree curve
+        float x = center.x + radius * cos(angle);
+        float y = center.y + radius * sin(angle);
+        roadPoints.emplace_back(x, y);
+    }
+
+    std::vector<float> roadWidths;
+    for (int i = 0; i <= segments; ++i) {
+        // float w = 2.0f + 2.0f * sin((float)i / segments * glm::half_pi<float>()); // road widens along the curve
+        // float w = 1.0f; // constant width
+        float w = 1.0f - 0.05f * i;
+        roadWidths.push_back(w);
+    }
+
+    ScotlandYard::Core::RoadMesh roadMesh = ScotlandYard::Core::RoadGenerator::GenerateRoad(
+        roadPoints,
+        roadWidths,
+        2.0f // texture repeats every 2 meters
+    );
+
+    for (auto& v : roadMesh.vertices) {
+        v.y = 0.5f;
+    }
+
+    struct Vertex { glm::vec3 pos; glm::vec3 normal; glm::vec2 uv; };
+    std::vector<Vertex> vertices;
+    for (size_t i = 0; i < roadMesh.vertices.size(); ++i) {
+        vertices.push_back({roadMesh.vertices[i], roadMesh.normals[i], roadMesh.texCoords[i]});
+    }
+
+    glGenVertexArrays(1, &m_VAO_Road);
+    glGenBuffers(1, &m_VBO_Road);
+    glGenBuffers(1, &m_EBO_Road);
+
+    glBindVertexArray(m_VAO_Road);
+
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Road);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_Road);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, roadMesh.indices.size() * sizeof(unsigned int),
+                roadMesh.indices.data(), GL_STATIC_DRAW);
+
+    // Vertex attributes
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0); // position
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal)); // normal
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, uv)); // uv
+    glEnableVertexAttribArray(2);
+
+    glBindVertexArray(0);
+
+    m_RoadIndexCount = static_cast<int>(roadMesh.indices.size());
+
+    // Load road texture
+    m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
+
+    if (m_TexRoad == 0) {
+        std::cerr << "[Road] Failed to load road texture!" << std::endl;
+    } else {
+        std::cout << "[Road] Road texture loaded successfully." << std::endl;
+    }
+}
+
+// Load sample map data
+void EmptyEnvironmentState::LoadSampleMapData() {
+    std::cout << "[EmptyEnvironmentState] Loading sample map data..." << std::endl;
+
+    // Try to load from saved file first
+    std::string mapPath = "maps/example_city.symap";
+
+    if (std::filesystem::exists(mapPath)) {
+        std::cout << "[EmptyEnvironmentState] Found saved map file, loading..." << std::endl;
+        m_MapData = MapGen::MapDataSerializer::LoadFromFile(mapPath);
+    }
+
+    // If loading failed or file doesn't exist, generate new map
+    if (m_MapData.IsEmpty()) {
+        std::cout << "[EmptyEnvironmentState] No saved map found or loading failed, generating new map..." << std::endl;
+        m_MapData = MapGen::SampleMapDataGenerator::GenerateRealisticCityMap(42);
+
+        // Create maps directory if it doesn't exist
+        std::filesystem::create_directories("maps");
+
+        // Save the generated map for future use
+        std::cout << "[EmptyEnvironmentState] Saving generated map to: " << mapPath << std::endl;
+        MapGen::MapDataSerializer::SaveToFile(m_MapData, mapPath);
+    } else {
+        std::cout << "[EmptyEnvironmentState] Successfully loaded map from file!" << std::endl;
+    }
+
+    m_b_MapDataLoaded = true;
+
+    // Print stats
+    auto stats = m_MapData.GetStats();
+    std::cout << "[EmptyEnvironmentState] Map loaded:" << std::endl;
+    std::cout << "  - Graph nodes: " << stats.nodes << std::endl;
+    std::cout << "  - Streets: " << stats.streets << std::endl;
+    std::cout << "  - Buildings: " << stats.buildings << std::endl;
+    std::cout << "  - Trees: " << stats.trees << std::endl;
+    std::cout << "  - Parks: " << stats.parks << std::endl;
+    std::cout << "  - Bridges: " << stats.bridges << std::endl;
+
+    // DEBUG: Print some graph nodes
+    // std::cout << "[EmptyEnvironmentState] First 3 graph nodes:" << std::endl;
+    // for (int i = 0; i < std::min(3, static_cast<int>(m_MapData.vec_GraphNodes.size())); ++i) {
+    //     const auto& node = m_MapData.vec_GraphNodes[i];
+    //     std::cout << "  Node " << node.i_ID << ": pos=(" << node.position.x << ", " << node.position.y << ")"
+    //               << ", taxi_connections=" << node.vec_TaxiConnections.size()
+    //               << ", bus=" << node.vec_BusConnections.size()
+    //               << ", metro=" << node.vec_MetroConnections.size()
+    //               << std::endl;
+    // }
+
+    // DEBUG: Print some streets
+    // std::cout << "[EmptyEnvironmentState] First 3 streets:" << std::endl;
+    // for (int i = 0; i < std::min(3, static_cast<int>(m_MapData.vec_Streets.size())); ++i) {
+    //     const auto& street = m_MapData.vec_Streets[i];
+    //     std::cout << "  Street " << i << ": " << street.i_Node1 << " <-> " << street.i_Node2
+    //               << ", tier=" << street.i_Tier
+    //               << ", width=" << street.f_Width
+    //               << ", inPark=" << (street.b_IsInPark ? "yes" : "no")
+    //               << std::endl;
+    // }
+}
+
+// render map data (placeholder - to be implemented by graphics team)
+void EmptyEnvironmentState::RenderMapData(Core::Application* p_App) {
+    if (!m_b_MapDataLoaded) return;
+
+    // TODO: Implement rendering for:
+    // 1. River - use WaterRenderer with m_MapData.vec_RiverPath
+    // 2. Parks - render park polygons with grass texture
+    // 3. Streets - use RoadGenerator for each street segment
+    // 4. Buildings - use BuildingGenerator to create meshes
+    // 5. Trees - use TreeGenerator for each tree instance
+    // 6. Graph nodes - render as spheres/cubes for debugging
+
+    // For now, just log that we would render
+    // (Uncomment this when actually implementing rendering)
+    /*
+    std::cout << "[EmptyEnvironmentState] Rendering map data..." << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_GraphNodes.size() << " graph nodes" << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_Streets.size() << " streets" << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_Buildings.size() << " buildings" << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_Trees.size() << " trees" << std::endl;
+    */
+}
+
 
 } // namespace States
 } // namespace ScotlandYard

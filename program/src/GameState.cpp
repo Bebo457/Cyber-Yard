@@ -4,20 +4,17 @@
 #include "GameConstants.h"
 #include "GameSettings.h"
 #include "PlayerController.h"
+#include "RoadGenerator.h"
+#include "Logger.h"
+#include "PythonBridge.h"
+#include "GraphManager.h"
 
 #include <GL/glew.h>
-
 #include <random>
 #include <algorithm>
 #include <iostream>
-#include "GraphManager.h"
 #include <unordered_map>
 #include <sstream>
-
-#include "Logger.h"
-#include "PythonBridge.h"
-
-// #include "NetworkManager.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../external/stb_image.h"
@@ -29,6 +26,7 @@
 PythonBridge* g_pDetectiveBridge = nullptr;
 // Global scope definition of Mr X Python bridge (extern accessed from PlayerController.cpp)
 PythonBridge* g_pBridge = nullptr;
+
 
 namespace ScotlandYard {
 namespace States {
