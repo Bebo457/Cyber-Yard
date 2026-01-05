@@ -83,7 +83,7 @@ set(SOURCES
     src/MapPreviewState.cpp
     # src/MapGeneratorPNG.cpp
     # src/MapGeneratorGraph.cpp
-    # src/MapGeneratorJSON.cpp
+    src/MapGeneratorJSON.cpp
     src/GameSettings.cpp
     src/GameSetupState.cpp
     src/GraphManager.cpp
@@ -95,6 +95,7 @@ set(SOURCES
     src/TreePlacement.cpp
     src/WaterRenderer.cpp
     src/RoadGenerator.cpp
+    src/PolygonRenderer.cpp
 )
 
 set(HEADERS

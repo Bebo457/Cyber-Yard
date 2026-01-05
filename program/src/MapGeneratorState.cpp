@@ -415,6 +415,10 @@ namespace ScotlandYard
             ExportMapInfoToCSV("generated_map_info.csv");
 
             SaveMapToFile();
+
+            // polygon data for rendering
+            MapGen::ExportPolygonsToJSON("generated_map.json", m_vec_Parks, m_vec_RiverPath);
+
             UpdatePreviewTexture();
 
             m_s_InfoText = "Map generated!";
