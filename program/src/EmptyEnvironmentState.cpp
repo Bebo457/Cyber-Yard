@@ -164,10 +164,14 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         CreatePlane();
         m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.jpg"));
         m_TexGrass = p_App->LoadTexture(p_App->GetAssetPath("textures/grass.png"));
-        // TryLoadGeneratedMap(p_App);
+
+        m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
+        m_p_WaterRenderer->Initialize();
+        m_p_WaterRenderer->SetWaterHeight(0.1f);
+        m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
+
         LoadPolygonData(p_App);
 
-        // HUD setup: load camera icon and hook toggle
         std::string s_IconPath = p_App->GetAssetPath("icons/camera_icon.png");
         UI::LoadCameraIconPNG(s_IconPath.c_str(), p_App);
         UI::SetCameraToggleCallback([this]() { this->m_b_Camera3D = !this->m_b_Camera3D; });
@@ -190,12 +194,6 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         std::vector<UI::TicketSlot> vec_Slots(UI::k_TicketSlotCount);
         UI::SetTicketStates(vec_Slots);
         UI::SetRound(1);
-
-        // water renderer
-        m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
-        m_p_WaterRenderer->Initialize();
-        m_p_WaterRenderer->SetWaterHeight(0.1f);
-        m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
     }
     
     UI::SetPauseCallback([this]() {
@@ -325,41 +323,16 @@ void EmptyEnvironmentState::LoadPolygonData(Core::Application* p_App) {
 
             if (riverPath.size() >= 2) {
                 float riverWidth = 50.0f * scaleX;
+
                 m_p_RiverRenderer = std::make_unique<Rendering::PolygonRenderer>();
                 if (m_p_RiverRenderer->Initialize()) {
                     m_p_RiverRenderer->SetRiverStrip(riverPath, riverWidth, 0.001f);
-
-                    std::vector<glm::vec2> riverPolygon;
-                    float halfWidth = riverWidth * 0.5f;
-                    for (size_t i = 0; i < riverPath.size(); ++i) {
-                        glm::vec2 tangent;
-                        if (i == 0) {
-                            tangent = glm::normalize(riverPath[1] - riverPath[0]);
-                        } else if (i == riverPath.size() - 1) {
-                            tangent = glm::normalize(riverPath[i] - riverPath[i - 1]);
-                        } else {
-                            tangent = glm::normalize(riverPath[i + 1] - riverPath[i - 1]);
-                        }
-                        glm::vec2 normal(-tangent.y, tangent.x);
-                        riverPolygon.push_back(riverPath[i] + normal * halfWidth);
-                    }
-
-                    // Left side
-                    for (int i = static_cast<int>(riverPath.size()) - 1; i >= 0; --i) {
-                        glm::vec2 tangent;
-                        if (i == 0) {
-                            tangent = glm::normalize(riverPath[1] - riverPath[0]);
-                        } else if (i == static_cast<int>(riverPath.size()) - 1) {
-                            tangent = glm::normalize(riverPath[i] - riverPath[i - 1]);
-                        } else {
-                            tangent = glm::normalize(riverPath[i + 1] - riverPath[i - 1]);
-                        }
-                        glm::vec2 normal(-tangent.y, tangent.x);
-                        riverPolygon.push_back(riverPath[i] - normal * halfWidth);
-                    }
-
-                    m_vec_RiverPolygonVertices = riverPolygon;  // for WaterRenderer
                 }
+
+                if (m_p_WaterRenderer) {
+                    m_p_WaterRenderer->SetRiverStrip(riverPath, riverWidth);
+                }
+
                 std::cout << "[PolygonLoader] Loaded river strip with " << riverPath.size() << " path points." << std::endl;
             }
         }
@@ -521,16 +494,15 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
         glDisable(GL_POLYGON_OFFSET_FILL);
     }
 
-    if (m_p_WaterRenderer && !m_vec_RiverPolygonVertices.empty()) {
+    if (m_p_WaterRenderer) {
         glEnable(GL_POLYGON_OFFSET_FILL);
         glPolygonOffset(-3.0f, -3.0f);
 
-        m_p_WaterRenderer->RenderPolygon(m_vec_RiverPolygonVertices, mat4_Projection * mat4_View, m_f_Time, glm::mat4(1.0f));
+        m_p_WaterRenderer->RenderRiverStrip(mat4_Projection * mat4_View, m_f_Time, glm::mat4(1.0f));
 
         glDisable(GL_POLYGON_OFFSET_FILL);
     }
 
-    // HUD
     UI::SetViewport(p_App->GetVirtualWidth(), p_App->GetVirtualHeight());
     UI::RenderHUD(p_App);
 

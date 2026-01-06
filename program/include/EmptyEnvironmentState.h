@@ -59,9 +59,8 @@ private:
     // Polygon renderers for parks and zones
     std::vector<std::unique_ptr<Rendering::PolygonRenderer>> m_vec_ParkRenderers;
 
-    // River polygon renderer, winding order issues
+    // River polygon renderer
     std::unique_ptr<Rendering::PolygonRenderer> m_p_RiverRenderer;
-    std::vector<glm::vec2> m_vec_RiverPolygonVertices;
 
     // Game state
     bool m_b_GameActive = true;

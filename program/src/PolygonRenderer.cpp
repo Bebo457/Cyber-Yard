@@ -168,7 +168,10 @@ void PolygonRenderer::TriangulatePolygon(const std::vector<glm::vec2>& vec_Verti
 }
 
 void PolygonRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_CenterlinePath, float f_Width, float f_YHeight) {
-    if (vec_CenterlinePath.size() < 2) return;
+    if (vec_CenterlinePath.size() < 2) {
+        m_i_VertexCount = 0;
+        return;
+    }
 
     m_f_YHeight = f_YHeight;
     m_vec_VertexData.clear();
@@ -185,18 +188,37 @@ void PolygonRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_Centerline
         distances.push_back(totalDistance);
     }
 
+    if (totalDistance < 0.0001f) {
+        m_i_VertexCount = 0;
+        return;
+    }
+
     for (size_t i = 0; i < vec_CenterlinePath.size(); ++i) {
-        //calculate tangent
         glm::vec2 tangent;
         if (i == 0) {
-            // First point: use direction to next point
-            tangent = glm::normalize(vec_CenterlinePath[1] - vec_CenterlinePath[0]);
+            glm::vec2 diff = vec_CenterlinePath[1] - vec_CenterlinePath[0];
+            float length = glm::length(diff);
+            if (length < 0.0001f) {
+                m_i_VertexCount = 0;
+                return;
+            }
+            tangent = diff / length;
         } else if (i == vec_CenterlinePath.size() - 1) {
-            // Last point: use direction from previous point
-            tangent = glm::normalize(vec_CenterlinePath[i] - vec_CenterlinePath[i - 1]);
+            glm::vec2 diff = vec_CenterlinePath[i] - vec_CenterlinePath[i - 1];
+            float length = glm::length(diff);
+            if (length < 0.0001f) {
+                m_i_VertexCount = 0;
+                return;
+            }
+            tangent = diff / length;
         } else {
-            // Middle points: average of incoming and outgoing directions
-            tangent = glm::normalize(vec_CenterlinePath[i + 1] - vec_CenterlinePath[i - 1]);
+            glm::vec2 diff = vec_CenterlinePath[i + 1] - vec_CenterlinePath[i - 1];
+            float length = glm::length(diff);
+            if (length < 0.0001f) {
+                m_i_VertexCount = 0;
+                return;
+            }
+            tangent = diff / length;
         }
 
         glm::vec2 normal(-tangent.y, tangent.x);
@@ -204,25 +226,23 @@ void PolygonRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_Centerline
         glm::vec2 leftPos = vec_CenterlinePath[i] - normal * halfWidth;
         float u = distances[i] / totalDistance;
 
-        // Right vertex (v = 0)
         m_vec_VertexData.push_back(rightPos.x);
         m_vec_VertexData.push_back(f_YHeight);
         m_vec_VertexData.push_back(rightPos.y);
-        m_vec_VertexData.push_back(0.0f);  // Normal up
+        m_vec_VertexData.push_back(0.0f);
         m_vec_VertexData.push_back(1.0f);
         m_vec_VertexData.push_back(0.0f);
         m_vec_VertexData.push_back(u);
-        m_vec_VertexData.push_back(0.0f);  // v = 0 for right side
+        m_vec_VertexData.push_back(0.0f);
 
-        // Left vertex (v = 1)
         m_vec_VertexData.push_back(leftPos.x);
         m_vec_VertexData.push_back(f_YHeight);
         m_vec_VertexData.push_back(leftPos.y);
-        m_vec_VertexData.push_back(0.0f);  // Normal up
+        m_vec_VertexData.push_back(0.0f);
         m_vec_VertexData.push_back(1.0f);
         m_vec_VertexData.push_back(0.0f);
         m_vec_VertexData.push_back(u);
-        m_vec_VertexData.push_back(1.0f);  // v = 1 for left side
+        m_vec_VertexData.push_back(1.0f);
     }
 
     for (size_t i = 0; i < vec_CenterlinePath.size() - 1; ++i) {
@@ -231,12 +251,10 @@ void PolygonRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_Centerline
         unsigned int rightNext = static_cast<unsigned int>((i + 1) * 2);
         unsigned int leftNext = rightNext + 1;
 
-        // First triangle: rightCurrent, leftCurrent, rightNext
         m_vec_Indices.push_back(rightCurrent);
         m_vec_Indices.push_back(leftCurrent);
         m_vec_Indices.push_back(rightNext);
 
-        // Second triangle: rightNext, leftCurrent, leftNext
         m_vec_Indices.push_back(rightNext);
         m_vec_Indices.push_back(leftCurrent);
         m_vec_Indices.push_back(leftNext);
@@ -249,15 +267,12 @@ void PolygonRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_Centerline
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_vec_Indices.size() * sizeof(unsigned int), m_vec_Indices.data(), GL_STATIC_DRAW);
 
-    // Position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Normal attribute
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    // UV attribute
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
 

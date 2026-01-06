@@ -49,6 +49,18 @@ void WaterRenderer::Cleanup() {
         glDeleteVertexArrays(1, &m_VAO_Polygon);
         m_VAO_Polygon = 0;
     }
+    if (m_EBO_RiverStrip) {
+        glDeleteBuffers(1, &m_EBO_RiverStrip);
+        m_EBO_RiverStrip = 0;
+    }
+    if (m_VBO_RiverStrip) {
+        glDeleteBuffers(1, &m_VBO_RiverStrip);
+        m_VBO_RiverStrip = 0;
+    }
+    if (m_VAO_RiverStrip) {
+        glDeleteVertexArrays(1, &m_VAO_RiverStrip);
+        m_VAO_RiverStrip = 0;
+    }
     if (m_ShaderProgram) {
         glDeleteProgram(m_ShaderProgram);
         m_ShaderProgram = 0;
@@ -339,14 +351,123 @@ void WaterRenderer::UpdatePolygonMesh(const std::vector<glm::vec2>& vec_Boundary
     glBindVertexArray(0);
 }
 
+void WaterRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_CenterlinePath, float f_Width) {
+    if (vec_CenterlinePath.size() < 2) {
+        m_i_RiverStripIndexCount = 0;
+        return;
+    }
+
+    std::vector<float> vec_Vertices;
+    std::vector<unsigned int> vec_Indices;
+
+    float halfWidth = f_Width * 0.5f;
+    float totalDistance = 0.0f;
+    std::vector<float> distances;
+    distances.push_back(0.0f);
+
+    for (size_t i = 1; i < vec_CenterlinePath.size(); ++i) {
+        float segmentLength = glm::length(vec_CenterlinePath[i] - vec_CenterlinePath[i - 1]);
+        totalDistance += segmentLength;
+        distances.push_back(totalDistance);
+    }
+
+    if (totalDistance < 0.0001f) {
+        m_i_RiverStripIndexCount = 0;
+        return;
+    }
+
+    for (size_t i = 0; i < vec_CenterlinePath.size(); ++i) {
+        glm::vec2 tangent;
+        if (i == 0) {
+            glm::vec2 diff = vec_CenterlinePath[1] - vec_CenterlinePath[0];
+            float length = glm::length(diff);
+            if (length < 0.0001f) {
+                m_i_RiverStripIndexCount = 0;
+                return;
+            }
+            tangent = diff / length;
+        } else if (i == vec_CenterlinePath.size() - 1) {
+            glm::vec2 diff = vec_CenterlinePath[i] - vec_CenterlinePath[i - 1];
+            float length = glm::length(diff);
+            if (length < 0.0001f) {
+                m_i_RiverStripIndexCount = 0;
+                return;
+            }
+            tangent = diff / length;
+        } else {
+            glm::vec2 diff = vec_CenterlinePath[i + 1] - vec_CenterlinePath[i - 1];
+            float length = glm::length(diff);
+            if (length < 0.0001f) {
+                m_i_RiverStripIndexCount = 0;
+                return;
+            }
+            tangent = diff / length;
+        }
+
+        glm::vec2 normal(-tangent.y, tangent.x);
+        glm::vec2 rightPos = vec_CenterlinePath[i] + normal * halfWidth;
+        glm::vec2 leftPos = vec_CenterlinePath[i] - normal * halfWidth;
+        float u = distances[i] / totalDistance;
+
+        vec_Vertices.push_back(rightPos.x);
+        vec_Vertices.push_back(m_f_WaterHeight);
+        vec_Vertices.push_back(rightPos.y);
+        vec_Vertices.push_back(u);
+        vec_Vertices.push_back(0.0f);
+
+        vec_Vertices.push_back(leftPos.x);
+        vec_Vertices.push_back(m_f_WaterHeight);
+        vec_Vertices.push_back(leftPos.y);
+        vec_Vertices.push_back(u);
+        vec_Vertices.push_back(1.0f);
+    }
+
+    for (size_t i = 0; i < vec_CenterlinePath.size() - 1; ++i) {
+        unsigned int rightCurrent = static_cast<unsigned int>(i * 2);
+        unsigned int leftCurrent = rightCurrent + 1;
+        unsigned int rightNext = static_cast<unsigned int>((i + 1) * 2);
+        unsigned int leftNext = rightNext + 1;
+
+        vec_Indices.push_back(rightCurrent);
+        vec_Indices.push_back(leftCurrent);
+        vec_Indices.push_back(rightNext);
+
+        vec_Indices.push_back(rightNext);
+        vec_Indices.push_back(leftCurrent);
+        vec_Indices.push_back(leftNext);
+    }
+
+    if (!m_VAO_RiverStrip) {
+        glGenVertexArrays(1, &m_VAO_RiverStrip);
+        glGenBuffers(1, &m_VBO_RiverStrip);
+        glGenBuffers(1, &m_EBO_RiverStrip);
+    }
+
+    glBindVertexArray(m_VAO_RiverStrip);
+
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_RiverStrip);
+    glBufferData(GL_ARRAY_BUFFER, vec_Vertices.size() * sizeof(float), vec_Vertices.data(), GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_RiverStrip);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, vec_Indices.size() * sizeof(unsigned int), vec_Indices.data(), GL_DYNAMIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+
+    m_i_RiverStripIndexCount = static_cast<int>(vec_Indices.size());
+}
+
 void WaterRenderer::Render(const glm::mat4& mat4_ViewProjection, float f_Time, const glm::mat4& mat4_GlobalScale) {
     if (!m_b_Initialized) return;
     GLenum err = glGetError();
     if (err != GL_NO_ERROR) {
         std::cerr << "WaterRenderer: GL error before render: " << err << std::endl;
     }
-
-    // perserve OpenGL state
     GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
     GLboolean b_CullWas = glIsEnabled(GL_CULL_FACE);
     GLboolean b_DepthMaskWas;
@@ -424,7 +545,6 @@ void WaterRenderer::Render(const glm::mat4& mat4_ViewProjection, float f_Time, c
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 
-    //restore OpenGL state
     glDepthMask(b_DepthMaskWas);
     if (b_CullWas) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     if (b_BlendWas) glEnable(GL_BLEND); else glDisable(GL_BLEND);
@@ -488,7 +608,68 @@ void WaterRenderer::RenderPolygon(const std::vector<glm::vec2>& vec_BoundaryPoin
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vec_BoundaryPoints.size() * 3));
     glBindVertexArray(0);
 
-    //restore OpenGL state
+    glDepthMask(b_DepthMaskWas);
+    if (b_CullWas) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (b_BlendWas) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    glBlendFunc(i_BlendSrc, i_BlendDst);
+}
+
+void WaterRenderer::RenderRiverStrip(const glm::mat4& mat4_ViewProjection,
+                                      float f_Time,
+                                      const glm::mat4& mat4_GlobalScale) {
+    if (!m_b_Initialized || m_i_RiverStripIndexCount == 0) return;
+
+    GLboolean b_BlendWas = glIsEnabled(GL_BLEND);
+    GLboolean b_CullWas = glIsEnabled(GL_CULL_FACE);
+    GLboolean b_DepthMaskWas;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &b_DepthMaskWas);
+    GLint i_BlendSrc, i_BlendDst;
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &i_BlendSrc);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &i_BlendDst);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glUseProgram(m_ShaderProgram);
+
+    GLint mvpLoc = glGetUniformLocation(m_ShaderProgram, "uMVP");
+    GLint timeLoc = glGetUniformLocation(m_ShaderProgram, "uTime");
+    GLint heightLoc = glGetUniformLocation(m_ShaderProgram, "uWaterHeight");
+    GLint voronoi1Loc = glGetUniformLocation(m_ShaderProgram, "uVoronoiScale1");
+    GLint voronoi2Loc = glGetUniformLocation(m_ShaderProgram, "uVoronoiScale2");
+    GLint rippleLoc = glGetUniformLocation(m_ShaderProgram, "uRippleDensity");
+    GLint causticsLayerLoc = glGetUniformLocation(m_ShaderProgram, "uIsCausticsLayer");
+    GLint waterColorLoc = glGetUniformLocation(m_ShaderProgram, "uWaterColor");
+    GLint foamColorLoc = glGetUniformLocation(m_ShaderProgram, "uFoamColor");
+    GLint powerExpLoc = glGetUniformLocation(m_ShaderProgram, "uVoronoiPowerExponent");
+    GLint edgeSmoothLoc = glGetUniformLocation(m_ShaderProgram, "uVoronoiEdgeSmooth");
+    GLint foamMinLoc = glGetUniformLocation(m_ShaderProgram, "uFoamThresholdMin");
+    GLint foamMaxLoc = glGetUniformLocation(m_ShaderProgram, "uFoamThresholdMax");
+
+    glUniform1f(timeLoc, f_Time);
+    glUniform1f(heightLoc, m_f_WaterHeight);
+    glUniform1f(voronoi1Loc, m_f_VoronoiScale1);
+    glUniform1f(voronoi2Loc, m_f_VoronoiScale2);
+    glUniform1f(rippleLoc, m_f_RippleDensity);
+    glUniform3fv(waterColorLoc, 1, glm::value_ptr(m_vec3_WaterColor));
+    glUniform3fv(foamColorLoc, 1, glm::value_ptr(m_vec3_FoamColor));
+    glUniform1f(powerExpLoc, m_f_VoronoiPowerExponent);
+    glUniform1f(edgeSmoothLoc, m_f_VoronoiEdgeSmooth);
+    glUniform1f(foamMinLoc, m_f_FoamThresholdMin);
+    glUniform1f(foamMaxLoc, m_f_FoamThresholdMax);
+
+    // Render river strip (top layer)
+    glm::mat4 mat4_Model = mat4_GlobalScale;
+    glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_Model;
+
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+    glUniform1i(causticsLayerLoc, 0);
+
+    glBindVertexArray(m_VAO_RiverStrip);
+    glDrawElements(GL_TRIANGLES, m_i_RiverStripIndexCount, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
     glDepthMask(b_DepthMaskWas);
     if (b_CullWas) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     if (b_BlendWas) glEnable(GL_BLEND); else glDisable(GL_BLEND);

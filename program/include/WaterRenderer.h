@@ -20,6 +20,8 @@ public:
                        const glm::mat4& mat4_ViewProjection,
                        float f_Time,
                        const glm::mat4& mat4_GlobalScale);
+    void SetRiverStrip(const std::vector<glm::vec2>& vec_CenterlinePath, float f_Width);
+    void RenderRiverStrip(const glm::mat4& mat4_ViewProjection, float f_Time, const glm::mat4& mat4_GlobalScale);
 
     void SetWaterHeight(float f_Height);
     void SetVoronoiScale(float f_Scale1, float f_Scale2);
@@ -39,6 +41,10 @@ private:
     GLuint m_VBO_Quad = 0;
     GLuint m_VAO_Polygon = 0;
     GLuint m_VBO_Polygon = 0;
+    GLuint m_VAO_RiverStrip = 0;
+    GLuint m_VBO_RiverStrip = 0;
+    GLuint m_EBO_RiverStrip = 0;
+    int m_i_RiverStripIndexCount = 0;
 
     float m_f_WaterHeight = 0.1f;
     float m_f_VoronoiScale1 = 8.0f;
