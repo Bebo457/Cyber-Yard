@@ -298,7 +298,7 @@ try:
 
         if "winner" in req or "[GameOver]" in raw_msg:
             winner = req.get("winner", "")
-            final_reward = 1000.0 if winner == "MrX" else -1000.0
+            final_reward = 100.0 if winner == "MrX" else -100.0
             current_round = req.get("game_state", {}).get("current_round", 0)
             print(f"[EVENT] Game Over! Winner: {winner if winner else 'N/A'}")
 

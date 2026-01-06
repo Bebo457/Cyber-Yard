@@ -3,6 +3,8 @@
 #include "StateManager.h"
 #include "HUDOverlay.h"
 #include "RoadGenerator.h"
+#include "SampleMapDataGenerator.h"
+#include "MapDataSerializer.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -154,7 +156,7 @@ void EmptyEnvironmentState::CreatePlane() {
 
 void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
     bool test=true;
-    CreateTestRoad(p_App); 
+    CreateTestRoad(p_App);
 
     if (p_App && !p_App->IsTrainingMode() and test==true) {
         const_cast<Core::Application*>(p_App)->UpdateUIScaling();
@@ -171,6 +173,7 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
 
         LoadPolygonData(p_App);
+        LoadSampleMapData();
 
         std::string s_IconPath = p_App->GetAssetPath("icons/camera_icon.png");
         UI::LoadCameraIconPNG(s_IconPath.c_str(), p_App);
@@ -698,6 +701,91 @@ void EmptyEnvironmentState::CreateTestRoad(Core::Application* p_App) {
     } else {
         std::cout << "[Road] Road texture loaded successfully." << std::endl;
     }
+}
+
+// Load sample map data
+void EmptyEnvironmentState::LoadSampleMapData() {
+    std::cout << "[EmptyEnvironmentState] Loading sample map data..." << std::endl;
+
+    // Try to load from saved file first
+    std::string mapPath = "maps/example_city.symap";
+
+    if (std::filesystem::exists(mapPath)) {
+        std::cout << "[EmptyEnvironmentState] Found saved map file, loading..." << std::endl;
+        m_MapData = MapGen::MapDataSerializer::LoadFromFile(mapPath);
+    }
+
+    // If loading failed or file doesn't exist, generate new map
+    if (m_MapData.IsEmpty()) {
+        std::cout << "[EmptyEnvironmentState] No saved map found or loading failed, generating new map..." << std::endl;
+        m_MapData = MapGen::SampleMapDataGenerator::GenerateRealisticCityMap(42);
+
+        // Create maps directory if it doesn't exist
+        std::filesystem::create_directories("maps");
+
+        // Save the generated map for future use
+        std::cout << "[EmptyEnvironmentState] Saving generated map to: " << mapPath << std::endl;
+        MapGen::MapDataSerializer::SaveToFile(m_MapData, mapPath);
+    } else {
+        std::cout << "[EmptyEnvironmentState] Successfully loaded map from file!" << std::endl;
+    }
+
+    m_b_MapDataLoaded = true;
+
+    // Print stats
+    auto stats = m_MapData.GetStats();
+    std::cout << "[EmptyEnvironmentState] Map loaded:" << std::endl;
+    std::cout << "  - Graph nodes: " << stats.nodes << std::endl;
+    std::cout << "  - Streets: " << stats.streets << std::endl;
+    std::cout << "  - Buildings: " << stats.buildings << std::endl;
+    std::cout << "  - Trees: " << stats.trees << std::endl;
+    std::cout << "  - Parks: " << stats.parks << std::endl;
+    std::cout << "  - Bridges: " << stats.bridges << std::endl;
+
+    // DEBUG: Print some graph nodes
+    // std::cout << "[EmptyEnvironmentState] First 3 graph nodes:" << std::endl;
+    // for (int i = 0; i < std::min(3, static_cast<int>(m_MapData.vec_GraphNodes.size())); ++i) {
+    //     const auto& node = m_MapData.vec_GraphNodes[i];
+    //     std::cout << "  Node " << node.i_ID << ": pos=(" << node.position.x << ", " << node.position.y << ")"
+    //               << ", taxi_connections=" << node.vec_TaxiConnections.size()
+    //               << ", bus=" << node.vec_BusConnections.size()
+    //               << ", metro=" << node.vec_MetroConnections.size()
+    //               << std::endl;
+    // }
+
+    // DEBUG: Print some streets
+    // std::cout << "[EmptyEnvironmentState] First 3 streets:" << std::endl;
+    // for (int i = 0; i < std::min(3, static_cast<int>(m_MapData.vec_Streets.size())); ++i) {
+    //     const auto& street = m_MapData.vec_Streets[i];
+    //     std::cout << "  Street " << i << ": " << street.i_Node1 << " <-> " << street.i_Node2
+    //               << ", tier=" << street.i_Tier
+    //               << ", width=" << street.f_Width
+    //               << ", inPark=" << (street.b_IsInPark ? "yes" : "no")
+    //               << std::endl;
+    // }
+}
+
+// render map data (placeholder - to be implemented by graphics team)
+void EmptyEnvironmentState::RenderMapData(Core::Application* p_App) {
+    if (!m_b_MapDataLoaded) return;
+
+    // TODO: Implement rendering for:
+    // 1. River - use WaterRenderer with m_MapData.vec_RiverPath
+    // 2. Parks - render park polygons with grass texture
+    // 3. Streets - use RoadGenerator for each street segment
+    // 4. Buildings - use BuildingGenerator to create meshes
+    // 5. Trees - use TreeGenerator for each tree instance
+    // 6. Graph nodes - render as spheres/cubes for debugging
+
+    // For now, just log that we would render
+    // (Uncomment this when actually implementing rendering)
+    /*
+    std::cout << "[EmptyEnvironmentState] Rendering map data..." << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_GraphNodes.size() << " graph nodes" << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_Streets.size() << " streets" << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_Buildings.size() << " buildings" << std::endl;
+    std::cout << "  - Would render " << m_MapData.vec_Trees.size() << " trees" << std::endl;
+    */
 }
 
 

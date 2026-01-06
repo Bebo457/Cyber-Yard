@@ -129,6 +129,9 @@ static double EvaluateMoveReward(
     const PossibleMove& move,
     const GameStateData& gameState
 ) {
+    // Longest practical path on the map is well below this clamp (graph diameter < ~25 moves)
+    static constexpr int k_MaxReasonableDistance = 25;
+
     // Budowa grafu (tylko sąsiedzi)
     std::map<int, std::vector<int>> map_Graph;
     for (int i_Node = 1; i_Node <= 200; ++i_Node) {
@@ -187,14 +190,25 @@ static double EvaluateMoveReward(
     int dest = move.i_DestinationNode;
 
     // minimalna i średnia odległość do policjantów
-    int minDist = 999999;
+    int minDist = k_MaxReasonableDistance;
     double sumDist = 0.0;
+    int reachableCount = 0;
     for (const auto& distMap : policeDists) {
-        int d = distMap.count(dest) ? distMap.at(dest) : 999999;
+        auto it = distMap.find(dest);
+        if (it == distMap.end()) {
+            continue;
+        }
+        int d = it->second;
         minDist = std::min(minDist, d);
         sumDist += d;
+        ++reachableCount;
     }
-    double avgDist = sumDist / std::max(1.0, static_cast<double>(policeDists.size()));
+    double avgDist = (reachableCount > 0)
+        ? (sumDist / static_cast<double>(reachableCount))
+        : static_cast<double>(k_MaxReasonableDistance);
+    if (reachableCount == 0) {
+        minDist = k_MaxReasonableDistance;
+    }
 
     // liczba węzłów w zagłębieniu 2
     int depth2Count = countDepth2Neighbors(dest);
@@ -344,6 +358,8 @@ static double EvaluateDetectiveMoveReward(
     const PossibleMove& move,
     const GameStateData& gameState
 ) {
+    static constexpr int k_MaxReasonableDistance = 25;
+
     // Build graph (neighbors only)
     std::map<int, std::vector<int>> map_Graph;
     for (int i_Node = 1; i_Node <= 200; ++i_Node) {
@@ -387,7 +403,7 @@ static double EvaluateDetectiveMoveReward(
 
     // BFS from destination to Mr X
     auto distMap = fn_BFS(move.i_DestinationNode);
-    int distToMrX = distMap.count(mrXPos) ? distMap.at(mrXPos) : 999999;
+    int distToMrX = distMap.count(mrXPos) ? distMap.at(mrXPos) : k_MaxReasonableDistance;
 
     // Detective reward: CLOSER to Mr X is BETTER (opposite of Mr X reward)
     // Lower distance = higher reward
