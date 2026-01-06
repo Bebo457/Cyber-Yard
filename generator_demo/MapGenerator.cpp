@@ -2,9 +2,6 @@
 #include <iostream>
 #include <algorithm>
 
-// Generator based on article:
-// https://dl.acm.org/doi/abs/10.1145/383259.383292
-
 namespace CityGen {
 
 MapGenerator::MapGenerator(int width, int height)
@@ -325,6 +322,9 @@ void MapGenerator::GenerateHighways() {
             }
         }
     }
+
+    MergeSimpleIntersections();
+    
     std::cout << "[PostProcess] Removed " << removedCount << " redundant highways" << std::endl;
     std::cout << "[MapGen] =============================================" << std::endl;
 
@@ -344,6 +344,8 @@ void MapGenerator::GenerateHighways() {
                 << " | Length=" << hw.totalLength << std::endl;
     }
     std::cout << "[MapGen] =================================" << std::endl;
+
+    
 }
 
 float MapGenerator::ShootRay(Point pos, float angle) {
@@ -1559,6 +1561,131 @@ float MapGenerator::RaycastToHighway(const Point& origin, const Point& direction
     }
     
     return hitAny ? minHitDistance : -1.0f;
+}
+
+void MapGenerator::MergeSimpleIntersections() {
+    std::cout << "\n[MergeSimple] ====== MERGING SIMPLE INTERSECTIONS ======" << std::endl;
+    std::cout << "[MergeSimple] Initial highways: " << m_Highways.size() << std::endl;
+    
+    int mergedCount = 0;
+    
+    // Dla każdego węzła oznaczonego jako intersection
+    for (size_t nodeIdx = 0; nodeIdx < m_RoadNodes.size(); ++nodeIdx) {
+        Point& node = m_RoadNodes[nodeIdx];
+        
+        if (!node.isIntersection) {
+            continue;
+        }
+        
+        // Znajdź wszystkie highways połączone z tym węzłem
+        std::vector<int> connectedHighways;
+        
+        for (int hwIdx = 0; hwIdx < (int)m_Highways.size(); ++hwIdx) {
+            const Highway& hw = m_Highways[hwIdx];
+            
+            if (hw.startIntersectionIdx == (int)nodeIdx || 
+                hw.endIntersectionIdx == (int)nodeIdx) {
+                connectedHighways.push_back(hwIdx);
+            }
+        }
+        
+        // Jeśli dokładnie 2 highways się spotykają - możemy połączyć
+        if (connectedHighways.size() == 2) {
+            std::cout << "[MergeSimple] Node " << nodeIdx 
+                      << " connects exactly 2 highways: " 
+                      << connectedHighways[0] << " and " << connectedHighways[1] << std::endl;
+            
+            int hw1Idx = connectedHighways[0];
+            int hw2Idx = connectedHighways[1];
+            
+            const Highway& hw1 = m_Highways[hw1Idx];
+            const Highway& hw2 = m_Highways[hw2Idx];
+            
+            // Określ nowy początek i koniec
+            int newStart = -1;
+            int newEnd = -1;
+            
+            // hw1 kończy się w nodeIdx, hw2 zaczyna się w nodeIdx
+            if (hw1.endIntersectionIdx == (int)nodeIdx && 
+                hw2.startIntersectionIdx == (int)nodeIdx) {
+                newStart = hw1.startIntersectionIdx;
+                newEnd = hw2.endIntersectionIdx;
+            }
+            // hw1 zaczyna się w nodeIdx, hw2 kończy się w nodeIdx
+            else if (hw1.startIntersectionIdx == (int)nodeIdx && 
+                     hw2.endIntersectionIdx == (int)nodeIdx) {
+                newStart = hw2.startIntersectionIdx;
+                newEnd = hw1.endIntersectionIdx;
+            }
+            // hw1 zaczyna się w nodeIdx, hw2 zaczyna się w nodeIdx
+            else if (hw1.startIntersectionIdx == (int)nodeIdx && 
+                     hw2.startIntersectionIdx == (int)nodeIdx) {
+                newStart = hw1.endIntersectionIdx;
+                newEnd = hw2.endIntersectionIdx;
+            }
+            // hw1 kończy się w nodeIdx, hw2 kończy się w nodeIdx
+            else if (hw1.endIntersectionIdx == (int)nodeIdx && 
+                     hw2.endIntersectionIdx == (int)nodeIdx) {
+                newStart = hw1.startIntersectionIdx;
+                newEnd = hw2.startIntersectionIdx;
+            }
+            
+            if (newStart == -1 || newEnd == -1) {
+                std::cout << "[MergeSimple] Cannot determine merge direction, skipping" << std::endl;
+                continue;
+            }
+            
+            // Połącz roads z obu highways
+            std::vector<int> mergedRoads;
+            
+            // Dodaj roads z hw1 (w odpowiedniej kolejności)
+            if (hw1.endIntersectionIdx == (int)nodeIdx) {
+                mergedRoads.insert(mergedRoads.end(), hw1.roadIndices.begin(), hw1.roadIndices.end());
+            } else {
+                mergedRoads.insert(mergedRoads.end(), hw1.roadIndices.rbegin(), hw1.roadIndices.rend());
+            }
+            
+            // Dodaj roads z hw2 (w odpowiedniej kolejności)
+            if (hw2.startIntersectionIdx == (int)nodeIdx) {
+                mergedRoads.insert(mergedRoads.end(), hw2.roadIndices.begin(), hw2.roadIndices.end());
+            } else {
+                mergedRoads.insert(mergedRoads.end(), hw2.roadIndices.rbegin(), hw2.roadIndices.rend());
+            }
+            
+            float mergedLength = hw1.totalLength + hw2.totalLength;
+            
+            std::cout << "[MergeSimple] Creating merged highway: " 
+                      << newStart << " -> " << newEnd 
+                      << " (length=" << mergedLength << ", roads=" << mergedRoads.size() << ")" << std::endl;
+            
+            // Utwórz nowy połączony highway
+            Highway mergedHighway(newStart, newEnd, mergedRoads, mergedLength);
+            
+            // Usuń stare highways (od tyłu!)
+            int toRemove1 = std::max(hw1Idx, hw2Idx);
+            int toRemove2 = std::min(hw1Idx, hw2Idx);
+            
+            m_Highways.erase(m_Highways.begin() + toRemove1);
+            m_Highways.erase(m_Highways.begin() + toRemove2);
+            
+            // Dodaj nowy
+            m_Highways.push_back(mergedHighway);
+            
+            // Usuń flagę intersection z tego węzła
+            node.isIntersection = false;
+            
+            mergedCount++;
+            std::cout << "[MergeSimple] Successfully merged!" << std::endl;
+            
+            // WAŻNE: Przerwij pętlę po modyfikacji, bo indeksy się zmieniły
+            // Zacznij od nowa
+            nodeIdx = 0;
+        }
+    }
+    
+    std::cout << "[MergeSimple] Total merges performed: " << mergedCount << std::endl;
+    std::cout << "[MergeSimple] Final highways: " << m_Highways.size() << std::endl;
+    std::cout << "[MergeSimple] =======================================" << std::endl;
 }
 
 void MapGenerator::GenerateStreets() {

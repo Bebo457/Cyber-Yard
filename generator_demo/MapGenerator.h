@@ -161,7 +161,8 @@ private:
     bool IsPointOnHighway(const Point& point, const Highway& highway, float tolerance = 2.0f);
 
     float RaycastToHighway(const Point& origin, const Point& direction, float maxDistance);
-
+    void MergeSimpleIntersections();
+    void PrintIntersectionsSummary();
 
 };
 
