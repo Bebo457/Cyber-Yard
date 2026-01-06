@@ -2,12 +2,14 @@
 
 #include "IGameState.h"
 #include "WaterRenderer.h"
+#include "PolygonRenderer.h"
 #include "GeneratedMapData.h"
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <memory>
+#include <vector>
 
 namespace ScotlandYard { namespace Core { class Application; } }
 
@@ -55,6 +57,12 @@ private:
     float m_f_Time = 0.0f;
     glm::mat4 m_mat4_GlobalScaleMatrix = glm::mat4(1.0f);
 
+    // Polygon renderers for parks and zones
+    std::vector<std::unique_ptr<Rendering::PolygonRenderer>> m_vec_ParkRenderers;
+
+    // River polygon renderer
+    std::unique_ptr<Rendering::PolygonRenderer> m_p_RiverRenderer;
+
     // Game state
     bool m_b_GameActive = true;
 
@@ -86,8 +94,9 @@ private:
     void CreatePlane();
     void CreateShaders();
     void TryLoadGeneratedMap(Core::Application* p_App);
-    void LoadSampleMapData(); // NEW: Load sample map data
-    void RenderMapData(Core::Application* p_App); // NEW: Render map objects
+    void LoadPolygonData(Core::Application* p_App);
+    void LoadSampleMapData();
+    void RenderMapData(Core::Application* p_App);
     void RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale,
                     float f_R, float f_G, float f_B, Core::Application* p_App);
 

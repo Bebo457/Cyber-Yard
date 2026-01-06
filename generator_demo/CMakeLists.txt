@@ -3,15 +3,18 @@ project(SimpleWindow)
 
 set(CMAKE_CXX_STANDARD 11)
 
-# Znajdź SDL2
 find_package(SDL2 REQUIRED)
 
-# Utwórz exe
 add_executable(SimpleWindow 
     SimpleWindow.cpp
     MapGenerator.cpp
 )
 
-# Linkuj SDL2
-target_link_libraries(SimpleWindow ${SDL2_LIBRARIES})
-target_include_directories(SimpleWindow PRIVATE ${SDL2_INCLUDE_DIRS})
+target_link_libraries(SimpleWindow PRIVATE SDL2::SDL2 SDL2::SDL2main)
+target_include_directories(SimpleWindow PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+if(WIN32)
+    set_target_properties(SimpleWindow PROPERTIES
+        WIN32_EXECUTABLE FALSE
+    )
+endif()

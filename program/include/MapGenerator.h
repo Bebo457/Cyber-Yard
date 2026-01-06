@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cmath>
+#include <string>
 
 namespace ScotlandYard {
 namespace MapGen {
@@ -107,6 +108,9 @@ std::vector<Point> GenerateNodesOnStreets(
     int i_NumNodes,
     unsigned int seed
 );
+
+// JSON export functions
+bool ExportPolygonsToJSON(const std::string& s_Filename, const std::vector<Park>& vec_Parks, const std::vector<Point>& vec_RiverPath);
 
 } // namespace MapGen
 } // namespace ScotlandYard

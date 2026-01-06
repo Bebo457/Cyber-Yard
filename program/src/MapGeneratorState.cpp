@@ -490,7 +490,7 @@ namespace ScotlandYard
             m_vec_HighwayRoads = hg.GetRoads();
             m_vec_Highways = hg.GetHighways();
 
-            // Zaktualizuj teksturę podglądu natychmiast (w pamięci RAM)
+            SaveMapToFile();
             GeneratePreviewTexture();
 
             m_s_InfoText = "Map generated!";

@@ -5,102 +5,73 @@
 namespace ScotlandYard {
 namespace MapGen {
 
+// If needed in the future, add proper type definitions (GenerationParams, GraphNode)
+/*
 bool ExportMapToJSON(const std::string& s_Filename,
                      const GenerationParams& params,
                      const std::vector<GraphNode>& vec_Nodes,
                      const std::vector<Point>& vec_RiverPath,
                      const std::vector<Park>& vec_Parks) {
-    
+}
+*/
+
+bool ExportPolygonsToJSON(const std::string& s_Filename,
+                          const std::vector<Park>& vec_Parks,
+                          const std::vector<Point>& vec_RiverPath) {
+
     std::ofstream file(s_Filename);
-    if (!file.is_open()) return false;
-    
-    file << "{\n";
-    
-    // Parameters
-    file << "  \"parameters\": {\n";
-    file << "    \"width\": " << params.i_MapWidth << ",\n";
-    file << "    \"height\": " << params.i_MapHeight << ",\n";
-    file << "    \"numParks\": " << params.i_NumParks << ",\n";
-    file << "    \"riverCurviness\": " << params.f_RiverCurviness << ",\n";
-    file << "    \"taxiDensity\": " << params.f_TaxiDensity << ",\n";
-    file << "    \"busDensity\": " << params.f_BusDensity << ",\n";
-    file << "    \"metroDensity\": " << params.f_MetroDensity << "\n";
-    file << "  },\n";
-    
-    // Nodes
-    file << "  \"nodes\": [\n";
-    for (size_t i = 0; i < vec_Nodes.size(); ++i) {
-        const auto& node = vec_Nodes[i];
-        file << "    {\n";
-        file << "      \"id\": " << node.i_ID << ",\n";
-        file << "      \"x\": " << node.m_Position.f_X << ",\n";
-        file << "      \"y\": " << node.m_Position.f_Y << ",\n";
-        file << "      \"isInPark\": " << (node.b_IsInPark ? "true" : "false") << ",\n";
-        file << "      \"isNearRiver\": " << (node.b_IsNearRiver ? "true" : "false") << ",\n";
-        
-        // Connections
-        file << "      \"connections\": {\n";
-        
-        file << "        \"taxi\": [";
-        bool first = true;
-        for (int id : node.set_TaxiConnections) {
-            if (!first) file << ", ";
-            file << id;
-            first = false;
-        }
-        file << "],\n";
-        
-        file << "        \"bus\": [";
-        first = true;
-        for (int id : node.set_BusConnections) {
-            if (!first) file << ", ";
-            file << id;
-            first = false;
-        }
-        file << "],\n";
-        
-        file << "        \"metro\": [";
-        first = true;
-        for (int id : node.set_MetroConnections) {
-            if (!first) file << ", ";
-            file << id;
-            first = false;
-        }
-        file << "],\n";
-        
-        file << "        \"ferry\": [";
-        first = true;
-        for (int id : node.set_FerryConnections) {
-            if (!first) file << ", ";
-            file << id;
-            first = false;
-        }
-        file << "]\n";
-        
-        file << "      }\n";
-        file << "    }";
-        if (i + 1 < vec_Nodes.size()) file << ",";
-        file << "\n";
+    if (!file.is_open()) {
+        std::cerr << "[JSON Export] Failed to open file: " << s_Filename << std::endl;
+        return false;
     }
-    file << "  ],\n";
-    
-    // Parks
+
+    file << "{\n";
+
     file << "  \"parks\": [\n";
     for (size_t i = 0; i < vec_Parks.size(); ++i) {
         const auto& park = vec_Parks[i];
         file << "    {\n";
-        file << "      \"centerX\": " << park.m_Center.f_X << ",\n";
-        file << "      \"centerY\": " << park.m_Center.f_Y << ",\n";
-        file << "      \"radius\": " << park.m_f_BaseRadius << "\n";
+        file << "      \"centerX\": " << park.center.x << ",\n";
+        file << "      \"centerY\": " << park.center.y << ",\n";
+        file << "      \"radius\": " << park.f_BaseRadius << ",\n";
+        file << "      \"vertices\": [\n";
+
+        if (park.vec_Vertices.empty()) {
+            std::cerr << "[JSON Export] Warning: Park has no vertices!" << std::endl;
+        }
+
+        for (size_t j = 0; j < park.vec_Vertices.size(); ++j) {
+            file << "        {\"x\": " << park.vec_Vertices[j].x
+                 << ", \"y\": " << park.vec_Vertices[j].y << "}";
+            if (j + 1 < park.vec_Vertices.size()) file << ",";
+            file << "\n";
+        }
+        file << "      ]\n";
         file << "    }";
         if (i + 1 < vec_Parks.size()) file << ",";
         file << "\n";
     }
-    file << "  ]\n";
-    
+    file << "  ],\n";
+
+    // River path
+    file << "  \"river\": {\n";
+    file << "    \"path\": [\n";
+    for (size_t i = 0; i < vec_RiverPath.size(); ++i) {
+        file << "      {\"x\": " << vec_RiverPath[i].x
+             << ", \"y\": " << vec_RiverPath[i].y << "}";
+        if (i + 1 < vec_RiverPath.size()) file << ",";
+        file << "\n";
+    }
+    file << "    ]\n";
+    file << "  }\n";
+
     file << "}\n";
     file.close();
-    
+
+    std::cout << "[JSON Export] Exported " << vec_Parks.size()
+              << " parks and " << vec_RiverPath.size()
+              << " river points to " << s_Filename << std::endl;
+
     return true;
 }
 

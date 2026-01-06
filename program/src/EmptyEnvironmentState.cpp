@@ -11,6 +11,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <filesystem>
 #include <iostream>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace ScotlandYard {
 namespace States {
@@ -162,14 +164,17 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         glEnable(GL_DEPTH_TEST);
         CreateShaders();
         CreatePlane();
-        m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.png"));
+        m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.jpg"));
         m_TexGrass = p_App->LoadTexture(p_App->GetAssetPath("textures/grass.png"));
-        TryLoadGeneratedMap(p_App);
 
-        // NEW: Load sample map data for testing
+        m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
+        m_p_WaterRenderer->Initialize();
+        m_p_WaterRenderer->SetWaterHeight(0.1f);
+        m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
+
+        LoadPolygonData(p_App);
         LoadSampleMapData();
 
-        // HUD setup: load camera icon and hook toggle
         std::string s_IconPath = p_App->GetAssetPath("icons/camera_icon.png");
         UI::LoadCameraIconPNG(s_IconPath.c_str(), p_App);
         UI::SetCameraToggleCallback([this]() { this->m_b_Camera3D = !this->m_b_Camera3D; });
@@ -192,12 +197,6 @@ void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
         std::vector<UI::TicketSlot> vec_Slots(UI::k_TicketSlotCount);
         UI::SetTicketStates(vec_Slots);
         UI::SetRound(1);
-
-        // water renderer
-        m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
-        m_p_WaterRenderer->Initialize();
-        m_p_WaterRenderer->SetWaterHeight(0.1f);
-        m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
     }
     
     UI::SetPauseCallback([this]() {
@@ -267,6 +266,82 @@ void EmptyEnvironmentState::TryLoadGeneratedMap(Core::Application* p_App) {
     else {
         m_b_UseMask = false;
         m_TexMask = 0;
+    }
+}
+
+void EmptyEnvironmentState::LoadPolygonData(Core::Application* p_App) {
+    std::string s_JsonPath = "generated_map.json";
+    if (!std::filesystem::exists(s_JsonPath)) {
+        std::cout << "[PolygonLoader] generated_map.json not found, skipping polygon loading." << std::endl;
+        return;
+    }
+
+    const float MAP_WIDTH = 1200.0f;
+    const float MAP_HEIGHT = 900.0f;
+    const float PLANE_WIDTH = 24.0f;
+    const float PLANE_DEPTH = 18.0f;
+    const float scaleX = PLANE_WIDTH / MAP_WIDTH;
+    const float scaleZ = PLANE_DEPTH / MAP_HEIGHT;
+    const float offsetX = -1.0f;
+    const float offsetZ = -1.0f;
+
+    try {
+        std::ifstream file(s_JsonPath);
+        nlohmann::json json;
+        file >> json;
+
+        if (json.contains("parks") && json["parks"].is_array()) {
+            for (const auto& parkJson : json["parks"]) {
+                if (parkJson.contains("vertices") && parkJson["vertices"].is_array()) {
+                    std::vector<glm::vec2> vertices;
+                    for (const auto& vert : parkJson["vertices"]) {
+                        float x = vert["x"].get<float>();
+                        float y = vert["y"].get<float>();
+                        float scaledX = x * scaleX + offsetX;
+                        float scaledZ = y * scaleZ + offsetZ;
+                        vertices.push_back(glm::vec2(scaledX, scaledZ));
+                    }
+
+                    if (vertices.size() >= 3) {
+                        auto parkRenderer = std::make_unique<Rendering::PolygonRenderer>();
+                        if (parkRenderer->Initialize()) {
+                            parkRenderer->SetPolygon(vertices, 0.001f);
+                            m_vec_ParkRenderers.push_back(std::move(parkRenderer));
+                        }
+                    }
+                }
+            }
+            std::cout << "[PolygonLoader] Loaded " << m_vec_ParkRenderers.size() << " park polygons." << std::endl;
+        }
+
+        if (json.contains("river") && json["river"].contains("path") && json["river"]["path"].is_array()) {
+            std::vector<glm::vec2> riverPath;
+            for (const auto& point : json["river"]["path"]) {
+                float x = point["x"].get<float>();
+                float y = point["y"].get<float>();
+                float scaledX = x * scaleX + offsetX;
+                float scaledZ = y * scaleZ + offsetZ;
+                riverPath.push_back(glm::vec2(scaledX, scaledZ));
+            }
+
+            if (riverPath.size() >= 2) {
+                float riverWidth = 50.0f * scaleX;
+
+                m_p_RiverRenderer = std::make_unique<Rendering::PolygonRenderer>();
+                if (m_p_RiverRenderer->Initialize()) {
+                    m_p_RiverRenderer->SetRiverStrip(riverPath, riverWidth, 0.001f);
+                }
+
+                if (m_p_WaterRenderer) {
+                    m_p_WaterRenderer->SetRiverStrip(riverPath, riverWidth);
+                }
+
+                std::cout << "[PolygonLoader] Loaded river strip with " << riverPath.size() << " path points." << std::endl;
+            }
+        }
+
+    } catch (const std::exception& e) {
+        std::cerr << "[PolygonLoader] Error loading polygon data: " << e.what() << std::endl;
     }
 }
 
@@ -351,6 +426,10 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
         mat4_Projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 10.0f);
     }
 
+    if (m_p_WaterRenderer) {
+        m_p_WaterRenderer->RenderRiverStrip(mat4_Projection * mat4_View, m_f_Time, glm::mat4(1.0f));
+    }
+
     glm::mat4 mat4_Model(1.0f);
     glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
 
@@ -362,24 +441,10 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
     // Tiling
     GLint tileLoc = glGetUniformLocation(m_ShaderProgram, "uTileUV");
     glUniform2f(tileLoc, 12.0f, 9.0f);
-
-    // Bind sidewalk
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_TexSidewalk);
     glUniform1i(glGetUniformLocation(m_ShaderProgram, "uSidewalk"), 0);
-
-    // Bind grass
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, m_TexGrass);
-    glUniform1i(glGetUniformLocation(m_ShaderProgram, "uGrass"), 1);
-
-    // Bind mask
-    glUniform1i(glGetUniformLocation(m_ShaderProgram, "uUseMask"), m_b_UseMask ? 1 : 0);
-    if (m_b_UseMask) {
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, m_TexMask);
-        glUniform1i(glGetUniformLocation(m_ShaderProgram, "uMask"), 2);
-    }
+    glUniform1i(glGetUniformLocation(m_ShaderProgram, "uUseMask"), 0);
 
     glBindVertexArray(m_VAO_Plane);
     glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -408,22 +473,28 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
         glBindVertexArray(0);
     }
 
+    //park polygons grass texture
+    if (!m_vec_ParkRenderers.empty() && m_TexGrass) {
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f);
 
-    // Render water
-    if (m_p_WaterRenderer) {
-        m_p_WaterRenderer->Render(mat4_Projection * mat4_View, m_f_Time, m_mat4_GlobalScaleMatrix);
+        glm::mat4 mat4_MVP = mat4_Projection * mat4_View;
+        glm::vec2 tileScale(12.0f, 9.0f);
+
+        for (const auto& parkRenderer : m_vec_ParkRenderers) {
+            parkRenderer->Render(mat4_MVP, m_TexGrass, tileScale);
+        }
+
+        glDisable(GL_POLYGON_OFFSET_FILL);
     }
 
-    // HUD
     UI::SetViewport(p_App->GetVirtualWidth(), p_App->GetVirtualHeight());
     UI::RenderHUD(p_App);
 
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 }
 
-void EmptyEnvironmentState::RenderText(const std::string& s_Text, float f_X, float f_Y,
-                                       float f_Scale, float f_R, float f_G, float f_B,
-                                       Core::Application* p_App) {
+void EmptyEnvironmentState::RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale, float f_R, float f_G, float f_B, Core::Application* p_App) {
     const auto& characters = p_App->GetCharacterMap();
     GLuint i_Program = p_App->GetTextShaderProgram();
     GLuint i_VAO = p_App->GetTextVAO();
