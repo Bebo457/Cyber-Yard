@@ -628,7 +628,7 @@ void WaterRenderer::RenderRiverStrip(const glm::mat4& mat4_ViewProjection,
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
+    glDepthMask(GL_TRUE);
     glDisable(GL_CULL_FACE);
     glUseProgram(m_ShaderProgram);
 
@@ -659,14 +659,17 @@ void WaterRenderer::RenderRiverStrip(const glm::mat4& mat4_ViewProjection,
     glUniform1f(foamMaxLoc, m_f_FoamThresholdMax);
 
     glUniform1i(causticsLayerLoc, 1);
-    glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_GlobalScale;
-    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+    glm::mat4 mat4_CausticsModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -m_f_CausticsDepth, 0.0f));
+    mat4_CausticsModel = mat4_GlobalScale * mat4_CausticsModel;
+    glm::mat4 mat4_CausticsMVP = mat4_ViewProjection * mat4_CausticsModel;
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_CausticsMVP));
 
     glBindVertexArray(m_VAO_RiverStrip);
     glDrawElements(GL_TRIANGLES, m_i_RiverStripIndexCount, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
     glUniform1i(causticsLayerLoc, 0);
+    glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_GlobalScale;
     glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
 
     glBindVertexArray(m_VAO_RiverStrip);

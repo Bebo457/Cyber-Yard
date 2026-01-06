@@ -423,7 +423,10 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
         mat4_Projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 10.0f);
     }
 
-    // pavement base layer
+    if (m_p_WaterRenderer) {
+        m_p_WaterRenderer->RenderRiverStrip(mat4_Projection * mat4_View, m_f_Time, glm::mat4(1.0f));
+    }
+
     glm::mat4 mat4_Model(1.0f);
     glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
 
@@ -478,15 +481,6 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
         for (const auto& parkRenderer : m_vec_ParkRenderers) {
             parkRenderer->Render(mat4_MVP, m_TexGrass, tileScale);
         }
-
-        glDisable(GL_POLYGON_OFFSET_FILL);
-    }
-
-    if (m_p_WaterRenderer) {
-        glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-3.0f, -3.0f);
-
-        m_p_WaterRenderer->RenderRiverStrip(mat4_Projection * mat4_View, m_f_Time, glm::mat4(1.0f));
 
         glDisable(GL_POLYGON_OFFSET_FILL);
     }
