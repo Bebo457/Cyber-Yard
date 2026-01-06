@@ -5,6 +5,8 @@
 #include "MapGenerator.h"
 #include "HighwayGenerator.h" 
 #include "MapPreviewState.h" 
+// Dodano nagłówek środowiska 3D
+#include "EmptyEnvironmentState.h"
 
 #include <iostream>
 #include <glm/glm.hpp>
@@ -21,7 +23,7 @@
 #include <algorithm>
 #include <fstream>
 #include <set>
-#include <memory> // Dodano dla std::make_unique
+#include <memory> // Ważne dla std::make_unique
 
 namespace ScotlandYard
 {
@@ -343,8 +345,7 @@ namespace ScotlandYard
 
             // Buttons
             DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App);
-            // ZMIANA: Etykieta przycisku na "PLAY"
-            DrawMenuLikeButton(m_BtnSave, "PLAY", p_App); 
+            DrawMenuLikeButton(m_BtnSave, "PLAY", p_App);
             DrawMenuLikeButton(m_BtnBack, "BACK", p_App);
             DrawMenuLikeButton(m_BtnRandomSeed, "RANDOM", p_App);
 
@@ -490,7 +491,7 @@ namespace ScotlandYard
             m_vec_HighwayRoads = hg.GetRoads();
             m_vec_Highways = hg.GetHighways();
 
-            SaveMapToFile();
+            // Zaktualizuj teksturę podglądu natychmiast (w pamięci RAM)
             GeneratePreviewTexture();
 
             m_s_InfoText = "Map generated!";
@@ -512,14 +513,14 @@ namespace ScotlandYard
             SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
 
             auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b)
-            {
-                if (x >= 0 && x < W && y >= 0 && y < H)
                 {
-                    Uint32 color = SDL_MapRGBA(surface->format, r, g, b, 255);
-                    Uint32* pixels = (Uint32*)surface->pixels;
-                    pixels[y * W + x] = color;
-                }
-            };
+                    if (x >= 0 && x < W && y >= 0 && y < H)
+                    {
+                        Uint32 color = SDL_MapRGBA(surface->format, r, g, b, 255);
+                        Uint32* pixels = (Uint32*)surface->pixels;
+                        pixels[y * W + x] = color;
+                    }
+                };
 
             // 2. Rysuj Parki
             for (const auto& park : m_vec_Parks)
@@ -580,7 +581,7 @@ namespace ScotlandYard
                             }
                         }
                     }
-                };
+                    };
 
                 while (true) {
                     DrawDisc(x, y);
@@ -589,7 +590,7 @@ namespace ScotlandYard
                     if (e2 > -dy) { err -= dy; x += sx; }
                     if (e2 < dx) { err += dx; y += sy; }
                 }
-            };
+                };
 
             // 4. Rysuj Drogi AI
             for (const auto& road : m_vec_HighwayRoads) {
@@ -675,15 +676,15 @@ namespace ScotlandYard
 
             // Logika rysowania powtórzona dla pliku (można by zrefaktoryzować, ale trzymamy niezależnie)
             auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b)
-            {
-                if (x >= 0 && x < 1200 && y >= 0 && y < 900) {
-                    Uint8* pixels = (Uint8*)surface->pixels;
-                    int offset = (y * surface->pitch) + (x * 3);
-                    pixels[offset + 0] = b;
-                    pixels[offset + 1] = g;
-                    pixels[offset + 2] = r;
-                }
-            };
+                {
+                    if (x >= 0 && x < 1200 && y >= 0 && y < 900) {
+                        Uint8* pixels = (Uint8*)surface->pixels;
+                        int offset = (y * surface->pitch) + (x * 3);
+                        pixels[offset + 0] = b;
+                        pixels[offset + 1] = g;
+                        pixels[offset + 2] = r;
+                    }
+                };
 
             // Rysuj parki
             for (const auto& park : m_vec_Parks) {
@@ -718,7 +719,7 @@ namespace ScotlandYard
                     for (int oy = -thickness; oy <= thickness; ++oy)
                         for (int ox = -thickness; ox <= thickness; ++ox)
                             if (ox * ox + oy * oy <= thickness * thickness) SetPixel(cx + ox, cy + oy, r, g, b);
-                };
+                    };
                 while (true) {
                     DrawDisc(x, y);
                     if (x == x1 && y == y1) break;
@@ -726,7 +727,7 @@ namespace ScotlandYard
                     if (e2 > -dy) { err -= dy; x += sx; }
                     if (e2 < dx) { err += dx; y += sy; }
                 }
-            };
+                };
 
             // Rysuj drogi
             for (const auto& road : m_vec_HighwayRoads) {
@@ -745,7 +746,7 @@ namespace ScotlandYard
                 bool isHighway = false;
                 for (int rIdx : n.connectedRoadIndices)
                     if (m_vec_HighwayRoads[rIdx].type == CityGen::RoadType::HIGHWAY) isHighway = true;
-                
+
                 Uint8 nr = 255, ng = 255, nb = isHighway ? 0 : 255;
                 for (int dy = -rad; dy <= rad; ++dy)
                     for (int dx = -rad; dx <= rad; ++dx)
@@ -1015,27 +1016,31 @@ namespace ScotlandYard
                     if (mx >= m_BtnSave.x && mx <= m_BtnSave.x + m_BtnSave.w &&
                         my >= m_BtnSave.y && my <= m_BtnSave.y + m_BtnSave.h)
                     {
-                        // Wywołaj generowanie, aby zaktualizować dane
+                        std::cout << "[MapGen] PLAY clicked. Generating and switching..." << std::endl;
+
+                        // 1. Generuj (aby dane były świeże)
                         TryGenerateMap();
 
-                        ExportNodesToCSV("generated_nodes.csv");
-                        ExportMapInfoToCSV("generated_map_info.csv");
+                        // 2. Zapisz bitmapę (potrzebne dla shadera terenu w EmptyEnvironmentState)
                         SaveMapToFile();
-                        std::cout << "[MapGen] Export complete. Switching to preview..." << std::endl;
-                        
-                        // Tworzę stan podglądu z KOMPLETNYMI danymi (7 argumentów)
-                        auto pPreview = std::make_unique<MapPreviewState>(
-                            m_vec_GridPoints, 
-                            m_vec_RiverPath, 
-                            m_vec_Parks,
-                            m_vec_HighwayNodes, 
+
+                        // 3. Utwórz nowy stan środowiska
+                        auto pGameEnv = std::make_unique<ScotlandYard::States::EmptyEnvironmentState>();
+
+                        // 4. Wstrzyknij dane bezpośrednio do obiektu
+                        pGameEnv->InjectMapData(
+                            m_vec_HighwayNodes,
                             m_vec_HighwayRoads,
-                            1200, 900
+                            m_vec_Parks,
+                            m_vec_RiverPath
                         );
-                        
-                        // Rejestruję i uruchamiam
-                        p_App->GetStateManager()->RegisterState("preview_dynamic", std::move(pPreview));
-                        p_App->GetStateManager()->PushState("preview_dynamic", p_App); 
+
+                        // 5. Zarejestruj stan i przełącz
+                        // Uwaga: używamy move, bo unique_ptr nie może być kopiowany
+                        p_App->GetStateManager()->RegisterState("emptyenv", std::move(pGameEnv));
+                        p_App->GetStateManager()->ChangeState("emptyenv", p_App);
+
+                        return;
                     }
                     if (mx >= m_BtnBack.x && mx <= m_BtnBack.x + m_BtnBack.w &&
                         my >= m_BtnBack.y && my <= m_BtnBack.y + m_BtnBack.h)
