@@ -3,6 +3,8 @@
 #include "StateManager.h"
 #include "HUDOverlay.h"
 #include "MapGenerator.h"
+#include "HighwayGenerator.h" 
+#include "MapPreviewState.h" 
 
 #include <iostream>
 #include <glm/glm.hpp>
@@ -14,8 +16,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <cstdint>
+#include <cmath>
 #include <algorithm>
 #include <fstream>
+#include <set>
+#include <memory> // Dodano dla std::make_unique
 
 namespace ScotlandYard
 {
@@ -29,22 +35,71 @@ namespace ScotlandYard
         namespace
         {
             static constexpr bool kDrawCardBg = false;
-            const ScotlandYard::UI::Color col_bg{0.16f, 0.18f, 0.20f, 1.0f};
-            const ScotlandYard::UI::Color col_card{0.11f, 0.12f, 0.16f, 1.0f};
-            const ScotlandYard::UI::Color col_fld{0.08f, 0.08f, 0.08f, 1.0f};
-            const ScotlandYard::UI::Color col_txt{1, 1, 1, 1};
-            const ScotlandYard::UI::Color col_mut{0.8f, 0.83f, 0.9f, 0.85f};
-            const ScotlandYard::UI::Color col_accent{1.00f, 0.89f, 0.00f, 1.0f};
+            const ScotlandYard::UI::Color col_bg{ 0.16f, 0.18f, 0.20f, 1.0f };
+            const ScotlandYard::UI::Color col_card{ 0.11f, 0.12f, 0.16f, 1.0f };
+            const ScotlandYard::UI::Color col_fld{ 0.08f, 0.08f, 0.08f, 1.0f };
+            const ScotlandYard::UI::Color col_txt{ 1, 1, 1, 1 };
+            const ScotlandYard::UI::Color col_mut{ 0.8f, 0.83f, 0.9f, 0.85f };
+            const ScotlandYard::UI::Color col_accent{ 1.00f, 0.89f, 0.00f, 1.0f };
+
+            static float DistPointToSegment(float px, float py, float ax, float ay, float bx, float by) {
+                float vx = bx - ax, vy = by - ay;
+                float wx = px - ax, wy = py - ay;
+                float c1 = vx * wx + vy * wy;
+                if (c1 <= 0.0f) return std::sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay));
+                float c2 = vx * vx + vy * vy;
+                if (c2 <= c1) return std::sqrt((px - bx) * (px - bx) + (py - by) * (py - by));
+                float t = c1 / c2;
+                float projx = ax + t * vx, projy = ay + t * vy;
+                return std::sqrt((px - projx) * (px - projx) + (py - projy) * (py - projy));
+            }
+
+            static void RasterizeThickSegment(std::vector<uint8_t>& mask, int W, int H,
+                float ax, float ay, float bx, float by, float radius) {
+                int minx = (int)std::floor(std::min(ax, bx) - radius);
+                int maxx = (int)std::ceil(std::max(ax, bx) + radius);
+                int miny = (int)std::floor(std::min(ay, by) - radius);
+                int maxy = (int)std::ceil(std::max(ay, by) + radius);
+
+                minx = std::max(minx, 0); miny = std::max(miny, 0);
+                maxx = std::min(maxx, W - 1); maxy = std::min(maxy, H - 1);
+
+                float r2 = radius * radius;
+
+                for (int y = miny; y <= maxy; ++y) {
+                    for (int x = minx; x <= maxx; ++x) {
+                        float d = DistPointToSegment((float)x + 0.5f, (float)y + 0.5f, ax, ay, bx, by);
+                        if (d * d <= r2) mask[y * W + x] = 1;
+                    }
+                }
+            }
+
+            static void RasterizeCircle(std::vector<uint8_t>& mask, int W, int H,
+                float cx, float cy, float radius) {
+                int minx = std::max(0, (int)std::floor(cx - radius));
+                int maxx = std::min(W - 1, (int)std::ceil(cx + radius));
+                int miny = std::max(0, (int)std::floor(cy - radius));
+                int maxy = std::min(H - 1, (int)std::ceil(cy + radius));
+                float r2 = radius * radius;
+
+                for (int y = miny; y <= maxy; ++y) {
+                    for (int x = minx; x <= maxx; ++x) {
+                        float dx = ((float)x + 0.5f) - cx;
+                        float dy = ((float)y + 0.5f) - cy;
+                        if (dx * dx + dy * dy <= r2) mask[y * W + x] = 1;
+                    }
+                }
+            }
         }
 
-        int MapGeneratorState::ValueToXPosition(const Slider &s) const
+        int MapGeneratorState::ValueToXPosition(const Slider& s) const
         {
             float t = (s.f_Value - s.f_MinValue) / (s.f_MaxValue - s.f_MinValue);
             t = std::max(0.0f, std::min(1.0f, t));
             return s.track.x + (int)std::round(t * s.track.w);
         }
 
-        float MapGeneratorState::XPositionToValue(const Slider &s, int mx) const
+        float MapGeneratorState::XPositionToValue(const Slider& s, int mx) const
         {
             float t = (float)(mx - s.track.x) / (float)s.track.w;
             t = std::max(0.0f, std::min(1.0f, t));
@@ -74,12 +129,12 @@ namespace ScotlandYard
             m_vec_Fields.clear();
             m_vec_Sliders.clear();
 
-            m_vec_Fields.push_back({"Seed", "", {}, false, true, 16});
+            m_vec_Fields.push_back({ "Seed", "", {}, false, true, 16 });
 
-            m_vec_Sliders.push_back({"Num Parks", 3.0f, 1.0f, 10.0f, 1.0f});
-            m_vec_Sliders.push_back({"Park Min Size", 60.0f, 30.0f, 150.0f, 5.0f});
-            m_vec_Sliders.push_back({"Park Max Size", 100.0f, 50.0f, 200.0f, 5.0f});
-            m_vec_Sliders.push_back({"Num Bridges", 2.0f, 0.0f, 5.0f, 1.0f});
+            m_vec_Sliders.push_back({ "Num Parks", 3.0f, 1.0f, 10.0f, 1.0f });
+            m_vec_Sliders.push_back({ "Park Min Size", 60.0f, 30.0f, 150.0f, 5.0f });
+            m_vec_Sliders.push_back({ "Park Max Size", 100.0f, 50.0f, 200.0f, 5.0f });
+            m_vec_Sliders.push_back({ "Num Bridges", 2.0f, 0.0f, 5.0f, 1.0f });
 
             m_i_FocusedFieldIndex = -1;
             m_b_HasPreview = false;
@@ -90,7 +145,7 @@ namespace ScotlandYard
             }
         }
 
-        void MapGeneratorState::LayoutUI(int W, int H, Core::Application *p_App)
+        void MapGeneratorState::LayoutUI(int W, int H, Core::Application* p_App)
         {
             int outer = std::max(12, (int)(H * 0.04f));
             int pad = 24;
@@ -111,8 +166,8 @@ namespace ScotlandYard
             if (kDrawCardBg)
             {
                 DrawRoundedRectScreen((float)cardX, (float)cardY,
-                                      (float)(cardX + cardW), (float)(cardY + cardH),
-                                      col_card, 16, p_App);
+                    (float)(cardX + cardW), (float)(cardY + cardH),
+                    col_card, 16, p_App);
             }
             else
             {
@@ -124,9 +179,9 @@ namespace ScotlandYard
 
             // Title
             DrawTextCenteredPx("MAP GENERATOR",
-                               (float)cardX, (float)(cardY + cardH - titleH - 6),
-                               (float)(cardX + cardW), (float)(cardY + cardH - 6),
-                               col_txt, p_App, -6.0f);
+                (float)cardX, (float)(cardY + cardH - titleH - 6),
+                (float)(cardX + cardW), (float)(cardY + cardH - 6),
+                col_txt, p_App, -6.0f);
 
             int y = cardY + cardH - titleH - pad;
 
@@ -135,13 +190,13 @@ namespace ScotlandYard
             prevH = std::min(prevH, (int)((cardH - titleH - 3 * pad) * 0.5f));
             int prevX = cardX + (cardW - prevW) / 2;
             int prevY = y - prevH;
-            m_rect_PreviewArea = SDL_Rect{prevX, prevY, prevW, prevH};
+            m_rect_PreviewArea = SDL_Rect{ prevX, prevY, prevW, prevH };
 
             DrawTextCenteredPx("Preview", (float)prevX, (float)prevY - 26,
-                               (float)(prevX + prevW), (float)prevY - 2, col_mut, p_App, -2.0f);
+                (float)(prevX + prevW), (float)prevY - 2, col_mut, p_App, -2.0f);
             DrawRoundedRectScreen((float)prevX, (float)prevY,
-                                  (float)(prevX + prevW), (float)(prevY + prevH),
-                                  col_fld, 10, p_App);
+                (float)(prevX + prevW), (float)(prevY + prevH),
+                col_fld, 10, p_App);
 
             y = prevY - pad;
 
@@ -155,8 +210,8 @@ namespace ScotlandYard
             {
                 int seedY = y - fieldH;
                 y = seedY - gap;
-                m_vec_Fields[0].rect = SDL_Rect{seedX, seedY, seedFieldW, fieldH};
-                m_BtnRandomSeed = SDL_Rect{seedX + seedFieldW + 8, seedY + (fieldH - 32) / 2, randomBtnW, 32};
+                m_vec_Fields[0].rect = SDL_Rect{ seedX, seedY, seedFieldW, fieldH };
+                m_BtnRandomSeed = SDL_Rect{ seedX + seedFieldW + 8, seedY + (fieldH - 32) / 2, randomBtnW, 32 };
             }
 
             // Sliders
@@ -167,9 +222,9 @@ namespace ScotlandYard
             int btnX0 = cardX + (cardW - btnTotalW) / 2;
             int btnY = cardY + pad / 2;
 
-            m_BtnGenerate = SDL_Rect{btnX0, btnY, btnW, btnH};
-            m_BtnSave = SDL_Rect{btnX0 + btnW + btnGap, btnY, btnW, btnH};
-            m_BtnBack = SDL_Rect{btnX0 + 2 * (btnW + btnGap), btnY, btnW, btnH};
+            m_BtnGenerate = SDL_Rect{ btnX0, btnY, btnW, btnH };
+            m_BtnSave = SDL_Rect{ btnX0 + btnW + btnGap, btnY, btnW, btnH };
+            m_BtnBack = SDL_Rect{ btnX0 + 2 * (btnW + btnGap), btnY, btnW, btnH };
         }
 
         void MapGeneratorState::LayoutSliders(int startY, int cardX, int cardW, int pad, int gap)
@@ -185,16 +240,16 @@ namespace ScotlandYard
                 const int gapBetween = 16;
 
                 y -= rowH;
-                m_vec_Sliders[0].track = SDL_Rect{x, y + 16, smallW, 12};
+                m_vec_Sliders[0].track = SDL_Rect{ x, y + 16, smallW, 12 };
 
-                m_vec_Sliders[3].track = SDL_Rect{x + smallW + gapBetween, y + 16, smallW, 12};
+                m_vec_Sliders[3].track = SDL_Rect{ x + smallW + gapBetween, y + 16, smallW, 12 };
                 y -= gap;
 
                 for (size_t i = 1; i <= 2; ++i)
                 {
-                    auto &s = m_vec_Sliders[i];
+                    auto& s = m_vec_Sliders[i];
                     y -= rowH;
-                    s.track = SDL_Rect{x, y + 16, shortW, 12};
+                    s.track = SDL_Rect{ x, y + 16, shortW, 12 };
                     y -= gap;
                 }
             }
@@ -203,15 +258,15 @@ namespace ScotlandYard
                 // Verical layout if there are less then 4 sliders
                 for (size_t i = 0; i < m_vec_Sliders.size(); ++i)
                 {
-                    auto &s = m_vec_Sliders[i];
+                    auto& s = m_vec_Sliders[i];
                     y -= rowH;
-                    s.track = SDL_Rect{x, y + 16, shortW, 12};
+                    s.track = SDL_Rect{ x, y + 16, shortW, 12 };
                     y -= gap;
                 }
             }
         }
 
-        void MapGeneratorState::Render(Core::Application *p_App)
+        void MapGeneratorState::Render(Core::Application* p_App)
         {
             if (p_App->IsTrainingMode()) return;  // Skip rendering in headless mode
 
@@ -230,50 +285,50 @@ namespace ScotlandYard
             RenderPreviewTexture(p_App);
 
             // Render seed field
-            for (auto &f : m_vec_Fields)
+            for (auto& f : m_vec_Fields)
             {
                 auto bg = f.b_Focused ? col_card : col_fld;
                 DrawRoundedRectScreen((float)f.rect.x, (float)f.rect.y,
-                                      (float)(f.rect.x + f.rect.w), (float)(f.rect.y + f.rect.h),
-                                      bg, 8, p_App);
+                    (float)(f.rect.x + f.rect.w), (float)(f.rect.y + f.rect.h),
+                    bg, 8, p_App);
 
                 std::string shown = f.s_Value;
                 if (f.b_Focused && (SDL_GetTicks() / 500) % 2 == 0)
                     shown.push_back('|');
 
                 DrawTextCenteredPx(f.s_Label.c_str(),
-                                   (float)f.rect.x + 10.0f, (float)f.rect.y + (float)f.rect.h - 18.0f,
-                                   (float)f.rect.x + (float)f.rect.w - 10.0f, (float)f.rect.y + (float)f.rect.h - 2.0f,
-                                   col_txt, p_App, 0.0f);
+                    (float)f.rect.x + 10.0f, (float)f.rect.y + (float)f.rect.h - 18.0f,
+                    (float)f.rect.x + (float)f.rect.w - 10.0f, (float)f.rect.y + (float)f.rect.h - 2.0f,
+                    col_txt, p_App, 0.0f);
 
                 DrawTextCenteredPx(shown.c_str(),
-                                   (float)f.rect.x + 12.0f, (float)f.rect.y + 6.0f,
-                                   (float)f.rect.x + (float)f.rect.w - 12.0f, (float)f.rect.y + (float)f.rect.h - 22.0f,
-                                   col_txt, p_App, 0.0f);
+                    (float)f.rect.x + 12.0f, (float)f.rect.y + 6.0f,
+                    (float)f.rect.x + (float)f.rect.w - 12.0f, (float)f.rect.y + (float)f.rect.h - 22.0f,
+                    col_txt, p_App, 0.0f);
             }
 
             // Render sliders
-            for (const auto &s : m_vec_Sliders)
+            for (const auto& s : m_vec_Sliders)
             {
                 DrawTextCenteredPx(s.s_Label.c_str(),
-                                   (float)s.track.x, (float)(s.track.y + s.track.h + 2),
-                                   (float)(s.track.x + s.track.w), (float)(s.track.y + s.track.h + 20),
-                                   col_mut, p_App, -2.0f);
+                    (float)s.track.x, (float)(s.track.y + s.track.h + 2),
+                    (float)(s.track.x + s.track.w), (float)(s.track.y + s.track.h + 20),
+                    col_mut, p_App, -2.0f);
 
                 DrawRoundedRectScreen((float)s.track.x, (float)s.track.y,
-                                      (float)(s.track.x + s.track.w), (float)(s.track.y + s.track.h),
-                                      col_fld, 6, p_App);
+                    (float)(s.track.x + s.track.w), (float)(s.track.y + s.track.h),
+                    col_fld, 6, p_App);
 
                 int fillX = ValueToXPosition(s);
                 DrawRoundedRectScreen((float)s.track.x, (float)s.track.y,
-                                      (float)fillX, (float)(s.track.y + s.track.h),
-                                      col_accent, 6, p_App);
+                    (float)fillX, (float)(s.track.y + s.track.h),
+                    col_accent, 6, p_App);
 
                 int knobX = fillX - s.i_KnobWidth / 2;
-                SDL_Rect knob = {knobX, s.track.y - 4, s.i_KnobWidth, s.track.h + 8};
+                SDL_Rect knob = { knobX, s.track.y - 4, s.i_KnobWidth, s.track.h + 8 };
                 DrawRoundedRectScreen((float)knob.x, (float)knob.y,
-                                      (float)(knob.x + knob.w), (float)(knob.y + knob.h),
-                                      col_txt, 6, p_App);
+                    (float)(knob.x + knob.w), (float)(knob.y + knob.h),
+                    col_txt, 6, p_App);
 
                 char buf[64];
                 if (s.f_Step >= 1.0f)
@@ -282,13 +337,14 @@ namespace ScotlandYard
                     std::snprintf(buf, sizeof(buf), "%.2f", s.f_Value);
 
                 DrawTextCenteredPx(buf, (float)s.track.x, (float)(s.track.y - 18),
-                                   (float)(s.track.x + s.track.w), (float)(s.track.y - 2),
-                                   col_txt, p_App, -2.0f);
+                    (float)(s.track.x + s.track.w), (float)(s.track.y - 2),
+                    col_txt, p_App, -2.0f);
             }
 
             // Buttons
             DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App);
-            DrawMenuLikeButton(m_BtnSave, "SAVE", p_App);
+            // ZMIANA: Etykieta przycisku na "PLAY"
+            DrawMenuLikeButton(m_BtnSave, "PLAY", p_App); 
             DrawMenuLikeButton(m_BtnBack, "BACK", p_App);
             DrawMenuLikeButton(m_BtnRandomSeed, "RANDOM", p_App);
 
@@ -297,7 +353,7 @@ namespace ScotlandYard
 
         void MapGeneratorState::FocusField(int idx)
         {
-            for (auto &f : m_vec_Fields)
+            for (auto& f : m_vec_Fields)
                 f.b_Focused = false;
             m_i_FocusedFieldIndex = (idx >= 0 && idx < (int)m_vec_Fields.size()) ? idx : -1;
             if (m_i_FocusedFieldIndex >= 0)
@@ -306,15 +362,15 @@ namespace ScotlandYard
 
         void MapGeneratorState::BlurAllFields() { FocusField(-1); }
 
-        void MapGeneratorState::AppendTextToFocusedField(const char *utf8)
+        void MapGeneratorState::AppendTextToFocusedField(const char* utf8)
         {
             if (m_i_FocusedFieldIndex < 0)
                 return;
-            auto &f = m_vec_Fields[m_i_FocusedFieldIndex];
+            auto& f = m_vec_Fields[m_i_FocusedFieldIndex];
             if ((int)f.s_Value.size() >= f.i_MaxLength)
                 return;
 
-            for (const char *p = utf8; *p; ++p)
+            for (const char* p = utf8; *p; ++p)
             {
                 char c = *p;
                 if (f.b_Numeric)
@@ -334,7 +390,7 @@ namespace ScotlandYard
         {
             if (m_i_FocusedFieldIndex < 0)
                 return;
-            auto &f = m_vec_Fields[m_i_FocusedFieldIndex];
+            auto& f = m_vec_Fields[m_i_FocusedFieldIndex];
             if (!f.s_Value.empty())
                 f.s_Value.pop_back();
         }
@@ -379,12 +435,10 @@ namespace ScotlandYard
                 std::swap(parkMinSize, parkMaxSize);
                 m_vec_Sliders[1].f_Value = parkMinSize;
                 m_vec_Sliders[2].f_Value = parkMaxSize;
-                std::cout << "[MapGen] Swapped min/max sizes: min=" << parkMinSize
-                          << ", max=" << parkMaxSize << std::endl;
             }
 
             std::cout << "[MapGen] Parks: " << numParks << ", Size: "
-                      << parkMinSize << "-" << parkMaxSize << std::endl;
+                << parkMinSize << "-" << parkMaxSize << std::endl;
 
             int mapW = 1200;
             int mapH = 900;
@@ -395,69 +449,88 @@ namespace ScotlandYard
             m_vec_GridPoints = MapGen::RemoveNodesOnRiver(m_vec_GridPoints, m_vec_RiverPath);
 
             m_vec_Parks = MapGen::GenerateParks(m_vec_GridPoints, m_vec_RiverPath,
-                                                m_i_CurrentCorner, numParks,
-                                                parkMinSize, parkMaxSize);
+                m_i_CurrentCorner, numParks,
+                parkMinSize, parkMaxSize);
             m_vec_Bridges = MapGen::GenerateBridges(m_vec_GridPoints, m_vec_RiverPath,
-                                                    numBridges, m_i_CurrentCorner);
+                numBridges, m_i_CurrentCorner);
 
-            int maxStreets = 5; 
-            m_vec_Streets = MapGen::GenerateStreetNetwork(m_vec_GridPoints, m_vec_RiverPath, 
-                                                        m_vec_Bridges, maxStreets);
+            // Stary generator ulic (dla kompatybilności strukturalnej)
+            m_vec_Streets = MapGen::GenerateStreetNetwork(m_vec_GridPoints, m_vec_RiverPath,
+                m_vec_Bridges, 5);
 
-            m_vec_GridPoints = MapGen::GenerateNodePositions(
-                mapW, mapH,
-                m_vec_RiverPath,
-                m_vec_Parks,
-                120, // or any number of nodes you want
-                ui_Seed);
+            // ----------------------------------------------------
+            // INTEGRACJA Z NOWYM HIGHWAY GENERATOR (CityGen)
+            // ----------------------------------------------------
 
-            ExportNodesToCSV("generated_nodes.csv");
-            ExportMapInfoToCSV("generated_map_info.csv");
+            // Przygotowanie maski stref (Rzeka i Parki) dla CityGen
+            std::vector<uint8_t> zoneMask((size_t)mapW * (size_t)mapH, 0);
 
-            SaveMapToFile();
-            UpdatePreviewTexture();
+            // Rzeka jako gruba linia w masce
+            const float riverHalfWidthPx = 15.0f;
+            if (m_vec_RiverPath.size() >= 2) {
+                for (size_t i = 1; i < m_vec_RiverPath.size(); ++i) {
+                    const auto& a = m_vec_RiverPath[i - 1];
+                    const auto& b = m_vec_RiverPath[i];
+                    RasterizeThickSegment(zoneMask, mapW, mapH, a.x, a.y, b.x, b.y, riverHalfWidthPx);
+                }
+            }
+
+            // Parki (zakładamy okrągłe dla uproszczenia maski)
+            for (const auto& park : m_vec_Parks) {
+                RasterizeCircle(zoneMask, mapW, mapH, park.center.x, park.center.y, park.f_BaseRadius);
+            }
+
+            // Uruchomienie HighwayGenerator
+            CityGen::HighwayGenerator hg(mapW, mapH);
+            hg.SetZoneMask(std::move(zoneMask));
+            hg.Generate();
+
+            // Pobranie wyników
+            m_vec_HighwayNodes = hg.GetRoadNodes();
+            m_vec_HighwayRoads = hg.GetRoads();
+            m_vec_Highways = hg.GetHighways();
+
+            // Zaktualizuj teksturę podglądu natychmiast (w pamięci RAM)
+            GeneratePreviewTexture();
 
             m_s_InfoText = "Map generated!";
             std::cout << "[MapGen] Generation complete!" << std::endl;
-            if (m_pApp && !m_pApp->IsTrainingMode()) {
-                m_pApp->GetStateManager()->ChangeState("emptyenv", m_pApp);
-            }
         }
 
-        void MapGeneratorState::SaveMapToFile()
+        // Nowa metoda rysująca mapę w pamięci i aktualizująca teksturę
+        void MapGeneratorState::GeneratePreviewTexture()
         {
-            std::string filename = "generated_map.bmp";
+            int W = 1200;
+            int H = 900;
 
-            SDL_Surface *surface = SDL_CreateRGBSurface(0, 1200, 900, 24,
-                                                        0xFF0000, 0x00FF00, 0x0000FF, 0);
+            // 1. Utwórz powierzchnię SDL (w pamięci)
+            SDL_Surface* surface = SDL_CreateRGBSurface(0, W, H, 32,
+                0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000); // RGBA
 
-            if (!surface)
-            {
-                std::cout << "[MapGen ERROR] Failed to create surface!" << std::endl;
-                return;
-            }
+            if (!surface) return;
 
-            SDL_LockSurface(surface);
             SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
 
             auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b)
             {
-                if (x >= 0 && x < 1200 && y >= 0 && y < 900)
+                if (x >= 0 && x < W && y >= 0 && y < H)
                 {
-                    Uint8 *pixels = (Uint8 *)surface->pixels;
-                    int offset = (y * surface->pitch) + (x * 3);
-                    pixels[offset + 0] = b;
-                    pixels[offset + 1] = g;
-                    pixels[offset + 2] = r;
+                    Uint32 color = SDL_MapRGBA(surface->format, r, g, b, 255);
+                    Uint32* pixels = (Uint32*)surface->pixels;
+                    pixels[y * W + x] = color;
                 }
             };
 
-            for (const auto &park : m_vec_Parks)
+            // 2. Rysuj Parki
+            for (const auto& park : m_vec_Parks)
             {
                 int minX = (int)(park.center.x - park.f_BaseRadius * 1.5f);
                 int maxX = (int)(park.center.x + park.f_BaseRadius * 1.5f);
                 int minY = (int)(park.center.y - park.f_BaseRadius * 1.5f);
                 int maxY = (int)(park.center.y + park.f_BaseRadius * 1.5f);
+
+                minX = std::max(0, minX); minY = std::max(0, minY);
+                maxX = std::min(W - 1, maxX); maxY = std::min(H - 1, maxY);
 
                 for (int y = minY; y <= maxY; ++y)
                 {
@@ -465,13 +538,14 @@ namespace ScotlandYard
                     {
                         if (park.ContainsPoint((float)x, (float)y))
                         {
-                            SetPixel(x, y, 34, 139, 34);
+                            SetPixel(x, y, 34, 139, 34); // Forest Green
                         }
                     }
                 }
             }
 
-            for (const auto &rp : m_vec_RiverPath)
+            // 3. Rysuj Rzekę
+            for (const auto& rp : m_vec_RiverPath)
             {
                 int cx = (int)rp.x;
                 int cy = (int)rp.y;
@@ -481,240 +555,95 @@ namespace ScotlandYard
                     {
                         if (dx * dx + dy * dy <= 400)
                         {
-                            SetPixel(cx + dx, cy + dy, 50, 150, 255);
+                            SetPixel(cx + dx, cy + dy, 50, 150, 255); // Blue
                         }
                     }
                 }
             }
 
-            std::cout << "[MapGen] Drawing " << m_vec_Streets.size() << " streets..." << std::endl;
-
-            // for (const auto& street : m_vec_Streets) {
-            //     const MapGen::Point& p1 = m_vec_GridPoints[street.i_Node1]; 
-            //     const MapGen::Point& p2 = m_vec_GridPoints[street.i_Node2];
-    
-            //     int thickness = 0;
-            //     Uint8 r = 128, g = 128, b = 128;
-                
-            //     switch(street.i_Tier) {
-            //         case 0: thickness = 4; r = 255; g = 100; b = 100; break;
-            //         case 1: thickness = 3; r = 255; g = 200; b = 100; break; 
-            //         case 2: thickness = 2; r = 200; g = 200; b = 200; break; 
-            //         case 3: thickness = 1; r = 150; g = 150; b = 150; break; 
-            //     }
-    
-            //     // Bresenham algorithm
-            //     int x0 = (int)p1.x;
-            //     int y0 = (int)p1.y;
-            //     int x1 = (int)p2.x;
-            //     int y1 = (int)p2.y;
-                
-            //     int dx = abs(x1 - x0);
-            //     int dy = abs(y1 - y0);
-            //     int sx = (x0 < x1) ? 1 : -1;
-            //     int sy = (y0 < y1) ? 1 : -1;
-            //     int err = dx - dy;
-                
-            //     int x = x0;
-            //     int y = y0;
-    
-            //     while (true) {
-            //         for (int d = -thickness; d <= thickness; ++d) {
-            //             SetPixel(x + d, y, r, g, b);
-            //             SetPixel(x, y + d, r, g, b);
-            //         }
-                    
-            //         if (x == x1 && y == y1) break;
-                    
-            //         int e2 = 2 * err;
-            //         if (e2 > -dy) { err -= dy; x += sx; }
-            //         if (e2 < dx) { err += dx; y += sy; }
-            //     }
-            // }
-
-            // for (const auto &p : m_vec_GridPoints)
-            // {
-            //     bool b_IsBridgeEnd = false;
-            //     for (const auto &bridge : m_vec_Bridges)
-            //     {
-            //         float f_Dist1 = sqrt((p.x - bridge.first.x) * (p.x - bridge.first.x) +
-            //                              (p.y - bridge.first.y) * (p.y - bridge.first.y));
-            //         float f_Dist2 = sqrt((p.x - bridge.second.x) * (p.x - bridge.second.x) +
-            //                              (p.y - bridge.second.y) * (p.y - bridge.second.y));
-
-            //         if (f_Dist1 < 1.0f || f_Dist2 < 1.0f)
-            //         {
-            //             b_IsBridgeEnd = true;
-            //             break;
-            //         }
-            //     }
-
-            //     Uint8 r = b_IsBridgeEnd ? 255 : 255;
-            //     Uint8 g = b_IsBridgeEnd ? 0 : 255;
-            //     Uint8 b = b_IsBridgeEnd ? 0 : 255;
-
-            //     for (int dy = -3; dy <= 3; ++dy)
-            //     {
-            //         for (int dx = -3; dx <= 3; ++dx)
-            //         {
-            //             if (dx * dx + dy * dy <= 9)
-            //             {
-            //                 SetPixel((int)p.x + dx, (int)p.y + dy, r, g, b);
-            //             }
-            //         }
-            //     }
-            // }
-            // Rysuj ulice (uproszczone - bez grubości)
-            std::cout << "[MapGen] Drawing " << m_vec_Streets.size() << " streets..." << std::endl;
-
-            for (size_t streetIdx = 0; streetIdx < m_vec_Streets.size(); ++streetIdx) {
-                const auto& street = m_vec_Streets[streetIdx];
-                const MapGen::Point& p1 = m_vec_GridPoints[street.i_Node1];
-                const MapGen::Point& p2 = m_vec_GridPoints[street.i_Node2];
-                
-                // Kolor według tier
-                Uint8 r = 128, g = 128, b = 128;
-                
-                switch(street.i_Tier) {
-                    case 0: r = 255; g = 100; b = 100; break;  // Czerwone arterie
-                    case 1: r = 255; g = 200; b = 100; break;  // Pomarańczowe drogi główne
-                    case 2: r = 200; g = 200; b = 200; break;  // Szare drogi lokalne
-                    case 3: r = 150; g = 150; b = 150; break;  // Ciemnoszare uliczki
-                }
-                
-                int x0 = (int)p1.x;
-                int y0 = (int)p1.y;
-                int x1 = (int)p2.x;
-                int y1 = (int)p2.y;
-                
-                // Superszybki Bresenhams - SINGLE PIXEL
-                int dx = abs(x1 - x0);
-                int dy = abs(y1 - y0);
+            // Funkcja pomocnicza do rysowania linii z grubością
+            auto DrawThickLine = [&](int x0, int y0, int x1, int y1, int thickness, Uint8 r, Uint8 g, Uint8 b) {
+                int dx = std::abs(x1 - x0);
+                int dy = std::abs(y1 - y0);
                 int sx = (x0 < x1) ? 1 : -1;
                 int sy = (y0 < y1) ? 1 : -1;
                 int err = dx - dy;
-                
+
                 int x = x0;
                 int y = y0;
-                
+
+                auto DrawDisc = [&](int cx, int cy) {
+                    for (int oy = -thickness; oy <= thickness; ++oy) {
+                        for (int ox = -thickness; ox <= thickness; ++ox) {
+                            if (ox * ox + oy * oy <= thickness * thickness) {
+                                SetPixel(cx + ox, cy + oy, r, g, b);
+                            }
+                        }
+                    }
+                };
+
                 while (true) {
-                    SetPixel(x, y, r, g, b);
-                    
+                    DrawDisc(x, y);
                     if (x == x1 && y == y1) break;
-                    
                     int e2 = 2 * err;
                     if (e2 > -dy) { err -= dy; x += sx; }
                     if (e2 < dx) { err += dx; y += sy; }
                 }
-                
-                if (streetIdx % 10 == 0) {
-                    std::cout << "[MapGen] Drew street " << streetIdx << "/" << m_vec_Streets.size() << std::endl;
+            };
+
+            // 4. Rysuj Drogi AI
+            for (const auto& road : m_vec_HighwayRoads) {
+                if (road.isDeleted) continue;
+
+                if (road.startNodeIdx < 0 || road.startNodeIdx >= m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx < 0 || road.endNodeIdx >= m_vec_HighwayNodes.size()) continue;
+
+                const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
+                const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
+
+                if (road.type == CityGen::RoadType::HIGHWAY) {
+                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 2, 255, 140, 0); // Orange
+                }
+                else {
+                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 0, 200, 200, 200); // White/Gray
                 }
             }
 
-            std::cout << "[MapGen] All streets drawn" << std::endl;
+            // 5. Rysuj węzły
+            for (const auto& n : m_vec_HighwayNodes) {
+                if (!n.isIntersection && n.connectedRoadIndices.size() < 2) continue;
 
+                int cx = (int)n.x, cy = (int)n.y;
+                int rad = n.isIntersection ? 3 : 2;
 
-            
-            std::cout << "[MapGen] Drawing " << m_vec_Bridges.size() << " bridges..." << std::endl;
-
-            for (const auto& bridge : m_vec_Bridges) {
-                int x0 = (int)bridge.first.x;
-                int y0 = (int)bridge.first.y;
-                int x1 = (int)bridge.second.x;
-                int y1 = (int)bridge.second.y;
-                
-                int dx = abs(x1 - x0);
-                int dy = abs(y1 - y0);
-                int sx = (x0 < x1) ? 1 : -1;
-                int sy = (y0 < y1) ? 1 : -1;
-                int err = dx - dy;
-                
-                int x = x0;
-                int y = y0;
-                
-                while (true) {
-                    for (int d = -2; d <= 2; ++d) {
-                        SetPixel(x + d, y, 255, 255, 0);   
-                        SetPixel(x, y + d, 255, 255, 0);     
-                    }
-                    
-                    if (x == x1 && y == y1) break;
-                    
-                    int e2 = 2 * err;
-                    if (e2 > -dy) { err -= dy; x += sx; }
-                    if (e2 < dx) { err += dx; y += sy; }
-                }
-                
-                std::cout << "[MapGen] Bridge " << (int)(&bridge - &m_vec_Bridges[0]) + 1 
-                        << ": (" << x0 << "," << y0 << ") -> (" << x1 << "," << y1 << ")" << std::endl;
-            }
-
-            for (const auto& bridge : m_vec_Bridges) {
-                int x1 = (int)bridge.first.x;
-                int y1 = (int)bridge.first.y;
-                for (int dy = -5; dy <= 5; ++dy) {
-                    for (int dx = -5; dx <= 5; ++dx) {
-                        if (dx*dx + dy*dy <= 25) {
-                            SetPixel(x1 + dx, y1 + dy, 255, 0, 0);  
+                bool isHighwayNode = false;
+                for (int rIdx : n.connectedRoadIndices) {
+                    if (rIdx >= 0 && rIdx < m_vec_HighwayRoads.size()) {
+                        if (m_vec_HighwayRoads[rIdx].type == CityGen::RoadType::HIGHWAY) {
+                            isHighwayNode = true;
+                            break;
                         }
                     }
                 }
-                
-                int x2 = (int)bridge.second.x;
-                int y2 = (int)bridge.second.y;
-                for (int dy = -5; dy <= 5; ++dy) {
-                    for (int dx = -5; dx <= 5; ++dx) {
-                        if (dx*dx + dy*dy <= 25) {
-                            SetPixel(x2 + dx, y2 + dy, 255, 0, 0); 
-                        }
-                    }
-                }
+
+                Uint8 nr = 255;
+                Uint8 ng = 255;
+                Uint8 nb = isHighwayNode ? 0 : 255; // Yellow for Bus, White for Taxi
+
+                for (int dy = -rad; dy <= rad; ++dy)
+                    for (int dx = -rad; dx <= rad; ++dx)
+                        if (dx * dx + dy * dy <= rad * rad)
+                            SetPixel(cx + dx, cy + dy, nr, ng, nb);
             }
 
-
-            SDL_UnlockSurface(surface);
-
-            if (SDL_SaveBMP(surface, filename.c_str()) == 0)
-            {
-                std::cout << "[MapGen] Map saved to: " << filename << std::endl;
-            }
-            else
-            {
-                std::cout << "[MapGen ERROR] Failed to save: " << SDL_GetError() << std::endl;
-            }
-
-            SDL_FreeSurface(surface);
-        }
-
-        void MapGeneratorState::UpdatePreviewTexture()
-        {
-            std::string s_PreviewPath = "generated_map.bmp";
-
-            if (m_GLuint_PreviewTexture)
-            {
+            // 6. Prześlij do tekstury OpenGL
+            if (m_GLuint_PreviewTexture) {
                 glDeleteTextures(1, &m_GLuint_PreviewTexture);
-                m_GLuint_PreviewTexture = 0;
             }
-
-            SDL_Surface *p_Surface = SDL_LoadBMP(s_PreviewPath.c_str());
-
-            if (!p_Surface)
-            {
-                std::cerr << "[MapGen] Failed to load " << s_PreviewPath << ": "
-                          << SDL_GetError() << std::endl;
-                m_b_HasPreview = false;
-                return;
-            }
-
             glGenTextures(1, &m_GLuint_PreviewTexture);
             glBindTexture(GL_TEXTURE_2D, m_GLuint_PreviewTexture);
 
-            GLenum format = (p_Surface->format->BytesPerPixel == 4) ? GL_RGBA : GL_RGB;
-
-            glTexImage2D(GL_TEXTURE_2D, 0, format,
-                         p_Surface->w, p_Surface->h, 0,
-                         format, GL_UNSIGNED_BYTE, p_Surface->pixels);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, W, H, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
 
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -723,17 +652,164 @@ namespace ScotlandYard
 
             glBindTexture(GL_TEXTURE_2D, 0);
 
-            m_i_PreviewWidth = p_Surface->w;
-            m_i_PreviewHeight = p_Surface->h;
+            m_i_PreviewWidth = W;
+            m_i_PreviewHeight = H;
             m_b_HasPreview = true;
 
-            SDL_FreeSurface(p_Surface);
-
-            std::cout << "[MapGen] Preview texture loaded: " << m_i_PreviewWidth
-                      << "x" << m_i_PreviewHeight << std::endl;
+            SDL_FreeSurface(surface);
+            std::cout << "[MapGen] Preview texture updated (" << W << "x" << H << ")" << std::endl;
         }
 
-        void MapGeneratorState::RenderPreviewTexture(Core::Application *p_App)
+        void MapGeneratorState::SaveMapToFile()
+        {
+            // Metoda zachowana dla przycisku EXPORT, zapisuje fizyczny plik BMP
+            std::string filename = "generated_map.bmp";
+
+            SDL_Surface* surface = SDL_CreateRGBSurface(0, 1200, 900, 24,
+                0xFF0000, 0x00FF00, 0x0000FF, 0);
+
+            if (!surface) return;
+
+            SDL_LockSurface(surface);
+            SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
+
+            // Logika rysowania powtórzona dla pliku (można by zrefaktoryzować, ale trzymamy niezależnie)
+            auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b)
+            {
+                if (x >= 0 && x < 1200 && y >= 0 && y < 900) {
+                    Uint8* pixels = (Uint8*)surface->pixels;
+                    int offset = (y * surface->pitch) + (x * 3);
+                    pixels[offset + 0] = b;
+                    pixels[offset + 1] = g;
+                    pixels[offset + 2] = r;
+                }
+            };
+
+            // Rysuj parki
+            for (const auto& park : m_vec_Parks) {
+                int minX = (int)(park.center.x - park.f_BaseRadius * 1.5f);
+                int maxX = (int)(park.center.x + park.f_BaseRadius * 1.5f);
+                int minY = (int)(park.center.y - park.f_BaseRadius * 1.5f);
+                int maxY = (int)(park.center.y + park.f_BaseRadius * 1.5f);
+                for (int y = minY; y <= maxY; ++y) {
+                    for (int x = minX; x <= maxX; ++x) {
+                        if (park.ContainsPoint((float)x, (float)y)) SetPixel(x, y, 34, 139, 34);
+                    }
+                }
+            }
+
+            // Rysuj rzekę
+            for (const auto& rp : m_vec_RiverPath) {
+                int cx = (int)rp.x; int cy = (int)rp.y;
+                for (int dy = -20; dy <= 20; ++dy) {
+                    for (int dx = -20; dx <= 20; ++dx) {
+                        if (dx * dx + dy * dy <= 400) SetPixel(cx + dx, cy + dy, 50, 150, 255);
+                    }
+                }
+            }
+
+            // Helper linii
+            auto DrawThickLine = [&](int x0, int y0, int x1, int y1, int thickness, Uint8 r, Uint8 g, Uint8 b) {
+                int dx = std::abs(x1 - x0), dy = std::abs(y1 - y0);
+                int sx = (x0 < x1) ? 1 : -1, sy = (y0 < y1) ? 1 : -1;
+                int err = dx - dy;
+                int x = x0, y = y0;
+                auto DrawDisc = [&](int cx, int cy) {
+                    for (int oy = -thickness; oy <= thickness; ++oy)
+                        for (int ox = -thickness; ox <= thickness; ++ox)
+                            if (ox * ox + oy * oy <= thickness * thickness) SetPixel(cx + ox, cy + oy, r, g, b);
+                };
+                while (true) {
+                    DrawDisc(x, y);
+                    if (x == x1 && y == y1) break;
+                    int e2 = 2 * err;
+                    if (e2 > -dy) { err -= dy; x += sx; }
+                    if (e2 < dx) { err += dx; y += sy; }
+                }
+            };
+
+            // Rysuj drogi
+            for (const auto& road : m_vec_HighwayRoads) {
+                if (road.isDeleted) continue;
+                const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
+                const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
+                if (road.type == CityGen::RoadType::HIGHWAY) DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 3, 255, 140, 0);
+                else DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
+            }
+
+            // Rysuj węzły
+            for (const auto& n : m_vec_HighwayNodes) {
+                if (!n.isIntersection && n.connectedRoadIndices.size() < 2) continue;
+                int cx = (int)n.x, cy = (int)n.y;
+                int rad = n.isIntersection ? 4 : 2;
+                bool isHighway = false;
+                for (int rIdx : n.connectedRoadIndices)
+                    if (m_vec_HighwayRoads[rIdx].type == CityGen::RoadType::HIGHWAY) isHighway = true;
+                
+                Uint8 nr = 255, ng = 255, nb = isHighway ? 0 : 255;
+                for (int dy = -rad; dy <= rad; ++dy)
+                    for (int dx = -rad; dx <= rad; ++dx)
+                        if (dx * dx + dy * dy <= rad * rad) SetPixel(cx + dx, cy + dy, nr, ng, nb);
+            }
+
+            SDL_UnlockSurface(surface);
+            if (SDL_SaveBMP(surface, filename.c_str()) == 0) std::cout << "[MapGen] Map saved to: " << filename << std::endl;
+            else std::cout << "[MapGen ERROR] Failed to save: " << SDL_GetError() << std::endl;
+            SDL_FreeSurface(surface);
+        }
+
+        void MapGeneratorState::RenderMapToTexture()
+        {
+        }
+
+        void MapGeneratorState::ExportNodesToCSV(const std::string& s_Filename)
+        {
+            std::ofstream file(s_Filename);
+
+            if (!file.is_open())
+            {
+                std::cout << "[Export ERROR] Failed to create " << s_Filename << std::endl;
+                return;
+            }
+
+            file << "id,pos_x,pos_y,station_type\n";
+
+            int i_NodeId = 1; // ID w grze (1-based)
+
+            for (size_t i = 0; i < m_vec_HighwayNodes.size(); ++i)
+            {
+                const auto& node = m_vec_HighwayNodes[i];
+
+                if (node.connectedRoadIndices.empty()) continue;
+
+                int i_X = static_cast<int>(std::round(node.x));
+                int i_Y = static_cast<int>(std::round(node.y));
+
+                std::string stationType = "taxi";
+                bool hasHighwayConnection = false;
+
+                for (int rIdx : node.connectedRoadIndices) {
+                    if (rIdx >= 0 && rIdx < m_vec_HighwayRoads.size()) {
+                        if (m_vec_HighwayRoads[rIdx].type == CityGen::RoadType::HIGHWAY) {
+                            hasHighwayConnection = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasHighwayConnection) {
+                    stationType = "bus";
+                }
+
+                file << i_NodeId << "," << i_X << "," << i_Y << "," << stationType << "\n";
+                i_NodeId++;
+            }
+
+            file.close();
+            std::cout << "[Export] Exported " << (i_NodeId - 1) << " nodes to " << s_Filename << std::endl;
+        }
+
+        void MapGeneratorState::RenderPreviewTexture(Core::Application* p_App)
         {
             if (!m_b_HasPreview || !m_GLuint_PreviewTexture)
             {
@@ -761,13 +837,13 @@ namespace ScotlandYard
 
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3(
-                                              (float)m_rect_PreviewArea.x,
-                                              (float)m_rect_PreviewArea.y,
-                                              0.0f));
+                (float)m_rect_PreviewArea.x,
+                (float)m_rect_PreviewArea.y,
+                0.0f));
             model = glm::scale(model, glm::vec3(
-                                          (float)m_rect_PreviewArea.w,
-                                          (float)m_rect_PreviewArea.h,
-                                          1.0f));
+                (float)m_rect_PreviewArea.w,
+                (float)m_rect_PreviewArea.h,
+                1.0f));
 
             glm::mat4 mvp = projection * model;
 
@@ -801,7 +877,7 @@ namespace ScotlandYard
 
                 0.0f, 0.0f, 0.0f, 1.0f,
                 1.0f, 1.0f, 1.0f, 0.0f,
-                0.0f, 1.0f, 0.0f, 0.0f};
+                0.0f, 1.0f, 0.0f, 0.0f };
 
             glGenVertexArrays(1, &m_VAO_PreviewQuad);
             glGenBuffers(1, &m_VBO_PreviewQuad);
@@ -810,15 +886,15 @@ namespace ScotlandYard
             glBindBuffer(GL_ARRAY_BUFFER, m_VBO_PreviewQuad);
             glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
 
-            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
             glEnableVertexAttribArray(0);
 
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
             glEnableVertexAttribArray(1);
 
             glBindVertexArray(0);
 
-            const char *vertexShaderSrc = R"(
+            const char* vertexShaderSrc = R"(
                 #version 330 core
                 layout(location = 0) in vec2 aPos;
                 layout(location = 1) in vec2 aTexCoord;
@@ -833,7 +909,7 @@ namespace ScotlandYard
                 }
             )";
 
-            const char *fragmentShaderSrc = R"(
+            const char* fragmentShaderSrc = R"(
                 #version 330 core
                 in vec2 TexCoord;
                 
@@ -865,12 +941,7 @@ namespace ScotlandYard
             std::cout << "[MapGen] Preview quad and shaders created" << std::endl;
         }
 
-        void MapGeneratorState::RenderMapToTexture()
-        {
-            // Ta funkcja nie jest juÅ¼ uÅ¼ywana - usuniÄ™to zbÄ™dny kod
-        }
-
-        void MapGeneratorState::HandleEvent(const SDL_Event &ev, Core::Application *p_App)
+        void MapGeneratorState::HandleEvent(const SDL_Event& ev, Core::Application* p_App)
         {
             switch (ev.type)
             {
@@ -912,7 +983,7 @@ namespace ScotlandYard
                     bool focused = false;
                     for (size_t i = 0; i < m_vec_Fields.size(); ++i)
                     {
-                        auto &r = m_vec_Fields[i].rect;
+                        auto& r = m_vec_Fields[i].rect;
                         if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
                         {
                             FocusField((int)i);
@@ -924,9 +995,9 @@ namespace ScotlandYard
                         BlurAllFields();
 
                     // Check sliders
-                    for (auto &s : m_vec_Sliders)
+                    for (auto& s : m_vec_Sliders)
                     {
-                        SDL_Rect hit = {s.track.x - 6, s.track.y - 6, s.track.w + 12, s.track.h + 12};
+                        SDL_Rect hit = { s.track.x - 6, s.track.y - 6, s.track.w + 12, s.track.h + 12 };
                         if (mx >= hit.x && mx <= hit.x + hit.w &&
                             my >= hit.y && my <= hit.y + hit.h)
                         {
@@ -944,7 +1015,27 @@ namespace ScotlandYard
                     if (mx >= m_BtnSave.x && mx <= m_BtnSave.x + m_BtnSave.w &&
                         my >= m_BtnSave.y && my <= m_BtnSave.y + m_BtnSave.h)
                     {
+                        // Wywołaj generowanie, aby zaktualizować dane
+                        TryGenerateMap();
+
+                        ExportNodesToCSV("generated_nodes.csv");
+                        ExportMapInfoToCSV("generated_map_info.csv");
                         SaveMapToFile();
+                        std::cout << "[MapGen] Export complete. Switching to preview..." << std::endl;
+                        
+                        // Tworzę stan podglądu z KOMPLETNYMI danymi (7 argumentów)
+                        auto pPreview = std::make_unique<MapPreviewState>(
+                            m_vec_GridPoints, 
+                            m_vec_RiverPath, 
+                            m_vec_Parks,
+                            m_vec_HighwayNodes, 
+                            m_vec_HighwayRoads,
+                            1200, 900
+                        );
+                        
+                        // Rejestruję i uruchamiam
+                        p_App->GetStateManager()->RegisterState("preview_dynamic", std::move(pPreview));
+                        p_App->GetStateManager()->PushState("preview_dynamic", p_App); 
                     }
                     if (mx >= m_BtnBack.x && mx <= m_BtnBack.x + m_BtnBack.w &&
                         my >= m_BtnBack.y && my <= m_BtnBack.y + m_BtnBack.h)
@@ -963,7 +1054,7 @@ namespace ScotlandYard
                 if (ev.motion.state & SDL_BUTTON_LMASK)
                 {
                     int mx = ev.motion.x, my = p_App->GetHeight() - ev.motion.y;
-                    for (auto &s : m_vec_Sliders)
+                    for (auto& s : m_vec_Sliders)
                     {
                         if (s.b_Dragging)
                         {
@@ -976,7 +1067,7 @@ namespace ScotlandYard
             case SDL_MOUSEBUTTONUP:
                 if (ev.button.button == SDL_BUTTON_LEFT)
                 {
-                    for (auto &s : m_vec_Sliders)
+                    for (auto& s : m_vec_Sliders)
                         s.b_Dragging = false;
                 }
                 break;
@@ -986,33 +1077,7 @@ namespace ScotlandYard
             }
         }
 
-        void MapGeneratorState::ExportNodesToCSV(const std::string &s_Filename)
-        {
-            std::ofstream file(s_Filename);
-
-            if (!file.is_open())
-            {
-                std::cout << "[Export ERROR] Failed to create " << s_Filename << std::endl;
-                return;
-            }
-
-            file << "id,pos_x,pos_y,station_type\n";
-
-            int i_NodeId = 1;
-            for (const auto &node : m_vec_GridPoints)
-            {
-                int i_X = static_cast<int>(std::round(node.x));
-                int i_Y = static_cast<int>(std::round(node.y));
-
-                file << i_NodeId << "," << i_X << "," << i_Y << ",taxi\n";
-                i_NodeId++;
-            }
-
-            file.close();
-            std::cout << "[Export] Exported " << (i_NodeId - 1) << " nodes to " << s_Filename << std::endl;
-        }
-
-        void MapGeneratorState::ExportMapInfoToCSV(const std::string &s_Filename)
+        void MapGeneratorState::ExportMapInfoToCSV(const std::string& s_Filename)
         {
             std::ofstream file(s_Filename);
 
@@ -1046,8 +1111,8 @@ namespace ScotlandYard
             for (size_t i = 0; i < m_vec_RiverPath.size(); ++i)
             {
                 file << i << ","
-                     << static_cast<int>(m_vec_RiverPath[i].x) << ","
-                     << static_cast<int>(m_vec_RiverPath[i].y) << "\n";
+                    << static_cast<int>(m_vec_RiverPath[i].x) << ","
+                    << static_cast<int>(m_vec_RiverPath[i].y) << "\n";
             }
             file << "\n";
 
@@ -1059,12 +1124,12 @@ namespace ScotlandYard
             file << "park_id,center_x,center_y,radius,num_sides\n";
             for (size_t i = 0; i < m_vec_Parks.size(); ++i)
             {
-                const auto &park = m_vec_Parks[i];
+                const auto& park = m_vec_Parks[i];
                 file << i << ","
-                     << static_cast<int>(park.center.x) << ","
-                     << static_cast<int>(park.center.y) << ","
-                     << static_cast<int>(park.f_BaseRadius) << ","
-                     << park.i_NumSides << "\n";
+                    << static_cast<int>(park.center.x) << ","
+                    << static_cast<int>(park.center.y) << ","
+                    << static_cast<int>(park.f_BaseRadius) << ","
+                    << park.i_NumSides << "\n";
             }
             file << "\n";
 
@@ -1072,12 +1137,12 @@ namespace ScotlandYard
             file << "park_id,vertex_id,x,y\n";
             for (size_t i = 0; i < m_vec_Parks.size(); ++i)
             {
-                const auto &park = m_vec_Parks[i];
+                const auto& park = m_vec_Parks[i];
                 for (size_t v = 0; v < park.vec_Vertices.size(); ++v)
                 {
                     file << i << "," << v << ","
-                         << static_cast<int>(park.vec_Vertices[v].x) << ","
-                         << static_cast<int>(park.vec_Vertices[v].y) << "\n";
+                        << static_cast<int>(park.vec_Vertices[v].x) << ","
+                        << static_cast<int>(park.vec_Vertices[v].y) << "\n";
                 }
             }
             file << "\n";
@@ -1092,12 +1157,12 @@ namespace ScotlandYard
                 file << "bridge_id,node1_x,node1_y,node2_x,node2_y\n";
                 for (size_t i = 0; i < m_vec_Bridges.size(); ++i)
                 {
-                    const auto &bridge = m_vec_Bridges[i];
+                    const auto& bridge = m_vec_Bridges[i];
                     file << i << ","
-                         << static_cast<int>(bridge.first.x) << ","
-                         << static_cast<int>(bridge.first.y) << ","
-                         << static_cast<int>(bridge.second.x) << ","
-                         << static_cast<int>(bridge.second.y) << "\n";
+                        << static_cast<int>(bridge.first.x) << ","
+                        << static_cast<int>(bridge.first.y) << ","
+                        << static_cast<int>(bridge.second.x) << ","
+                        << static_cast<int>(bridge.second.y) << "\n";
                 }
             }
 

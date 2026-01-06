@@ -97,6 +97,7 @@ set(SOURCES
     src/RoadGenerator.cpp
     src/SampleMapDataGenerator.cpp
     src/MapDataSerializer.cpp
+    src/HighwayGenerator.cpp
 )
 
 set(HEADERS
@@ -127,6 +128,7 @@ set(HEADERS
     include/GeneratedMapData.h
     include/SampleMapDataGenerator.h
     include/MapDataSerializer.h
+    include/HighwayGenerator.h
 )
 
 # EXE =================================================
