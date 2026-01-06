@@ -224,7 +224,7 @@ void PolygonRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_Centerline
         glm::vec2 normal(-tangent.y, tangent.x);
         glm::vec2 rightPos = vec_CenterlinePath[i] + normal * halfWidth;
         glm::vec2 leftPos = vec_CenterlinePath[i] - normal * halfWidth;
-        float u = distances[i] / totalDistance;
+        float u = distances[i];
 
         m_vec_VertexData.push_back(rightPos.x);
         m_vec_VertexData.push_back(f_YHeight);
@@ -242,7 +242,7 @@ void PolygonRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_Centerline
         m_vec_VertexData.push_back(1.0f);
         m_vec_VertexData.push_back(0.0f);
         m_vec_VertexData.push_back(u);
-        m_vec_VertexData.push_back(1.0f);
+        m_vec_VertexData.push_back(f_Width);
     }
 
     for (size_t i = 0; i < vec_CenterlinePath.size() - 1; ++i) {

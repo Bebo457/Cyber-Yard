@@ -482,18 +482,6 @@ void EmptyEnvironmentState::Render(Core::Application* p_App) {
         glDisable(GL_POLYGON_OFFSET_FILL);
     }
 
-    // Render river base with PolygonRenderer
-    if (m_p_RiverRenderer && m_TexSidewalk) {
-        glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-2.0f, -2.0f);
-
-        glm::mat4 mat4_MVP = mat4_Projection * mat4_View;
-        glm::vec2 tileScale(12.0f, 9.0f);
-        m_p_RiverRenderer->Render(mat4_MVP, m_TexSidewalk, tileScale);
-
-        glDisable(GL_POLYGON_OFFSET_FILL);
-    }
-
     if (m_p_WaterRenderer) {
         glEnable(GL_POLYGON_OFFSET_FILL);
         glPolygonOffset(-3.0f, -3.0f);

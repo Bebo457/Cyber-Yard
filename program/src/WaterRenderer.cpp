@@ -407,19 +407,18 @@ void WaterRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_CenterlinePa
         glm::vec2 normal(-tangent.y, tangent.x);
         glm::vec2 rightPos = vec_CenterlinePath[i] + normal * halfWidth;
         glm::vec2 leftPos = vec_CenterlinePath[i] - normal * halfWidth;
-        float u = distances[i] / totalDistance;
 
         vec_Vertices.push_back(rightPos.x);
         vec_Vertices.push_back(m_f_WaterHeight);
         vec_Vertices.push_back(rightPos.y);
-        vec_Vertices.push_back(u);
-        vec_Vertices.push_back(0.0f);
+        vec_Vertices.push_back(rightPos.x);
+        vec_Vertices.push_back(rightPos.y);
 
         vec_Vertices.push_back(leftPos.x);
         vec_Vertices.push_back(m_f_WaterHeight);
         vec_Vertices.push_back(leftPos.y);
-        vec_Vertices.push_back(u);
-        vec_Vertices.push_back(1.0f);
+        vec_Vertices.push_back(leftPos.x);
+        vec_Vertices.push_back(leftPos.y);
     }
 
     for (size_t i = 0; i < vec_CenterlinePath.size() - 1; ++i) {
@@ -659,12 +658,16 @@ void WaterRenderer::RenderRiverStrip(const glm::mat4& mat4_ViewProjection,
     glUniform1f(foamMinLoc, m_f_FoamThresholdMin);
     glUniform1f(foamMaxLoc, m_f_FoamThresholdMax);
 
-    // Render river strip (top layer)
-    glm::mat4 mat4_Model = mat4_GlobalScale;
-    glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_Model;
-
+    glUniform1i(causticsLayerLoc, 1);
+    glm::mat4 mat4_MVP = mat4_ViewProjection * mat4_GlobalScale;
     glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+
+    glBindVertexArray(m_VAO_RiverStrip);
+    glDrawElements(GL_TRIANGLES, m_i_RiverStripIndexCount, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
     glUniform1i(causticsLayerLoc, 0);
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
 
     glBindVertexArray(m_VAO_RiverStrip);
     glDrawElements(GL_TRIANGLES, m_i_RiverStripIndexCount, GL_UNSIGNED_INT, 0);
