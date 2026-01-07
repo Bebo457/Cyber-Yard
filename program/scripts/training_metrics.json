@@ -1,1559 +1,2805 @@
 {
   "games": [
     {
-      "timestamp": "2026-01-04T16:20:08.335553",
+      "timestamp": "2026-01-05T23:33:47.447284",
       "winner": "Detectives",
-      "mrx_reward": -1000.0,
+      "mrx_reward": -32.69999999999999,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-04T16:20:09.393239",
+      "timestamp": "2026-01-05T23:33:52.399500",
       "winner": "Detectives",
-      "mrx_reward": -972.75,
+      "mrx_reward": 10.899999999999991,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-04T16:20:10.469105",
+      "timestamp": "2026-01-05T23:33:54.443668",
       "winner": "Detectives",
-      "mrx_reward": -972.75,
+      "mrx_reward": -84.55,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-04T16:20:11.682813",
+      "timestamp": "2026-01-05T23:33:56.552779",
       "winner": "Detectives",
-      "mrx_reward": -972.5,
+      "mrx_reward": -57.800000000000004,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-04T16:20:12.736523",
+      "timestamp": "2026-01-05T23:34:04.278290",
       "winner": "Detectives",
-      "mrx_reward": -972.75,
+      "mrx_reward": -25.80000000000001,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-04T16:20:13.830754",
+      "timestamp": "2026-01-05T23:34:07.697840",
       "winner": "Detectives",
-      "mrx_reward": -973.0,
+      "mrx_reward": -22.55000000000001,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-04T16:21:19.698676",
+      "timestamp": "2026-01-05T23:34:19.580198",
       "winner": "Detectives",
-      "mrx_reward": -972.5,
+      "mrx_reward": 17.59999999999998,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:48:53.849279",
+      "timestamp": "2026-01-05T23:34:27.230518",
       "winner": "Detectives",
-      "mrx_reward": -934.2,
+      "mrx_reward": -25.299999999999997,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:48:55.153902",
+      "timestamp": "2026-01-05T23:34:32.247805",
       "winner": "Detectives",
-      "mrx_reward": -981.35,
+      "mrx_reward": -44.050000000000004,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:48:58.286943",
+      "timestamp": "2026-01-05T23:34:36.391714",
       "winner": "Detectives",
-      "mrx_reward": -939.2,
+      "mrx_reward": -63.3,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:48:59.656787",
+      "timestamp": "2026-01-05T23:34:40.772611",
       "winner": "Detectives",
-      "mrx_reward": -957.0,
+      "mrx_reward": -57.15,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:49:04.926340",
+      "timestamp": "2026-01-05T23:34:49.305548",
       "winner": "Detectives",
-      "mrx_reward": -950.05,
+      "mrx_reward": -31.400000000000006,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:49:11.403705",
-      "winner": "Detectives",
-      "mrx_reward": -929.85,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:14.406914",
-      "winner": "Detectives",
-      "mrx_reward": -966.75,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:18.250427",
-      "winner": "Detectives",
-      "mrx_reward": -912.75,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:22.986831",
-      "winner": "Detectives",
-      "mrx_reward": -931.55,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:25.439188",
-      "winner": "Detectives",
-      "mrx_reward": -979.7,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:35.084489",
-      "winner": "Detectives",
-      "mrx_reward": -884.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:36.067168",
-      "winner": "Detectives",
-      "mrx_reward": -1000.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:40.160272",
-      "winner": "Detectives",
-      "mrx_reward": -946.15,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:44.872691",
-      "winner": "Detectives",
-      "mrx_reward": -954.25,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:47.855277",
-      "winner": "Detectives",
-      "mrx_reward": -932.2,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:49.693723",
-      "winner": "Detectives",
-      "mrx_reward": -975.7,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:52.940483",
-      "winner": "Detectives",
-      "mrx_reward": -920.95,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:49:59.423711",
-      "winner": "Detectives",
-      "mrx_reward": -909.55,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:50:08.187683",
-      "winner": "Detectives",
-      "mrx_reward": -855.75,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:50:10.289541",
-      "winner": "Detectives",
-      "mrx_reward": -977.05,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:51:22.914129",
-      "winner": "Detectives",
-      "mrx_reward": -955.2,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:51:27.797896",
-      "winner": "Detectives",
-      "mrx_reward": -916.55,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:51:29.168484",
-      "winner": "Detectives",
-      "mrx_reward": -972.95,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:51:35.958127",
-      "winner": "Detectives",
-      "mrx_reward": -912.05,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:51:40.882574",
-      "winner": "Detectives",
-      "mrx_reward": -946.65,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:52:26.729079",
-      "winner": "Detectives",
-      "mrx_reward": -37.5,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:52:33.208266",
-      "winner": "Detectives",
-      "mrx_reward": -48.15,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:52:38.462662",
-      "winner": "Detectives",
-      "mrx_reward": -49.9,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:52:43.672283",
-      "winner": "Detectives",
-      "mrx_reward": 32.05000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:52:53.318514",
-      "winner": "Detectives",
-      "mrx_reward": 60.849999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:52:59.123802",
-      "winner": "Detectives",
-      "mrx_reward": -31.700000000000003,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:05.313829",
-      "winner": "Detectives",
-      "mrx_reward": 13.199999999999989,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:07.531685",
-      "winner": "Detectives",
-      "mrx_reward": -73.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:10.241387",
-      "winner": "Detectives",
-      "mrx_reward": -47.400000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:12.078825",
-      "winner": "Detectives",
-      "mrx_reward": -55.050000000000004,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:18.595002",
-      "winner": "Detectives",
-      "mrx_reward": -2.8499999999999943,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:22.681658",
-      "winner": "Detectives",
-      "mrx_reward": -61.6,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:24.445941",
-      "winner": "Detectives",
-      "mrx_reward": -82.9,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:27.398908",
-      "winner": "Detectives",
-      "mrx_reward": -48.8,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:35.077120",
-      "winner": "Detectives",
-      "mrx_reward": 39.44999999999999,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:38.144862",
-      "winner": "Detectives",
-      "mrx_reward": -41.35000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:41.261250",
-      "winner": "Detectives",
-      "mrx_reward": -13.25,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:46.943583",
-      "winner": "Detectives",
-      "mrx_reward": 48.599999999999966,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:51.342640",
-      "winner": "Detectives",
-      "mrx_reward": -23.450000000000003,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:56.416035",
-      "winner": "Detectives",
-      "mrx_reward": 9.299999999999997,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:53:57.459060",
+      "timestamp": "2026-01-05T23:34:50.071193",
       "winner": "Detectives",
       "mrx_reward": -100.0,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:54:03.237644",
+      "timestamp": "2026-01-05T23:34:54.973521",
       "winner": "Detectives",
-      "mrx_reward": -12.650000000000006,
+      "mrx_reward": -42.0,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:54:06.650860",
+      "timestamp": "2026-01-05T23:34:57.779834",
       "winner": "Detectives",
-      "mrx_reward": -79.7,
+      "mrx_reward": -52.95,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:54:09.135460",
+      "timestamp": "2026-01-05T23:35:03.459336",
       "winner": "Detectives",
-      "mrx_reward": -54.95,
+      "mrx_reward": 30.633333333333326,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:54:15.144859",
+      "timestamp": "2026-01-05T23:35:11.128426",
       "winner": "Detectives",
-      "mrx_reward": -6.950000000000003,
+      "mrx_reward": 56.150000000000006,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T22:54:17.157691",
-      "winner": "Detectives",
-      "mrx_reward": -77.05,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:54:25.805679",
-      "winner": "Detectives",
-      "mrx_reward": -7.349999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T22:54:28.798604",
-      "winner": "Detectives",
-      "mrx_reward": -70.55,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:19.421664",
-      "winner": "Detectives",
-      "mrx_reward": 57.94999999999999,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:27.000637",
-      "winner": "Detectives",
-      "mrx_reward": 10.549999999999983,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:31.795279",
-      "winner": "Detectives",
-      "mrx_reward": -26.849999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:35.816651",
-      "winner": "Detectives",
-      "mrx_reward": -27.35000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:42.445402",
-      "winner": "Detectives",
-      "mrx_reward": 33.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:44.866738",
-      "winner": "Detectives",
-      "mrx_reward": -56.400000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:48.680083",
-      "winner": "Detectives",
-      "mrx_reward": -46.2,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:50.907963",
-      "winner": "Detectives",
-      "mrx_reward": -55.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:02:54.529281",
-      "winner": "Detectives",
-      "mrx_reward": -72.5,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:02.171017",
-      "winner": "Detectives",
-      "mrx_reward": 56.89999999999998,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:05.411378",
-      "winner": "Detectives",
-      "mrx_reward": -43.25,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:09.852466",
-      "winner": "Detectives",
-      "mrx_reward": -24.799999999999997,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:11.579293",
-      "winner": "Detectives",
-      "mrx_reward": -69.05,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:16.328091",
-      "winner": "Detectives",
-      "mrx_reward": -47.65,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:22.600754",
-      "winner": "Detectives",
-      "mrx_reward": 999977.5,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:30.676848",
-      "winner": "Detectives",
-      "mrx_reward": -6.150000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:34.675443",
-      "winner": "Detectives",
-      "mrx_reward": -30.150000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:38.372695",
-      "winner": "Detectives",
-      "mrx_reward": -13.25,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:44.645911",
-      "winner": "Detectives",
-      "mrx_reward": 1.2499999999999858,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:49.366466",
-      "winner": "Detectives",
-      "mrx_reward": -28.650000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:03:54.618245",
-      "winner": "Detectives",
-      "mrx_reward": -44.85000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:02.711771",
-      "winner": "Detectives",
-      "mrx_reward": 9.850000000000009,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:12.165544",
-      "winner": "Detectives",
-      "mrx_reward": -4.200000000000003,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:14.989434",
-      "winner": "Detectives",
-      "mrx_reward": -55.150000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:18.401247",
-      "winner": "Detectives",
-      "mrx_reward": -51.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:30.166290",
-      "winner": "Detectives",
-      "mrx_reward": 45.900000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:38.376587",
-      "winner": "Detectives",
-      "mrx_reward": -45.099999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:40.683608",
-      "winner": "Detectives",
-      "mrx_reward": -73.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:45.146962",
-      "winner": "Detectives",
-      "mrx_reward": -35.30000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:51.323421",
-      "winner": "Detectives",
-      "mrx_reward": -29.349999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:55.295463",
-      "winner": "Detectives",
-      "mrx_reward": -62.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:04:59.502127",
-      "winner": "Detectives",
-      "mrx_reward": -43.8,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:03.034398",
-      "winner": "Detectives",
-      "mrx_reward": -34.60000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:05.227229",
-      "winner": "Detectives",
-      "mrx_reward": -59.150000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:09.812161",
-      "winner": "Detectives",
-      "mrx_reward": -46.4,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:16.246111",
-      "winner": "Detectives",
-      "mrx_reward": 999977.5,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:20.069055",
-      "winner": "Detectives",
-      "mrx_reward": -45.60000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:25.980054",
-      "winner": "Detectives",
-      "mrx_reward": -6.6000000000000085,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:28.733785",
-      "winner": "Detectives",
-      "mrx_reward": -83.2,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:32.543366",
-      "winner": "Detectives",
-      "mrx_reward": -56.4,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:34.165743",
-      "winner": "Detectives",
-      "mrx_reward": -78.25,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:40.082721",
-      "winner": "Detectives",
-      "mrx_reward": -0.8500000000000085,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:42.202424",
-      "winner": "Detectives",
-      "mrx_reward": -61.1,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:46.546198",
-      "winner": "Detectives",
-      "mrx_reward": -16.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:50.463548",
-      "winner": "Detectives",
-      "mrx_reward": 499961.4,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:05:57.791975",
-      "winner": "Detectives",
-      "mrx_reward": -6.300000000000011,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:04.952370",
-      "winner": "Detectives",
-      "mrx_reward": 12.5,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:07.403238",
-      "winner": "Detectives",
-      "mrx_reward": -52.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:16.784891",
-      "winner": "Detectives",
-      "mrx_reward": 61.99999999999997,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:18.143839",
-      "winner": "Detectives",
-      "mrx_reward": -82.1,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:22.103470",
-      "winner": "Detectives",
-      "mrx_reward": -46.2,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:23.587128",
-      "winner": "Detectives",
-      "mrx_reward": -39.35,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:31.270844",
-      "winner": "Detectives",
-      "mrx_reward": -26.849999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:33.997979",
-      "winner": "Detectives",
-      "mrx_reward": -51.900000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:37.478551",
-      "winner": "Detectives",
-      "mrx_reward": -30.55000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:39.116919",
-      "winner": "Detectives",
-      "mrx_reward": -76.1,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:43.053099",
-      "winner": "Detectives",
-      "mrx_reward": 39.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:43.980128",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:45.313669",
-      "winner": "Detectives",
-      "mrx_reward": -79.95,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:51.797451",
-      "winner": "Detectives",
-      "mrx_reward": -18.75,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:54.713080",
-      "winner": "Detectives",
-      "mrx_reward": -51.35000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:57.025174",
-      "winner": "Detectives",
-      "mrx_reward": -65.35,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:06:57.699842",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:05.315538",
-      "winner": "Detectives",
-      "mrx_reward": -24.30000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:06.507473",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:11.461390",
-      "winner": "Detectives",
-      "mrx_reward": -57.1,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:13.883357",
-      "winner": "Detectives",
-      "mrx_reward": -72.95,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:22.291621",
-      "winner": "Detectives",
-      "mrx_reward": 3.75,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:29.209724",
-      "winner": "Detectives",
-      "mrx_reward": -23.549999999999997,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:34.086602",
-      "winner": "Detectives",
-      "mrx_reward": -26.30000000000001,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:43.534009",
-      "winner": "Detectives",
-      "mrx_reward": 13.599999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:46.707176",
-      "winner": "Detectives",
-      "mrx_reward": -25.900000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:50.392000",
-      "winner": "Detectives",
-      "mrx_reward": -57.65,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:57.628696",
-      "winner": "Detectives",
-      "mrx_reward": 0.9999999999999858,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:07:58.947578",
-      "winner": "Detectives",
-      "mrx_reward": -61.95,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:03.206141",
-      "winner": "Detectives",
-      "mrx_reward": -60.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:09.398375",
-      "winner": "Detectives",
-      "mrx_reward": -19.900000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:12.135106",
-      "winner": "Detectives",
-      "mrx_reward": -46.800000000000004,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:16.860618",
-      "winner": "Detectives",
-      "mrx_reward": -51.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:20.975057",
-      "winner": "Detectives",
-      "mrx_reward": -47.65,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:25.309384",
-      "winner": "Detectives",
-      "mrx_reward": -38.550000000000004,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:27.912869",
-      "winner": "Detectives",
-      "mrx_reward": -78.7,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:31.132914",
-      "winner": "Detectives",
-      "mrx_reward": -45.25,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:33.315153",
-      "winner": "Detectives",
-      "mrx_reward": -62.05,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:34.540041",
-      "winner": "Detectives",
-      "mrx_reward": 249917.15,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:39.908286",
-      "winner": "Detectives",
-      "mrx_reward": -48.050000000000004,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:42.191431",
-      "winner": "Detectives",
-      "mrx_reward": -81.35,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:43.754317",
-      "winner": "Detectives",
-      "mrx_reward": -71.4,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:08:49.790513",
-      "winner": "Detectives",
-      "mrx_reward": 12.950000000000003,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:00.385040",
-      "winner": "Detectives",
-      "mrx_reward": 6.75,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:11.166958",
-      "winner": "Detectives",
-      "mrx_reward": 39.400000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:18.011545",
-      "winner": "Detectives",
-      "mrx_reward": -20.950000000000003,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:23.292052",
-      "winner": "Detectives",
-      "mrx_reward": -17.099999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:28.310958",
-      "winner": "Detectives",
-      "mrx_reward": -46.7,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:32.300142",
-      "winner": "Detectives",
-      "mrx_reward": -26.650000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:39.144020",
-      "winner": "Detectives",
-      "mrx_reward": -18.900000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:46.855307",
-      "winner": "Detectives",
-      "mrx_reward": -19.150000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:55.368596",
-      "winner": "Detectives",
-      "mrx_reward": 38.5,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:09:58.486620",
-      "winner": "Detectives",
-      "mrx_reward": -61.099999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:01.898905",
-      "winner": "Detectives",
-      "mrx_reward": -79.6,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:06.072123",
-      "winner": "Detectives",
-      "mrx_reward": -33.349999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:08.018456",
-      "winner": "Detectives",
-      "mrx_reward": -73.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:14.483865",
-      "winner": "Detectives",
-      "mrx_reward": -64.05,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:19.211621",
-      "winner": "Detectives",
-      "mrx_reward": -44.45,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:27.912198",
-      "winner": "Detectives",
-      "mrx_reward": 10.599999999999994,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:30.324388",
-      "winner": "Detectives",
-      "mrx_reward": -57.050000000000004,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:33.522579",
-      "winner": "Detectives",
-      "mrx_reward": -40.5,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:37.466964",
-      "winner": "Detectives",
-      "mrx_reward": -48.150000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:40.791587",
-      "winner": "Detectives",
-      "mrx_reward": -13.75,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:44.067531",
-      "winner": "Detectives",
-      "mrx_reward": -56.4,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:49.854211",
-      "winner": "Detectives",
-      "mrx_reward": -52.900000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:51.494826",
-      "winner": "Detectives",
-      "mrx_reward": -79.8,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:53.329021",
-      "winner": "Detectives",
-      "mrx_reward": -55.4,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:10:56.413124",
-      "winner": "Detectives",
-      "mrx_reward": -75.7,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:11:11.913385",
-      "winner": "Detectives",
-      "mrx_reward": 33.650000000000006,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:11:16.594134",
-      "winner": "Detectives",
-      "mrx_reward": 749962.1,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:11:17.564838",
-      "winner": "Detectives",
-      "mrx_reward": -100.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:11:21.193216",
-      "winner": "Detectives",
-      "mrx_reward": -67.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:21:36.318036",
-      "winner": "Detectives",
-      "mrx_reward": -15.699999999999989,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:21:41.237055",
-      "winner": "Detectives",
-      "mrx_reward": -47.0,
-      "det_reward": 0,
-      "rounds": 0
-    },
-    {
-      "timestamp": "2026-01-05T23:21:46.205791",
+      "timestamp": "2026-01-05T23:35:16.940087",
       "winner": "Detectives",
       "mrx_reward": -37.550000000000004,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:21:49.109918",
+      "timestamp": "2026-01-05T23:35:21.599105",
       "winner": "Detectives",
-      "mrx_reward": -10.133333333333326,
+      "mrx_reward": -65.2,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:21:52.720634",
+      "timestamp": "2026-01-05T23:35:26.164180",
       "winner": "Detectives",
-      "mrx_reward": 8.549999999999983,
+      "mrx_reward": -5.5,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:00.848759",
+      "timestamp": "2026-01-05T23:35:33.948208",
       "winner": "Detectives",
-      "mrx_reward": -35.349999999999994,
+      "mrx_reward": -29.549999999999997,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:04.856598",
+      "timestamp": "2026-01-05T23:35:36.372334",
       "winner": "Detectives",
-      "mrx_reward": -43.5,
+      "mrx_reward": -77.4,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:09.061888",
+      "timestamp": "2026-01-05T23:35:39.166206",
       "winner": "Detectives",
-      "mrx_reward": -29.599999999999994,
+      "mrx_reward": -45.949999999999996,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:10.884644",
+      "timestamp": "2026-01-05T23:35:47.282848",
       "winner": "Detectives",
-      "mrx_reward": -81.75,
+      "mrx_reward": 0.45000000000000284,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:16.479107",
+      "timestamp": "2026-01-05T23:35:51.212627",
       "winner": "Detectives",
-      "mrx_reward": -60.650000000000006,
+      "mrx_reward": -59.05,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:25.806494",
+      "timestamp": "2026-01-05T23:35:57.899687",
       "winner": "Detectives",
-      "mrx_reward": 30.149999999999977,
+      "mrx_reward": -23.799999999999997,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:34.899867",
+      "timestamp": "2026-01-05T23:36:01.206833",
       "winner": "Detectives",
-      "mrx_reward": 33.80000000000001,
+      "mrx_reward": -55.3,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:39.078148",
+      "timestamp": "2026-01-05T23:36:04.022892",
       "winner": "Detectives",
-      "mrx_reward": -32.400000000000006,
+      "mrx_reward": -57.85,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:42.752015",
+      "timestamp": "2026-01-05T23:36:07.209777",
       "winner": "Detectives",
-      "mrx_reward": -49.66666666666667,
+      "mrx_reward": -42.550000000000004,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:44.881041",
+      "timestamp": "2026-01-05T23:36:12.053874",
       "winner": "Detectives",
-      "mrx_reward": -68.75,
+      "mrx_reward": -27.650000000000006,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:47.621182",
+      "timestamp": "2026-01-05T23:36:21.872111",
       "winner": "Detectives",
-      "mrx_reward": -72.4,
+      "mrx_reward": 67.0,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:49.815554",
+      "timestamp": "2026-01-05T23:36:24.785411",
       "winner": "Detectives",
-      "mrx_reward": -83.35,
+      "mrx_reward": -80.6,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:51.523132",
+      "timestamp": "2026-01-05T23:36:33.048983",
       "winner": "Detectives",
-      "mrx_reward": -79.35,
+      "mrx_reward": -11.799999999999997,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:22:58.863784",
+      "timestamp": "2026-01-05T23:36:39.754761",
       "winner": "Detectives",
-      "mrx_reward": 21.650000000000006,
+      "mrx_reward": -2.549999999999997,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:03.532430",
+      "timestamp": "2026-01-05T23:36:43.469171",
       "winner": "Detectives",
-      "mrx_reward": -35.55000000000001,
+      "mrx_reward": -54.35,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:04.404071",
+      "timestamp": "2026-01-05T23:36:53.196544",
+      "winner": "Detectives",
+      "mrx_reward": -8.799999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:37:03.511096",
+      "winner": "Detectives",
+      "mrx_reward": 8.900000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:37:04.664703",
       "winner": "Detectives",
       "mrx_reward": -100.0,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:12.634044",
+      "timestamp": "2026-01-05T23:37:06.205667",
       "winner": "Detectives",
-      "mrx_reward": -37.6,
+      "mrx_reward": -100.0,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:14.582139",
+      "timestamp": "2026-01-05T23:37:07.887414",
       "winner": "Detectives",
-      "mrx_reward": -81.9,
+      "mrx_reward": -59.800000000000004,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:17.017918",
+      "timestamp": "2026-01-05T23:37:13.008335",
       "winner": "Detectives",
-      "mrx_reward": -57.300000000000004,
+      "mrx_reward": -42.05,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:19.123701",
+      "timestamp": "2026-01-05T23:37:14.759688",
       "winner": "Detectives",
-      "mrx_reward": -78.75,
+      "mrx_reward": -80.45,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:21.509657",
+      "timestamp": "2026-01-05T23:37:23.371276",
       "winner": "Detectives",
-      "mrx_reward": -66.25,
+      "mrx_reward": -12.899999999999991,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:25.225423",
+      "timestamp": "2026-01-05T23:37:26.544939",
+      "winner": "Detectives",
+      "mrx_reward": -72.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:37:34.720730",
+      "winner": "Detectives",
+      "mrx_reward": 4.3999999999999915,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:37:40.275390",
+      "winner": "Detectives",
+      "mrx_reward": -27.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:37:42.340771",
+      "winner": "Detectives",
+      "mrx_reward": -76.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:37:44.869087",
+      "winner": "Detectives",
+      "mrx_reward": -78.1,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:00.210620",
+      "winner": "Detectives",
+      "mrx_reward": 32.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:07.176073",
+      "winner": "Detectives",
+      "mrx_reward": -12.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:09.227856",
+      "winner": "Detectives",
+      "mrx_reward": -44.6,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:12.529887",
+      "winner": "Detectives",
+      "mrx_reward": -59.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:13.886982",
+      "winner": "Detectives",
+      "mrx_reward": -73.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:15.978587",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:20.054408",
+      "winner": "Detectives",
+      "mrx_reward": -53.050000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:24.212921",
+      "winner": "Detectives",
+      "mrx_reward": -12.300000000000011,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-05T23:38:25.763322",
+      "winner": "Detectives",
+      "mrx_reward": -74.55,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:04.525314",
+      "winner": "Detectives",
+      "mrx_reward": -14.549999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:06.736524",
+      "winner": "Detectives",
+      "mrx_reward": -82.95,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:18.803854",
+      "winner": "Detectives",
+      "mrx_reward": 82.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:19.760880",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:24.881428",
+      "winner": "Detectives",
+      "mrx_reward": -40.85000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:30.323516",
+      "winner": "Detectives",
+      "mrx_reward": -29.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:39.810970",
+      "winner": "Detectives",
+      "mrx_reward": 14.599999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:43.498768",
+      "winner": "Detectives",
+      "mrx_reward": 8.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:49.461652",
+      "winner": "Detectives",
+      "mrx_reward": 16.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:19:55.435957",
+      "winner": "Detectives",
+      "mrx_reward": -40.50000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:03.659705",
+      "winner": "Detectives",
+      "mrx_reward": -17.14999999999999,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:04.528162",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:07.096194",
+      "winner": "Detectives",
+      "mrx_reward": -55.050000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:15.998918",
+      "winner": "Detectives",
+      "mrx_reward": 54.849999999999966,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:18.065526",
+      "winner": "Detectives",
+      "mrx_reward": -58.55,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:29.804915",
+      "winner": "Detectives",
+      "mrx_reward": 98.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:33.498801",
+      "winner": "Detectives",
+      "mrx_reward": -40.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:40.948971",
+      "winner": "Detectives",
+      "mrx_reward": 34.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:42.949899",
+      "winner": "Detectives",
+      "mrx_reward": -82.6,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:49.108894",
+      "winner": "Detectives",
+      "mrx_reward": -55.35,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:50.573279",
+      "winner": "Detectives",
+      "mrx_reward": -72.05,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:20:53.450368",
+      "winner": "Detectives",
+      "mrx_reward": -28.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:02.831865",
+      "winner": "Detectives",
+      "mrx_reward": 7.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:09.502402",
+      "winner": "Detectives",
+      "mrx_reward": -34.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:16.685911",
+      "winner": "Detectives",
+      "mrx_reward": 92.64999999999998,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:29.136649",
+      "winner": "Detectives",
+      "mrx_reward": 33.599999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:31.831787",
+      "winner": "Detectives",
+      "mrx_reward": -52.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:37.348186",
+      "winner": "Detectives",
+      "mrx_reward": -40.800000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:38.932028",
+      "winner": "Detectives",
+      "mrx_reward": -79.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:42.659477",
+      "winner": "Detectives",
+      "mrx_reward": -13.200000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:44.593004",
+      "winner": "Detectives",
+      "mrx_reward": -74.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:21:52.149566",
+      "winner": "Detectives",
+      "mrx_reward": 0.09999999999999432,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:00.020253",
+      "winner": "Detectives",
+      "mrx_reward": -26.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:05.041459",
+      "winner": "Detectives",
+      "mrx_reward": -8.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:10.604802",
+      "winner": "Detectives",
+      "mrx_reward": -41.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:13.545263",
+      "winner": "Detectives",
+      "mrx_reward": -41.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:18.674384",
+      "winner": "Detectives",
+      "mrx_reward": -33.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:22.465635",
+      "winner": "Detectives",
+      "mrx_reward": -33.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:32.103093",
+      "winner": "Detectives",
+      "mrx_reward": 86.6,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:36.352523",
+      "winner": "Detectives",
+      "mrx_reward": -38.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:38.964304",
+      "winner": "Detectives",
+      "mrx_reward": -57.95,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:44.007818",
+      "winner": "Detectives",
+      "mrx_reward": -53.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:47.033083",
+      "winner": "Detectives",
+      "mrx_reward": -32.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:51.549813",
+      "winner": "Detectives",
+      "mrx_reward": -42.1,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:22:58.420374",
+      "winner": "Detectives",
+      "mrx_reward": -13.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:01.386101",
+      "winner": "Detectives",
+      "mrx_reward": -38.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:03.245272",
+      "winner": "Detectives",
+      "mrx_reward": -76.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:07.541802",
+      "winner": "Detectives",
+      "mrx_reward": -34.80000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:12.214364",
+      "winner": "Detectives",
+      "mrx_reward": -21.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:15.423541",
+      "winner": "Detectives",
+      "mrx_reward": -38.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:16.894530",
+      "winner": "Detectives",
+      "mrx_reward": -85.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:19.631785",
+      "winner": "Detectives",
+      "mrx_reward": -67.9,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:25.099849",
+      "winner": "Detectives",
+      "mrx_reward": -34.30000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:27.056443",
+      "winner": "Detectives",
+      "mrx_reward": -80.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:30.983574",
+      "winner": "Detectives",
+      "mrx_reward": -31.200000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:38.335411",
+      "winner": "Detectives",
+      "mrx_reward": -5.500000000000014,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:45.881508",
+      "winner": "Detectives",
+      "mrx_reward": 31.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:49.516445",
+      "winner": "Detectives",
+      "mrx_reward": -51.65,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:54.362888",
+      "winner": "Detectives",
+      "mrx_reward": -3.6999999999999886,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:23:58.798020",
+      "winner": "Detectives",
+      "mrx_reward": -11.950000000000017,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:03.892583",
+      "winner": "Detectives",
+      "mrx_reward": -17.749999999999986,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:11.012505",
+      "winner": "Detectives",
+      "mrx_reward": -3.5999999999999943,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:17.516324",
+      "winner": "Detectives",
+      "mrx_reward": -2.0999999999999943,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:19.716751",
+      "winner": "Detectives",
+      "mrx_reward": -64.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:27.653495",
+      "winner": "Detectives",
+      "mrx_reward": -1.9000000000000057,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:29.166772",
+      "winner": "Detectives",
+      "mrx_reward": -59.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:32.333221",
+      "winner": "Detectives",
+      "mrx_reward": -39.800000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:37.778767",
+      "winner": "Detectives",
+      "mrx_reward": -38.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:42.514133",
+      "winner": "Detectives",
+      "mrx_reward": -58.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:46.803287",
+      "winner": "Detectives",
+      "mrx_reward": -59.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:50.140053",
+      "winner": "Detectives",
+      "mrx_reward": -28.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:55.225756",
+      "winner": "Detectives",
+      "mrx_reward": -30.849999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:24:57.345161",
+      "winner": "Detectives",
+      "mrx_reward": -83.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:00.409468",
+      "winner": "Detectives",
+      "mrx_reward": -64.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:05.148214",
+      "winner": "Detectives",
+      "mrx_reward": -26.599999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:07.780313",
+      "winner": "Detectives",
+      "mrx_reward": -33.85000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:13.184035",
+      "winner": "Detectives",
+      "mrx_reward": -40.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:17.926711",
+      "winner": "Detectives",
+      "mrx_reward": -20.19999999999999,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:22.552042",
+      "winner": "Detectives",
+      "mrx_reward": -43.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:26.532763",
+      "winner": "Detectives",
+      "mrx_reward": -41.1,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:39.269284",
+      "winner": "Detectives",
+      "mrx_reward": 32.44999999999999,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:42.972144",
+      "winner": "Detectives",
+      "mrx_reward": -32.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:47.084432",
+      "winner": "Detectives",
+      "mrx_reward": -52.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:50.963511",
+      "winner": "Detectives",
+      "mrx_reward": -12.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:25:51.846515",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:02.623212",
+      "winner": "Detectives",
+      "mrx_reward": 118.1,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:06.570859",
+      "winner": "Detectives",
+      "mrx_reward": -9.550000000000011,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:10.010894",
+      "winner": "Detectives",
+      "mrx_reward": -63.95,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:11.078844",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:14.816515",
+      "winner": "Detectives",
+      "mrx_reward": -47.050000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:17.624384",
+      "winner": "Detectives",
+      "mrx_reward": -51.85000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:22.595656",
+      "winner": "Detectives",
+      "mrx_reward": -53.1,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:29.033926",
+      "winner": "Detectives",
+      "mrx_reward": -14.050000000000011,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:34.870369",
+      "winner": "Detectives",
+      "mrx_reward": 2.3000000000000114,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:36.494343",
+      "winner": "Detectives",
+      "mrx_reward": -64.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:26:47.294210",
+      "winner": "Detectives",
+      "mrx_reward": 78.29999999999998,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:34:43.449610",
+      "winner": "Detectives",
+      "mrx_reward": -57.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:34:50.538689",
+      "winner": "Detectives",
+      "mrx_reward": 17.849999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:34:51.398981",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:34:53.098185",
+      "winner": "Detectives",
+      "mrx_reward": -74.55,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:01.829821",
+      "winner": "Detectives",
+      "mrx_reward": -33.30000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:05.375373",
+      "winner": "Detectives",
+      "mrx_reward": -55.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:08.103707",
+      "winner": "Detectives",
+      "mrx_reward": -56.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:11.892427",
+      "winner": "Detectives",
+      "mrx_reward": -20.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:13.269521",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:16.445117",
+      "winner": "Detectives",
+      "mrx_reward": -21.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:23.457820",
+      "winner": "Detectives",
+      "mrx_reward": -15.550000000000011,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:35:26.065742",
+      "winner": "Detectives",
+      "mrx_reward": -41.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:04.366872",
+      "winner": "Detectives",
+      "mrx_reward": -9.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:06.151771",
+      "winner": "Detectives",
+      "mrx_reward": -73.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:10.124764",
+      "winner": "Detectives",
+      "mrx_reward": -36.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:12.834691",
+      "winner": "Detectives",
+      "mrx_reward": -78.65,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:13.575745",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:17.930892",
+      "winner": "Detectives",
+      "mrx_reward": -45.550000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:21.279729",
+      "winner": "Detectives",
+      "mrx_reward": -59.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:26.280734",
+      "winner": "Detectives",
+      "mrx_reward": -13.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:29.880501",
+      "winner": "Detectives",
+      "mrx_reward": -56.300000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:34.043194",
+      "winner": "Detectives",
+      "mrx_reward": -43.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:43.019050",
+      "winner": "Detectives",
+      "mrx_reward": 57.85000000000002,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:44.151459",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:49.371978",
+      "winner": "Detectives",
+      "mrx_reward": -30.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:41:54.058921",
+      "winner": "Detectives",
+      "mrx_reward": -14.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:00.776908",
+      "winner": "Detectives",
+      "mrx_reward": -10.949999999999989,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:03.645087",
+      "winner": "Detectives",
+      "mrx_reward": -80.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:19.256883",
+      "winner": "Detectives",
+      "mrx_reward": 112.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:22.603570",
+      "winner": "Detectives",
+      "mrx_reward": -45.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:25.375952",
+      "winner": "Detectives",
+      "mrx_reward": -60.1,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:27.832198",
+      "winner": "Detectives",
+      "mrx_reward": -80.6,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:29.805942",
+      "winner": "Detectives",
+      "mrx_reward": -63.95,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:33.576956",
+      "winner": "Detectives",
+      "mrx_reward": -12.849999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:34.497841",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:37.990297",
+      "winner": "Detectives",
+      "mrx_reward": -51.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:41.468546",
+      "winner": "Detectives",
+      "mrx_reward": -77.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:44.773421",
+      "winner": "Detectives",
+      "mrx_reward": -71.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:50.611632",
+      "winner": "Detectives",
+      "mrx_reward": -34.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:42:56.386821",
+      "winner": "Detectives",
+      "mrx_reward": -11.900000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:43:00.674437",
+      "winner": "Detectives",
+      "mrx_reward": -14.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:43:04.170935",
+      "winner": "Detectives",
+      "mrx_reward": -47.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:43:10.337188",
+      "winner": "Detectives",
+      "mrx_reward": -2.9000000000000057,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:43:13.572755",
+      "winner": "Detectives",
+      "mrx_reward": -67.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:43:19.356467",
+      "winner": "Detectives",
+      "mrx_reward": -35.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:43:22.660628",
+      "winner": "Detectives",
+      "mrx_reward": -51.300000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:43:28.143696",
+      "winner": "Detectives",
+      "mrx_reward": 23.30000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:56:26.244181",
+      "winner": "Detectives",
+      "mrx_reward": -57.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:56:36.415841",
+      "winner": "Detectives",
+      "mrx_reward": 200.84999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:56:37.279771",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:56:41.633973",
+      "winner": "Detectives",
+      "mrx_reward": -29.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:56:51.157352",
+      "winner": "Detectives",
+      "mrx_reward": 11.299999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:56:54.421936",
+      "winner": "Detectives",
+      "mrx_reward": -79.9,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:56:55.940411",
+      "winner": "Detectives",
+      "mrx_reward": -74.05,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:01.356216",
+      "winner": "Detectives",
+      "mrx_reward": -29.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:09.379057",
+      "winner": "Detectives",
+      "mrx_reward": 15.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:12.948581",
+      "winner": "Detectives",
+      "mrx_reward": -62.4,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:14.351031",
+      "winner": "Detectives",
+      "mrx_reward": -83.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:19.128006",
+      "winner": "Detectives",
+      "mrx_reward": -58.6,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:21.039474",
+      "winner": "Detectives",
+      "mrx_reward": -69.30000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:23.538354",
+      "winner": "Detectives",
+      "mrx_reward": -69.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:25.459060",
+      "winner": "Detectives",
+      "mrx_reward": -74.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:28.655417",
+      "winner": "Detectives",
+      "mrx_reward": -10.250000000000014,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:34.203911",
+      "winner": "Detectives",
+      "mrx_reward": 7.8999999999999915,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:35.890162",
+      "winner": "Detectives",
+      "mrx_reward": -82.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:38.151783",
+      "winner": "Detectives",
+      "mrx_reward": -84.55,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:43.213928",
+      "winner": "Detectives",
+      "mrx_reward": -64.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:55.043204",
+      "winner": "Detectives",
+      "mrx_reward": 82.84999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:56.579548",
+      "winner": "Detectives",
+      "mrx_reward": -80.65,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:57:58.221195",
+      "winner": "Detectives",
+      "mrx_reward": -74.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:01.155929",
+      "winner": "Detectives",
+      "mrx_reward": -59.35,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:10.813106",
+      "winner": "Detectives",
+      "mrx_reward": 13.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:12.375563",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:22.374643",
+      "winner": "Detectives",
+      "mrx_reward": 36.69999999999999,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:30.026222",
+      "winner": "Detectives",
+      "mrx_reward": -17.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:33.308426",
+      "winner": "Detectives",
+      "mrx_reward": -77.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:36.659897",
+      "winner": "Detectives",
+      "mrx_reward": -41.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:45.576702",
+      "winner": "Detectives",
+      "mrx_reward": 125.44999999999999,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:46.922132",
+      "winner": "Detectives",
+      "mrx_reward": -68.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:58:53.012613",
+      "winner": "Detectives",
+      "mrx_reward": -47.65,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:02.856811",
+      "winner": "Detectives",
+      "mrx_reward": -23.450000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:11.389707",
+      "winner": "Detectives",
+      "mrx_reward": 19.34999999999998,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:16.818198",
+      "winner": "Detectives",
+      "mrx_reward": -10.750000000000014,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:21.896656",
+      "winner": "Detectives",
+      "mrx_reward": 9.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:26.900501",
+      "winner": "Detectives",
+      "mrx_reward": -10.299999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:33.841962",
+      "winner": "Detectives",
+      "mrx_reward": -27.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:34.840900",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:39.751635",
+      "winner": "Detectives",
+      "mrx_reward": -20.049999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:44.472558",
+      "winner": "Detectives",
+      "mrx_reward": -39.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:53.873053",
+      "winner": "Detectives",
+      "mrx_reward": 160.94999999999993,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:58.578785",
+      "winner": "Detectives",
+      "mrx_reward": -11.849999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T14:59:59.622830",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:09.448550",
+      "winner": "Detectives",
+      "mrx_reward": 52.29999999999998,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:11.057016",
+      "winner": "Detectives",
+      "mrx_reward": -72.95,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:12.442308",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:25.970776",
+      "winner": "Detectives",
+      "mrx_reward": 90.4,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:29.746322",
+      "winner": "Detectives",
+      "mrx_reward": -6.900000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:39.376848",
+      "winner": "Detectives",
+      "mrx_reward": -0.9500000000000028,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:41.365936",
+      "winner": "Detectives",
+      "mrx_reward": -78.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:00:49.468599",
+      "winner": "Detectives",
+      "mrx_reward": -6.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:01.518846",
+      "winner": "Detectives",
+      "mrx_reward": -5.550000000000011,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:07.957980",
+      "winner": "Detectives",
+      "mrx_reward": -39.050000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:18.367758",
+      "winner": "Detectives",
+      "mrx_reward": 1.3499999999999943,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:27.251500",
+      "winner": "Detectives",
+      "mrx_reward": 1.8999999999999915,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:31.098132",
+      "winner": "Detectives",
+      "mrx_reward": -36.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:39.611484",
+      "winner": "Detectives",
+      "mrx_reward": 77.54999999999998,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:44.390103",
+      "winner": "Detectives",
+      "mrx_reward": -42.9,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:54.485551",
+      "winner": "Detectives",
+      "mrx_reward": 58.900000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:56.721871",
+      "winner": "Detectives",
+      "mrx_reward": -33.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:01:59.995101",
+      "winner": "Detectives",
+      "mrx_reward": -38.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:06.203175",
+      "winner": "Detectives",
+      "mrx_reward": -44.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:08.976927",
+      "winner": "Detectives",
+      "mrx_reward": -32.900000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:11.831086",
+      "winner": "Detectives",
+      "mrx_reward": -55.65,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:15.348703",
+      "winner": "Detectives",
+      "mrx_reward": -55.55,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:18.901160",
+      "winner": "Detectives",
+      "mrx_reward": -34.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:19.598138",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:24.399330",
+      "winner": "Detectives",
+      "mrx_reward": -16.700000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:29.362503",
+      "winner": "Detectives",
+      "mrx_reward": -41.25000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:36.221237",
+      "winner": "Detectives",
+      "mrx_reward": -30.30000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:38.766305",
+      "winner": "Detectives",
+      "mrx_reward": -59.4,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:43.634825",
+      "winner": "Detectives",
+      "mrx_reward": -41.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:47.580964",
+      "winner": "Detectives",
+      "mrx_reward": -54.85,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:51.961413",
+      "winner": "Detectives",
+      "mrx_reward": -42.050000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:02:56.912637",
+      "winner": "Detectives",
+      "mrx_reward": -16.799999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:03:00.672826",
+      "winner": "Detectives",
+      "mrx_reward": -47.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:03:03.921922",
+      "winner": "Detectives",
+      "mrx_reward": -5.450000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:03:11.081584",
+      "winner": "Detectives",
+      "mrx_reward": 90.19999999999999,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:03:17.410141",
+      "winner": "Detectives",
+      "mrx_reward": 26.549999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:03:20.068626",
       "winner": "Detectives",
       "mrx_reward": -64.15,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:27.973152",
+      "timestamp": "2026-01-07T15:03:26.092120",
       "winner": "Detectives",
-      "mrx_reward": -70.3,
+      "mrx_reward": -33.599999999999994,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:23:32.331675",
+      "timestamp": "2026-01-07T15:03:35.275232",
       "winner": "Detectives",
-      "mrx_reward": -60.9,
+      "mrx_reward": 77.99999999999997,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:26:39.397905",
+      "timestamp": "2026-01-07T15:03:38.505734",
       "winner": "Detectives",
-      "mrx_reward": -70.8,
+      "mrx_reward": -54.2,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:26:46.414500",
+      "timestamp": "2026-01-07T15:03:40.552721",
       "winner": "Detectives",
-      "mrx_reward": -11.700000000000017,
+      "mrx_reward": -39.050000000000004,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:26:50.564816",
+      "timestamp": "2026-01-07T15:03:43.076858",
       "winner": "Detectives",
-      "mrx_reward": -63.8,
+      "mrx_reward": -67.6,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:26:55.444335",
+      "timestamp": "2026-01-07T15:03:45.564707",
       "winner": "Detectives",
-      "mrx_reward": -33.900000000000006,
+      "mrx_reward": -26.700000000000003,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:26:59.058439",
+      "timestamp": "2026-01-07T15:03:49.989110",
       "winner": "Detectives",
-      "mrx_reward": -13.25,
+      "mrx_reward": -9.5,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:02.030985",
+      "timestamp": "2026-01-07T15:03:54.008642",
       "winner": "Detectives",
-      "mrx_reward": -64.45,
+      "mrx_reward": -57.050000000000004,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:03.326734",
+      "timestamp": "2026-01-07T15:03:56.626000",
       "winner": "Detectives",
-      "mrx_reward": -79.25,
+      "mrx_reward": -66.25,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:07.018379",
+      "timestamp": "2026-01-07T15:03:58.689295",
       "winner": "Detectives",
-      "mrx_reward": -27.10000000000001,
+      "mrx_reward": -55.95,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:12.198087",
+      "timestamp": "2026-01-07T15:04:02.006896",
       "winner": "Detectives",
-      "mrx_reward": -62.900000000000006,
+      "mrx_reward": -78.0,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:14.835462",
+      "timestamp": "2026-01-07T15:04:10.604131",
       "winner": "Detectives",
-      "mrx_reward": -61.95,
+      "mrx_reward": 3.3499999999999943,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:17.417754",
+      "timestamp": "2026-01-07T15:04:17.055419",
       "winner": "Detectives",
-      "mrx_reward": -79.25,
+      "mrx_reward": -40.50000000000001,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:20.558973",
+      "timestamp": "2026-01-07T15:04:22.398791",
+      "winner": "Detectives",
+      "mrx_reward": -20.849999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:25.534523",
+      "winner": "Detectives",
+      "mrx_reward": -45.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:28.939637",
+      "winner": "Detectives",
+      "mrx_reward": -73.55,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:34.291645",
+      "winner": "Detectives",
+      "mrx_reward": 23.950000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:37.571458",
+      "winner": "Detectives",
+      "mrx_reward": -63.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:42.476758",
+      "winner": "Detectives",
+      "mrx_reward": -4.8500000000000085,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:44.756451",
+      "winner": "Detectives",
+      "mrx_reward": -56.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:48.577421",
+      "winner": "Detectives",
+      "mrx_reward": -55.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:54.392643",
+      "winner": "Detectives",
+      "mrx_reward": -20.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:04:58.755571",
       "winner": "Detectives",
       "mrx_reward": -27.60000000000001,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:24.457877",
+      "timestamp": "2026-01-07T15:05:01.218299",
       "winner": "Detectives",
-      "mrx_reward": -44.650000000000006,
+      "mrx_reward": -80.6,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:30.539465",
+      "timestamp": "2026-01-07T15:05:07.342522",
       "winner": "Detectives",
-      "mrx_reward": -9.799999999999997,
+      "mrx_reward": -43.8,
       "det_reward": 0,
       "rounds": 0
     },
     {
-      "timestamp": "2026-01-05T23:27:34.111439",
+      "timestamp": "2026-01-07T15:05:12.456012",
       "winner": "Detectives",
-      "mrx_reward": -30.25,
+      "mrx_reward": 13.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:16.026737",
+      "winner": "Detectives",
+      "mrx_reward": -44.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:21.263235",
+      "winner": "Detectives",
+      "mrx_reward": -20.85000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:27.072533",
+      "winner": "Detectives",
+      "mrx_reward": 54.900000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:33.744857",
+      "winner": "Detectives",
+      "mrx_reward": 10.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:35.054145",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:39.309007",
+      "winner": "Detectives",
+      "mrx_reward": -21.200000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:46.451049",
+      "winner": "Detectives",
+      "mrx_reward": 27.799999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:05:58.105703",
+      "winner": "Detectives",
+      "mrx_reward": 16.30000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:09.147600",
+      "winner": "Detectives",
+      "mrx_reward": 36.79999999999998,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:13.861689",
+      "winner": "Detectives",
+      "mrx_reward": -1.8500000000000085,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:14.729493",
+      "winner": "Detectives",
+      "mrx_reward": -86.4,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:17.781577",
+      "winner": "Detectives",
+      "mrx_reward": -21.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:24.938763",
+      "winner": "Detectives",
+      "mrx_reward": -16.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:32.994214",
+      "winner": "Detectives",
+      "mrx_reward": 17.849999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:34.318082",
+      "winner": "Detectives",
+      "mrx_reward": -81.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:36.450067",
+      "winner": "Detectives",
+      "mrx_reward": -73.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:44.285599",
+      "winner": "Detectives",
+      "mrx_reward": 14.700000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:52.717996",
+      "winner": "Detectives",
+      "mrx_reward": -21.500000000000014,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:53.603187",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:55.279429",
+      "winner": "Detectives",
+      "mrx_reward": -81.4,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:06:57.539964",
+      "winner": "Detectives",
+      "mrx_reward": -77.35,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:06.080702",
+      "winner": "Detectives",
+      "mrx_reward": 84.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:10.634925",
+      "winner": "Detectives",
+      "mrx_reward": -46.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:24.830661",
+      "winner": "Detectives",
+      "mrx_reward": 58.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:35.212399",
+      "winner": "Detectives",
+      "mrx_reward": 45.04999999999998,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:37.514379",
+      "winner": "Detectives",
+      "mrx_reward": -80.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:39.931797",
+      "winner": "Detectives",
+      "mrx_reward": -63.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:41.839994",
+      "winner": "Detectives",
+      "mrx_reward": -72.05,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:48.695813",
+      "winner": "Detectives",
+      "mrx_reward": -38.05,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:50.976092",
+      "winner": "Detectives",
+      "mrx_reward": -75.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:52.577696",
+      "winner": "Detectives",
+      "mrx_reward": -62.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:55.627148",
+      "winner": "Detectives",
+      "mrx_reward": -45.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:57.215091",
+      "winner": "Detectives",
+      "mrx_reward": -68.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:07:58.809759",
+      "winner": "Detectives",
+      "mrx_reward": -36.800000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:05.227097",
+      "winner": "Detectives",
+      "mrx_reward": 76.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:07.206315",
+      "winner": "Detectives",
+      "mrx_reward": -77.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:09.702160",
+      "winner": "Detectives",
+      "mrx_reward": -23.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:12.480155",
+      "winner": "Detectives",
+      "mrx_reward": -47.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:14.159175",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:18.771734",
+      "winner": "Detectives",
+      "mrx_reward": -46.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:26.688021",
+      "winner": "Detectives",
+      "mrx_reward": 56.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:32.041554",
+      "winner": "Detectives",
+      "mrx_reward": -21.200000000000003,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:42.648306",
+      "winner": "Detectives",
+      "mrx_reward": 78.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:47.639323",
+      "winner": "Detectives",
+      "mrx_reward": -14.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:51.323734",
+      "winner": "Detectives",
+      "mrx_reward": -61.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:08:52.880810",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:00.428965",
+      "winner": "Detectives",
+      "mrx_reward": 21.599999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:03.895508",
+      "winner": "Detectives",
+      "mrx_reward": -10.500000000000014,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:10.146718",
+      "winner": "Detectives",
+      "mrx_reward": -11.400000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:12.792559",
+      "winner": "Detectives",
+      "mrx_reward": -17.599999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:16.842557",
+      "winner": "Detectives",
+      "mrx_reward": -23.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:19.569943",
+      "winner": "Detectives",
+      "mrx_reward": -71.8,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:21.439990",
+      "winner": "Detectives",
+      "mrx_reward": -64.35,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:24.576086",
+      "winner": "Detectives",
+      "mrx_reward": -46.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:32.716523",
+      "winner": "Detectives",
+      "mrx_reward": 72.99999999999997,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:41.194382",
+      "winner": "Detectives",
+      "mrx_reward": 39.69999999999999,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:43.973569",
+      "winner": "Detectives",
+      "mrx_reward": -53.45,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:48.617725",
+      "winner": "Detectives",
+      "mrx_reward": -21.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:52.166231",
+      "winner": "Detectives",
+      "mrx_reward": -1.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:09:55.298202",
+      "winner": "Detectives",
+      "mrx_reward": -56.7,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:02.283371",
+      "winner": "Detectives",
+      "mrx_reward": -27.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:08.684374",
+      "winner": "Detectives",
+      "mrx_reward": 11.25,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:26.593055",
+      "winner": "Detectives",
+      "mrx_reward": 120.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:33.403493",
+      "winner": "Detectives",
+      "mrx_reward": -24.60000000000001,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:39.940413",
+      "winner": "Detectives",
+      "mrx_reward": -15.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:44.464971",
+      "winner": "Detectives",
+      "mrx_reward": -21.099999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:46.855459",
+      "winner": "Detectives",
+      "mrx_reward": -60.2,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:54.916168",
+      "winner": "Detectives",
+      "mrx_reward": 19.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:10:59.131236",
+      "winner": "Detectives",
+      "mrx_reward": 0.29999999999999716,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:08.672833",
+      "winner": "Detectives",
+      "mrx_reward": 14.750000000000014,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:15.769911",
+      "winner": "Detectives",
+      "mrx_reward": -32.349999999999994,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:23.379501",
+      "winner": "Detectives",
+      "mrx_reward": 16.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:26.657861",
+      "winner": "Detectives",
+      "mrx_reward": -57.05,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:29.940748",
+      "winner": "Detectives",
+      "mrx_reward": -62.050000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:32.299491",
+      "winner": "Detectives",
+      "mrx_reward": -35.75,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:46.380567",
+      "winner": "Detectives",
+      "mrx_reward": 41.45000000000002,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:48.307624",
+      "winner": "Detectives",
+      "mrx_reward": -72.55,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:55.783223",
+      "winner": "Detectives",
+      "mrx_reward": -14.650000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:11:57.598112",
+      "winner": "Detectives",
+      "mrx_reward": -77.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:01.875627",
+      "winner": "Detectives",
+      "mrx_reward": -47.95,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:10.329746",
+      "winner": "Detectives",
+      "mrx_reward": 28.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:19.218002",
+      "winner": "Detectives",
+      "mrx_reward": 36.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:24.525343",
+      "winner": "Detectives",
+      "mrx_reward": -41.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:27.390286",
+      "winner": "Detectives",
+      "mrx_reward": -57.150000000000006,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:29.413069",
+      "winner": "Detectives",
+      "mrx_reward": -64.6,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:33.641507",
+      "winner": "Detectives",
+      "mrx_reward": -60.3,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:35.598594",
+      "winner": "Detectives",
+      "mrx_reward": -75.5,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:36.462802",
+      "winner": "Detectives",
+      "mrx_reward": -100.0,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:41.484163",
+      "winner": "Detectives",
+      "mrx_reward": -43.15,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:44.449725",
+      "winner": "Detectives",
+      "mrx_reward": -51.550000000000004,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:45.524915",
+      "winner": "Detectives",
+      "mrx_reward": -79.9,
+      "det_reward": 0,
+      "rounds": 0
+    },
+    {
+      "timestamp": "2026-01-07T15:12:47.913769",
+      "winner": "Detectives",
+      "mrx_reward": -69.4,
       "det_reward": 0,
       "rounds": 0
     }
   ],
-  "start_time": "2026-01-04T16:20:08.335553"
+  "start_time": "2026-01-05T23:33:47.447284"
 }

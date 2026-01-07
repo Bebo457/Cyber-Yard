@@ -672,7 +672,15 @@ void GameState::OnEnter(Core::Application* p_App) {
     gm.LoadData(Core::GetMapPath(Core::k_NodeDataRelativePath), Core::GetMapPath(Core::k_ConnectionsRelativePath), false);
 
     int i_NodeCount = gm.GetNodeCount();
-        if (i_NodeCount <= 0 || !settings.onlineIsServer) {
+    std::vector<int> vec_UsableNodes;
+    vec_UsableNodes.reserve(i_NodeCount);
+    for (int i_Node = 1; i_Node <= i_NodeCount; ++i_Node) {
+        if (!gm.GetConnections(i_Node).empty()) {
+            vec_UsableNodes.push_back(i_Node);
+        }
+    }
+
+        if (i_NodeCount <= 0 || !settings.onlineIsServer || vec_UsableNodes.size() < Core::k_DetectiveCount + 1) {
             // fallback to hardcoded positions
             m_vec_Players.emplace_back(Core::PlayerType::MisterX, 10);
             m_vec_Players.emplace_back(Core::PlayerType::Detective, 1);
@@ -682,13 +690,24 @@ void GameState::OnEnter(Core::Application* p_App) {
         } else {
             std::random_device rd;
             std::mt19937 rng(rd());
-            std::uniform_int_distribution<int> dist(1, i_NodeCount);
+            std::uniform_int_distribution<int> distIndex(0, static_cast<int>(vec_UsableNodes.size()) - 1);
 
             auto pick_unique = [&](std::vector<int>& vec_Used) {
-                int i_V;
-                do { i_V = dist(rng); } while (std::find(vec_Used.begin(), vec_Used.end(), i_V) != vec_Used.end());
-                vec_Used.push_back(i_V);
-                return i_V;
+                const int k_MaxAttempts = 512;
+                for (int attempt = 0; attempt < k_MaxAttempts; ++attempt) {
+                    int candidate = vec_UsableNodes[distIndex(rng)];
+                    if (std::find(vec_Used.begin(), vec_Used.end(), candidate) == vec_Used.end()) {
+                        vec_Used.push_back(candidate);
+                        return candidate;
+                    }
+                }
+                for (int candidate : vec_UsableNodes) {
+                    if (std::find(vec_Used.begin(), vec_Used.end(), candidate) == vec_Used.end()) {
+                        vec_Used.push_back(candidate);
+                        return candidate;
+                    }
+                }
+                return vec_UsableNodes.front();
             };
 
             std::vector<int> vec_Used;
@@ -704,7 +723,7 @@ void GameState::OnEnter(Core::Application* p_App) {
             //  forbidden position list
             std::vector<int> vec_Forbidden = vec_DetectiveNodes;
             for (int i_DetNode : vec_DetectiveNodes) {
-                std::vector<Core::Node*> vec_Neighbors = m_graph.GetNeighbors(i_DetNode);
+                std::vector<Core::Node*> vec_Neighbors = gm.GetNeighbors(i_DetNode);
                 for (Core::Node* p_Neighbor : vec_Neighbors) {
                     if (p_Neighbor) {
                         vec_Forbidden.push_back(p_Neighbor->i_Id);
@@ -714,11 +733,19 @@ void GameState::OnEnter(Core::Application* p_App) {
 
             //spawn Mr. X
             auto pick_mrx = [&]() {
-                int i_V;
-                do {
-                    i_V = dist(rng);
-                } while (std::find(vec_Forbidden.begin(), vec_Forbidden.end(), i_V) != vec_Forbidden.end());
-                return i_V;
+                const int k_MaxAttempts = 512;
+                for (int attempt = 0; attempt < k_MaxAttempts; ++attempt) {
+                    int candidate = vec_UsableNodes[distIndex(rng)];
+                    if (std::find(vec_Forbidden.begin(), vec_Forbidden.end(), candidate) == vec_Forbidden.end()) {
+                        return candidate;
+                    }
+                }
+                for (int candidate : vec_UsableNodes) {
+                    if (std::find(vec_Forbidden.begin(), vec_Forbidden.end(), candidate) == vec_Forbidden.end()) {
+                        return candidate;
+                    }
+                }
+                return vec_UsableNodes.front();
             };
 
             int i_MrXNode = pick_mrx();

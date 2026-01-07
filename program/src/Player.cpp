@@ -1,6 +1,8 @@
 #include "Player.h"
 #include "GameConstants.h"
 #include <sstream>
+#include <algorithm>
+#include <iostream>
 
 namespace ScotlandYard {
 namespace Core {
@@ -30,6 +32,16 @@ Player::Player(PlayerType e_Type, int i_OccupiedNode, bool b_Visible)
         m_i_BlackTickets = k_MrXBlackTickets;
         m_i_DoubleMoveTickets = k_MrXDoubleMoveTickets;
     }
+    SetOccupiedNode(i_OccupiedNode);
+}
+
+void Player::SetOccupiedNode(int i_Node) {
+    int i_Clamped = std::clamp(i_Node, 1, Core::k_MaxNodes);
+    if (i_Clamped != i_Node) {
+        std::cout << "[Player] Normalized invalid node " << i_Node
+                  << " -> " << i_Clamped << "\n";
+    }
+    m_i_OccupiedNode = i_Clamped;
 }
 
 
