@@ -2,7 +2,9 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include <cstdlib>
 #include <cmath>
+#include <ctime>
 
 namespace CityGen {
 
