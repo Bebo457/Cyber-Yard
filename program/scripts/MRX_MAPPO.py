@@ -121,6 +121,7 @@ class MAPPOAgent:
 
         self.new_game = True
         self.episode_reward = 0.0
+        self.round_counter = 0
 
     def select_action(self, obs, agent_id, action_mask):
         with torch.no_grad():
@@ -222,7 +223,7 @@ class MAPPOAgent:
             self.actors_old[i].load_state_dict(self.actors[i].state_dict())
             self.actors_old[i].eval()
 
-        print(f"[AI] Zapisano MAPPO do {self.model_path}")
+        print(f"[AI] Zapisano MAPPO do {self.model_path} | Rounds: {self.round_counter}")
     
     def _save_checkpoint(self):
         """
@@ -303,8 +304,10 @@ try:
             print(f"[EVENT] Game Over! Winner: {winner if winner else 'N/A'}")
 
             total_episode_reward = final_reward
+            final_rounds = 0
             if agent:
                 total_episode_reward += agent.episode_reward
+                final_rounds = agent.round_counter
 
             if agent and agent.buffer:
                 last_joint_obs, last_actions, last_logps, _, _, last_value, last_mask = agent.buffer[-1]
@@ -326,8 +329,9 @@ try:
 
             if agent:
                 agent.episode_reward = 0.0
+                agent.round_counter = 0
 
-            log_game(winner=winner, mrx_reward=total_episode_reward, rounds=current_round)
+            log_game(winner=winner, mrx_reward=total_episode_reward, rounds=final_rounds)
             sock.send_json({"status": "ok"})
             continue
 
@@ -372,14 +376,18 @@ try:
             agent.new_game = False
 
         agent.episode_reward += reward
+        
+        # Increment round counter
+        current_round = req.get("game_state", {}).get("current_round", 0)
+        agent.round_counter = current_round
 
         done = req.get("game_over", False)
 
         agent.store(joint_obs, actions, logps, reward, done, action_mask)
-        print(f"[DATA] Stored step | reward={reward:.3f} done={done}")
+        print(f"[DATA] Stored step | Round: {agent.round_counter} | reward={reward:.3f} done={done}")
 
         if done or agent.step_counter >= agent.rollout_len:
-            print(f"[AI] UPDATE | steps={agent.step_counter} done={done}")
+            print(f"[AI] UPDATE | steps={agent.step_counter} rounds={agent.round_counter} done={done}")
             agent.update()
             agent.step_counter = 0
 

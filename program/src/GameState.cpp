@@ -720,15 +720,42 @@ void GameState::OnEnter(Core::Application* p_App) {
                 m_vec_Players.emplace_back(Core::PlayerType::Detective, i_DNode);
             }
 
-            //  forbidden position list
-            std::vector<int> vec_Forbidden = vec_DetectiveNodes;
-            for (int i_DetNode : vec_DetectiveNodes) {
-                std::vector<Core::Node*> vec_Neighbors = gm.GetNeighbors(i_DetNode);
-                for (Core::Node* p_Neighbor : vec_Neighbors) {
-                    if (p_Neighbor) {
-                        vec_Forbidden.push_back(p_Neighbor->i_Id);
+            // BFS function to get all nodes within given radius
+            auto get_nodes_within_radius = [&](int i_Start, int i_Radius) -> std::vector<int> {
+                std::vector<int> vec_NodesInRadius;
+                std::queue<int> queue;
+                std::unordered_map<int, int> distances;
+                
+                queue.push(i_Start);
+                distances[i_Start] = 0;
+                vec_NodesInRadius.push_back(i_Start);
+                
+                while (!queue.empty()) {
+                    int i_Current = queue.front();
+                    queue.pop();
+                    
+                    if (distances[i_Current] >= i_Radius) {
+                        continue;
+                    }
+                    
+                    std::vector<Core::Node*> vec_Neighbors = gm.GetNeighbors(i_Current);
+                    for (Core::Node* p_Neighbor : vec_Neighbors) {
+                        if (p_Neighbor && distances.find(p_Neighbor->i_Id) == distances.end()) {
+                            distances[p_Neighbor->i_Id] = distances[i_Current] + 1;
+                            vec_NodesInRadius.push_back(p_Neighbor->i_Id);
+                            queue.push(p_Neighbor->i_Id);
+                        }
                     }
                 }
+                return vec_NodesInRadius;
+            };
+
+            // Create forbidden zones around each detective (radius 3)
+            std::vector<int> vec_Forbidden;
+            const int k_ForbiddenRadius = 3;
+            for (int i_DetNode : vec_DetectiveNodes) {
+                std::vector<int> vec_Zone = get_nodes_within_radius(i_DetNode, k_ForbiddenRadius);
+                vec_Forbidden.insert(vec_Forbidden.end(), vec_Zone.begin(), vec_Zone.end());
             }
 
             //spawn Mr. X
