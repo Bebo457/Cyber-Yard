@@ -48,7 +48,8 @@ namespace CityGen {
         std::cout << "[CityGen] Phase 1 Post-processing..." << std::endl;
         PostProcessIntersections();
         MergeSimpleIntersections();
-
+        // RemoveRedundantParallelHighways();
+        RemoveParallelHighwaysByTrend();
         // KROK 3: Faza 2 - Ulice lokalne (Streets / Taxi Routes)
         // Zgodnie z PDF: Wypełniają luki między autostradami, używając wzorców (Raster/Organic)
         std::cout << "[CityGen] Phase 2: Generating Streets..." << std::endl;
@@ -57,20 +58,105 @@ namespace CityGen {
         std::cout << "[CityGen] Generation complete. Nodes: " << m_RoadNodes.size()
             << ", Roads: " << m_Roads.size()
             << ", Highways: " << m_Highways.size() << std::endl;
+
+                std::cout << "[CityGen] Generation complete. Nodes: " << m_RoadNodes.size()
+            << ", Roads: " << m_Roads.size()
+            << ", Highways: " << m_Highways.size() << std::endl;
+
+        // DODAJ TEN KOD TUTAJ:
+        std::cout << "\n[CityGen] ====== HIGHWAYS SUMMARY ======" << std::endl;
+        for (size_t i = 0; i < m_Highways.size(); ++i) {
+            const Highway& hw = m_Highways[i];
+            const Point& startNode = m_RoadNodes[hw.startIntersectionIdx];
+            const Point& endNode = m_RoadNodes[hw.endIntersectionIdx];
+            
+            std::cout << "[Highway #" << i << "] "
+                    << "Start: (" << startNode.x << ", " << startNode.y << ") -> "
+                    << "End: (" << endNode.x << ", " << endNode.y << ") | "
+                    << "Length: " << hw.totalLength 
+                    << " | Roads: " << hw.roadIndices.size() << std::endl;
+        }
+        std::cout << "[CityGen] ============================" << std::endl;
     }
+
 
     void HighwayGenerator::GeneratePopulationDensity() {
         // Inicjalizacja mapy zerami
         m_PopulationDensity.resize(m_Height, std::vector<float>(m_Width, 0.0f));
 
-        // Definicja centrów populacji (Dzielnice)
+        // Generowanie losowych centrów populacji z Poisson Disk Sampling
         struct Center { float x, y, r, i; };
-        std::vector<Center> centers = {
-            {m_Width * 0.30f, m_Height * 0.45f, 200.0f, 1.0f},
-            {m_Width * 0.65f, m_Height * 0.3f, 300.0f, 0.9f},
-            {m_Width * 0.35f, m_Height * 0.65f, 100.0f, 0.85f},
-            {m_Width * 0.6f, m_Height * 0.65f, 250.0f, 0.95f}
-        };
+        std::vector<Center> centers;
+
+        // Parametry generacji
+        const int numCenters = 20 + rand() % 4; // 4-7 centrów
+        const float minDistance = std::min(m_Width, m_Height) * 0.25f; // Min odległość między centrami
+        const int maxAttempts = 30; // Maksymalna liczba prób na centrum
+
+        for (int i = 0; i < numCenters; ++i) {
+            bool placed = false;
+            
+            for (int attempt = 0; attempt < maxAttempts && !placed; ++attempt) {
+                // Losowa pozycja z marginesem od krawędzi
+                float x = (m_Width * 0.1f) + (rand() % (int)(m_Width * 0.8f));
+                float y = (m_Height * 0.1f) + (rand() % (int)(m_Height * 0.8f));
+                
+                // Sprawdź odległość od innych centrów
+                bool tooClose = false;
+                for (const auto& existing : centers) {
+                    float dx = x - existing.x;
+                    float dy = y - existing.y;
+                    float dist = std::sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < minDistance) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                
+                if (!tooClose) {
+                    // Losowe parametry centrum
+                    float radius = 100.0f + (rand() % 250); // 100-350
+                    float intensity = 0.7f + (rand() % 30) / 100.0f; // 0.7-1.0
+                    
+                    centers.push_back({x, y, radius, intensity});
+                    placed = true;
+                    
+                    std::cout << "[PopDensity] Center " << i << ": pos=(" << x << "," << y 
+                            << "), radius=" << radius << ", intensity=" << intensity << std::endl;
+                }
+            }
+            
+            // Jeśli nie udało się umieścić centrum, spróbuj z mniejszą minDistance
+            if (!placed && i > 0) {
+                float relaxedDistance = minDistance * 0.6f;
+                for (int attempt = 0; attempt < maxAttempts && !placed; ++attempt) {
+                    float x = (m_Width * 0.1f) + (rand() % (int)(m_Width * 0.8f));
+                    float y = (m_Height * 0.1f) + (rand() % (int)(m_Height * 0.8f));
+                    
+                    bool tooClose = false;
+                    for (const auto& existing : centers) {
+                        float dx = x - existing.x;
+                        float dy = y - existing.y;
+                        float dist = std::sqrt(dx * dx + dy * dy);
+                        
+                        if (dist < relaxedDistance) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!tooClose) {
+                        float radius = 100.0f + (rand() % 250);
+                        float intensity = 0.7f + (rand() % 30) / 100.0f;
+                        centers.push_back({x, y, radius, intensity});
+                        placed = true;
+                    }
+                }
+            }
+        }
+
+        std::cout << "[PopDensity] Generated " << centers.size() << " population centers" << std::endl;
 
         for (int y = 0; y < m_Height; ++y) {
             for (int x = 0; x < m_Width; ++x) {
@@ -101,6 +187,50 @@ namespace CityGen {
             }
         }
     }
+
+    // stara wersja ze stałymi pozycjami centrów
+    // void HighwayGenerator::GeneratePopulationDensity() {
+    //     // Inicjalizacja mapy zerami
+    //     m_PopulationDensity.resize(m_Height, std::vector<float>(m_Width, 0.0f));
+
+    //     // Definicja centrów populacji (Dzielnice)
+    //     struct Center { float x, y, r, i; };
+    //     std::vector<Center> centers = {
+    //         {m_Width * 0.30f, m_Height * 0.45f, 200.0f, 1.0f},
+    //         {m_Width * 0.65f, m_Height * 0.3f, 300.0f, 0.9f},
+    //         {m_Width * 0.35f, m_Height * 0.65f, 100.0f, 0.85f},
+    //         {m_Width * 0.6f, m_Height * 0.65f, 250.0f, 0.95f}
+    //     };
+
+    //     for (int y = 0; y < m_Height; ++y) {
+    //         for (int x = 0; x < m_Width; ++x) {
+    //             float val = 0.0f;
+
+    //             // Sumowanie wpływu centrów (metoda gradientowa)
+    //             for (const auto& c : centers) {
+    //                 float dx = x - c.x;
+    //                 float dy = y - c.y;
+    //                 float dist = std::sqrt(dx * dx + dy * dy);
+    //                 if (dist < c.r) {
+    //                     // Funkcja kwadratowa zaniku (falloff)
+    //                     float t = 1.0f - (dist / c.r);
+    //                     val += c.i * (t * t);
+    //                 }
+    //             }
+
+    //             // Zastosowanie MASKI STREF (m_ZoneMask)
+    //             // To zapewnia, że populacja (i drogi) nie pojawią się w rzekach i parkach
+    //             if (!m_ZoneMask.empty()) {
+    //                 int idx = y * m_Width + x;
+    //                 if (idx < m_ZoneMask.size() && m_ZoneMask[idx] != 0) {
+    //                     // val = 0.0f; // Zerowa gęstość w strefach wykluczonych
+    //                 }
+    //             }
+
+    //             m_PopulationDensity[y][x] = std::min(1.0f, val);
+    //         }
+    //     }
+    // }
 
     // Funkcja określająca wzorzec ulic w danym miejscu
     PatternType HighwayGenerator::GetPatternAt(float x, float y) {
@@ -506,7 +636,7 @@ namespace CityGen {
     }
 
     void HighwayGenerator::CreateBranchCandidates(const HighwayEnd& parent) {
-        float distThreshold = (parent.type == RoadType::HIGHWAY) ? 50.0f : 25.0f;
+        float distThreshold = (parent.type == RoadType::HIGHWAY) ? HIGHWAY_BRANCH_DISTANCE : STREET_BRANCH_DISTANCE;
 
         if (parent.distanceSinceLastBranch > distThreshold) {
             PatternType pattern = GetPatternAt(m_RoadNodes[parent.currentNodeIdx].x, m_RoadNodes[parent.currentNodeIdx].y);
@@ -520,7 +650,7 @@ namespace CityGen {
             }
 
             float currentAngle = std::atan2(parent.direction.y, parent.direction.x);
-            int prob = (parent.type == RoadType::HIGHWAY) ? 40 : 60;
+            int prob = (parent.type == RoadType::HIGHWAY) ? HIGHWAY_BRANCH_PROBABILITY : STREET_BRANCH_PROBABILITY;
 
             // Próba lewa i prawa
             if (rand() % 100 < prob) {
@@ -615,6 +745,7 @@ namespace CityGen {
         const bool ENABLE_PARALLEL_CHECK = true;
         const bool ENABLE_AREA_COVERAGE_CHECK = false;
         const bool ENABLE_HIGHWAY_PROXIMITY_CHECK = true;
+        const bool ENABLE_PERPENDICULAR_SCAN_CHECK = false;
         
         // ========== PARAMETRY DO DOSTRAJANIA ==========
         const float MIN_DENSITY_SCORE = BRANCH_MIN_DENSITY_SCORE;
@@ -739,6 +870,77 @@ namespace CityGen {
                         << minHitDistance << " < " << MIN_VIABLE_HIGHWAY_LENGTH << ")" << std::endl;
                 branch.delay = -1;
                 return;
+            }
+        }
+
+        // KRYTERIUM 6: Wykrywanie równoległych branchy w sąsiedztwie
+        if (ENABLE_PERPENDICULAR_SCAN_CHECK) {
+            Point parentPos = m_RoadNodes[branch.parentNodeIdx];
+            
+            // Oblicz kierunek prostopadły do brancha
+            Point perpendicular(-branch.direction.y, branch.direction.x);
+            
+            std::cout << "[GlobalGoals] Perpendicular scan check..." << std::endl;
+            
+            // Skanuj w obu kierunkach prostopadłych
+            for (int side = -1; side <= 1; side += 2) {
+                Point scanDir(perpendicular.x * side, perpendicular.y * side);
+                
+                // Strzel rayem prostopadle
+                float hitDist = RaycastToHighway(parentPos, scanDir, BRANCH_PARALLEL_SCAN_DISTANCE);
+                
+                if (hitDist > 0.0f) {
+                    // Trafiliśmy w highway - sprawdź jego kierunek
+                    Point hitPoint(
+                        parentPos.x + scanDir.x * hitDist,
+                        parentPos.y + scanDir.y * hitDist
+                    );
+                    
+                    // Znajdź trafiony highway i jego kierunek
+                    for (const Highway& hw : m_Highways) {
+                        if (IsPointOnHighway(hitPoint, hw, 5.0f)) {
+                            // Znajdź segment na którym leży punkt
+                            for (int roadIdx : hw.roadIndices) {
+                                if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+                                
+                                const Road& road = m_Roads[roadIdx];
+                                const Point& roadStart = m_RoadNodes[road.startNodeIdx];
+                                const Point& roadEnd = m_RoadNodes[road.endNodeIdx];
+                                
+                                // Sprawdź czy punkt jest blisko tego segmentu
+                                float dist = DistancePointToSegment(hitPoint, roadStart, roadEnd);
+                                if (dist < 5.0f) {
+                                    // Oblicz kierunek tego segmentu
+                                    Point hwDir(roadEnd.x - roadStart.x, roadEnd.y - roadStart.y);
+                                    float hwLen = std::sqrt(hwDir.x * hwDir.x + hwDir.y * hwDir.y);
+                                    if (hwLen > 0.01f) {
+                                        hwDir.x /= hwLen;
+                                        hwDir.y /= hwLen;
+                                    }
+                                    
+                                    // Oblicz kąt między branch a highway
+                                    float dotProduct = branch.direction.x * hwDir.x + branch.direction.y * hwDir.y;
+                                    float angle = std::acos(std::max(-1.0f, std::min(1.0f, dotProduct)));
+                                    
+                                    // Uwzględnij symetrię (180° to też równoległość)
+                                    if (angle > 3.14159f / 2.0f) {
+                                        angle = 3.14159f - angle;
+                                    }
+                                    
+                                    std::cout << "[GlobalGoals] Found highway at distance " << hitDist 
+                                            << ", angle difference: " << (angle * 180.0f / 3.14159f) << " degrees" << std::endl;
+                                    
+                                    // Jeśli kąt mniejszy niż tolerancja - równoległe
+                                    if (angle < BRANCH_PARALLEL_SCAN_ANGLE_TOLERANCE) {
+                                        std::cout << "[GlobalGoals] REJECTED: Parallel highway nearby (perpendicular scan)" << std::endl;
+                                        branch.delay = -1;
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1018,7 +1220,7 @@ namespace CityGen {
             );
             
             // Waga odwrotna do odległości
-            float weight = density / distance;
+            float weight = density * distance;
             
             totalScore += weight;
         }
@@ -1651,6 +1853,332 @@ namespace CityGen {
             minDist = std::min(minDist, DistancePointToSegmentClosest(b, poly[i], poly[i + 1], c));
         }
         return minDist;
+    }
+
+    void HighwayGenerator::RemoveRedundantParallelHighways() {
+        std::cout << "[RemoveRedundant] Starting... Initial highways: " << m_Highways.size() << std::endl;
+        
+        int removedCount = 0;
+        std::vector<bool> toRemove(m_Highways.size(), false);
+        
+        // Porównaj każdą parę highways
+        for (size_t i = 0; i < m_Highways.size(); ++i) {
+            if (toRemove[i]) continue;
+            
+            const Highway& hw1 = m_Highways[i];
+            const Point& start1 = m_RoadNodes[hw1.startIntersectionIdx];
+            const Point& end1 = m_RoadNodes[hw1.endIntersectionIdx];
+            
+            for (size_t j = i + 1; j < m_Highways.size(); ++j) {
+                if (toRemove[j]) continue;
+                
+                const Highway& hw2 = m_Highways[j];
+                const Point& start2 = m_RoadNodes[hw2.startIntersectionIdx];
+                const Point& end2 = m_RoadNodes[hw2.endIntersectionIdx];
+                
+                // Sprawdź bliskość końców (normalna orientacja)
+                float distStartStart = std::sqrt(
+                    std::pow(start1.x - start2.x, 2) + std::pow(start1.y - start2.y, 2)
+                );
+                float distEndEnd = std::sqrt(
+                    std::pow(end1.x - end2.x, 2) + std::pow(end1.y - end2.y, 2)
+                );
+                
+                // Sprawdź bliskość końców (odwrotna orientacja)
+                float distStartEnd = std::sqrt(
+                    std::pow(start1.x - end2.x, 2) + std::pow(start1.y - end2.y, 2)
+                );
+                float distEndStart = std::sqrt(
+                    std::pow(end1.x - start2.x, 2) + std::pow(end1.y - start2.y, 2)
+                );
+                
+                bool normalOrientation = (distStartStart < MERGE_DISTANCE_THRESHOLD && 
+                                        distEndEnd < MERGE_DISTANCE_THRESHOLD);
+                bool reverseOrientation = (distStartEnd < MERGE_DISTANCE_THRESHOLD && 
+                                        distEndStart < MERGE_DISTANCE_THRESHOLD);
+                
+                if (!normalOrientation && !reverseOrientation) {
+                    continue; // Końce nie są bliskie
+                }
+                
+                // Oblicz kierunki highways
+                Point dir1(end1.x - start1.x, end1.y - start1.y);
+                float len1 = std::sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+                if (len1 > 0.01f) {
+                    dir1.x /= len1;
+                    dir1.y /= len1;
+                }
+                
+                Point dir2(end2.x - start2.x, end2.y - start2.y);
+                float len2 = std::sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+                if (len2 > 0.01f) {
+                    dir2.x /= len2;
+                    dir2.y /= len2;
+                }
+                
+                // Oblicz kąt między kierunkami
+                float dotProduct = dir1.x * dir2.x + dir1.y * dir2.y;
+                
+                // Dla odwrotnej orientacji odwróć jeden kierunek
+                if (reverseOrientation) {
+                    dotProduct = dir1.x * (-dir2.x) + dir1.y * (-dir2.y);
+                }
+                
+                float angle = std::acos(std::max(-1.0f, std::min(1.0f, dotProduct)));
+                
+                // Uwzględnij symetrię (180° to też równoległość)
+                if (angle > 3.14159f / 2.0f) {
+                    angle = 3.14159f - angle;
+                }
+                
+                std::cout << "[RemoveRedundant] Highway " << i << " vs " << j 
+                        << ": distance=" << std::min(distStartStart + distEndEnd, distStartEnd + distEndStart)
+                        << ", angle=" << (angle * 180.0f / 3.14159f) << " degrees" << std::endl;
+                
+                // Jeśli są równoległe
+                if (angle < PARALLEL_ANGLE_THRESHOLD) {
+                    std::cout << "[RemoveRedundant] Highways " << i << " and " << j 
+                            << " are redundant (parallel and close)" << std::endl;
+                    
+                    // Usuń dłuższy
+                    if (hw1.totalLength > hw2.totalLength) {
+                        std::cout << "[RemoveRedundant] Removing highway " << i 
+                                << " (length=" << hw1.totalLength << ")" << std::endl;
+                        toRemove[i] = true;
+                        removedCount++;
+                        break; // Przerwij wewnętrzną pętlę
+                    } else {
+                        std::cout << "[RemoveRedundant] Removing highway " << j 
+                                << " (length=" << hw2.totalLength << ")" << std::endl;
+                        toRemove[j] = true;
+                        removedCount++;
+                    }
+                }
+            }
+        }
+        
+        // Usuń zaznaczone highways (od tyłu!)
+        for (int i = m_Highways.size() - 1; i >= 0; --i) {
+            if (toRemove[i]) {
+                RemoveHighway(i);
+            }
+        }
+        
+        std::cout << "[RemoveRedundant] Finished. Removed " << removedCount 
+                << " highways. Final count: " << m_Highways.size() << std::endl;
+    }
+
+    HighwayGenerator::TrendLine HighwayGenerator::CalculateTrendLine(const Highway& highway) const {
+        if (highway.roadIndices.empty()) {
+            return TrendLine{{0,0}, {0,0}, {0,0}, 0.0f, -1};
+        }
+        
+        // Zbierz wszystkie punkty z highway
+        std::vector<Point> points;
+        for (int roadIdx : highway.roadIndices) {
+            if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+            const Road& road = m_Roads[roadIdx];
+            
+            // Dodaj punkt startowy (jeśli jeszcze nie mamy)
+            if (points.empty() || 
+                !(points.back().x == m_RoadNodes[road.startNodeIdx].x && 
+                points.back().y == m_RoadNodes[road.startNodeIdx].y)) {
+                points.push_back(m_RoadNodes[road.startNodeIdx]);
+            }
+            points.push_back(m_RoadNodes[road.endNodeIdx]);
+        }
+        
+        if (points.size() < 2) {
+            return TrendLine{{0,0}, {0,0}, {0,0}, 0.0f, -1};
+        }
+        
+        // Oblicz środek ciężkości
+        float centerX = 0.0f, centerY = 0.0f;
+        for (const auto& p : points) {
+            centerX += p.x;
+            centerY += p.y;
+        }
+        centerX /= points.size();
+        centerY /= points.size();
+        
+        // PCA - Principal Component Analysis (najprostsza wersja)
+        float xx = 0.0f, xy = 0.0f, yy = 0.0f;
+        for (const auto& p : points) {
+            float dx = p.x - centerX;
+            float dy = p.y - centerY;
+            xx += dx * dx;
+            xy += dx * dy;
+            yy += dy * dy;
+        }
+        
+        // Oblicz kierunek głównej składowej
+        float trace = xx + yy;
+        float det = xx * yy - xy * xy;
+        float eigenvalue = trace / 2.0f + std::sqrt(trace * trace / 4.0f - det);
+        
+        float dirX = xy;
+        float dirY = eigenvalue - xx;
+        float dirLen = std::sqrt(dirX * dirX + dirY * dirY);
+        
+        if (dirLen > 0.01f) {
+            dirX /= dirLen;
+            dirY /= dirLen;
+        } else {
+            // Fallback - użyj kierunku od początku do końca
+            dirX = points.back().x - points.front().x;
+            dirY = points.back().y - points.front().y;
+            dirLen = std::sqrt(dirX * dirX + dirY * dirY);
+            if (dirLen > 0.01f) {
+                dirX /= dirLen;
+                dirY /= dirLen;
+            }
+        }
+        
+        // Znajdź ekstremalne projekcje na linię trendu
+        float minProj = 1e9f, maxProj = -1e9f;
+        Point minPoint, maxPoint;
+        
+        for (const auto& p : points) {
+            float proj = (p.x - centerX) * dirX + (p.y - centerY) * dirY;
+            if (proj < minProj) {
+                minProj = proj;
+                minPoint.x = centerX + proj * dirX;
+                minPoint.y = centerY + proj * dirY;
+            }
+            if (proj > maxProj) {
+                maxProj = proj;
+                maxPoint.x = centerX + proj * dirX;
+                maxPoint.y = centerY + proj * dirY;
+            }
+        }
+        
+        TrendLine result;
+        result.start = minPoint;
+        result.end = maxPoint;
+        result.direction.x = dirX;
+        result.direction.y = dirY;
+        result.length = maxProj - minProj;
+        
+        return result;
+    }
+
+    bool HighwayGenerator::AreTrendLinesParallel(const TrendLine& t1, const TrendLine& t2,
+                                                float angleThreshold, float distanceThreshold) const {
+        // 1. Sprawdź kąt między kierunkami
+        float dotProduct = std::abs(t1.direction.x * t2.direction.x + 
+                                    t1.direction.y * t2.direction.y);
+        float angle = std::acos(std::max(-1.0f, std::min(1.0f, dotProduct)));
+        
+        if (angle > angleThreshold) {
+            return false; // Nie są równoległe
+        }
+        
+        // 2. Sprawdź czy projekcje się nakładają (czy highways są "obok siebie")
+        // Rzutuj końce t2 na oś t1
+        float proj1Start = (t2.start.x - t1.start.x) * t1.direction.x + 
+                        (t2.start.y - t1.start.y) * t1.direction.y;
+        float proj1End = (t2.end.x - t1.start.x) * t1.direction.x + 
+                        (t2.end.y - t1.start.y) * t1.direction.y;
+        
+        // Normalizuj projekcje do [0, 1] względem długości t1
+        proj1Start /= t1.length;
+        proj1End /= t1.length;
+        
+        // Oblicz nakładanie się
+        float overlapStart = std::max(0.0f, std::min(proj1Start, proj1End));
+        float overlapEnd = std::min(1.0f, std::max(proj1Start, proj1End));
+        float overlap = std::max(0.0f, overlapEnd - overlapStart);
+        
+        if (overlap < TREND_MIN_OVERLAP_RATIO) {
+            return false; // Za małe nakładanie się
+        }
+        
+        // 3. Sprawdź średnią odległość między liniami
+        float avgDist = AverageDistanceBetweenTrends(t1, t2);
+        
+        return avgDist < distanceThreshold;
+    }
+
+    float HighwayGenerator::AverageDistanceBetweenTrends(const TrendLine& t1, const TrendLine& t2) const {
+        // Próbkuj punkty wzdłuż t2 i mierz odległość do linii t1
+        const int numSamples = 10;
+        float totalDist = 0.0f;
+        
+        for (int i = 0; i <= numSamples; ++i) {
+            float t = (float)i / numSamples;
+            Point sample;
+            sample.x = t2.start.x + t * (t2.end.x - t2.start.x);
+            sample.y = t2.start.y + t * (t2.end.y - t2.start.y);
+            
+            // Odległość punktu od linii t1
+            float dist = DistancePointToSegment(sample, t1.start, t1.end);
+            totalDist += dist;
+        }
+        
+        return totalDist / (numSamples + 1);
+    }
+
+    void HighwayGenerator::RemoveParallelHighwaysByTrend() {
+        std::cout << "[TrendAnalysis] Starting... Highways: " << m_Highways.size() << std::endl;
+        
+        // Oblicz linie trendu dla wszystkich highways
+        std::vector<TrendLine> trendLines;
+        for (size_t i = 0; i < m_Highways.size(); ++i) {
+            TrendLine trend = CalculateTrendLine(m_Highways[i]);
+            trend.highwayIdx = i;
+            trendLines.push_back(trend);
+            
+            std::cout << "[TrendAnalysis] Highway " << i 
+                    << ": trend from (" << trend.start.x << "," << trend.start.y 
+                    << ") to (" << trend.end.x << "," << trend.end.y 
+                    << "), length=" << trend.length << std::endl;
+        }
+        
+        // Znajdź pary równoległych highways
+        std::vector<bool> toRemove(m_Highways.size(), false);
+        int removedCount = 0;
+        
+        for (size_t i = 0; i < trendLines.size(); ++i) {
+            if (toRemove[i]) continue;
+            
+            for (size_t j = i + 1; j < trendLines.size(); ++j) {
+                if (toRemove[j]) continue;
+                
+                if (AreTrendLinesParallel(trendLines[i], trendLines[j],
+                                        TREND_PARALLEL_ANGLE_THRESHOLD,
+                                        TREND_PARALLEL_DISTANCE_THRESHOLD)) {
+                    
+                    float avgDist = AverageDistanceBetweenTrends(trendLines[i], trendLines[j]);
+                    
+                    std::cout << "[TrendAnalysis] Highways " << i << " and " << j 
+                            << " are parallel (avg distance: " << avgDist << ")" << std::endl;
+                    
+                    // Usuń krótszy highway
+                    if (m_Highways[i].totalLength < m_Highways[j].totalLength) {
+                        std::cout << "[TrendAnalysis] Removing shorter highway " << i 
+                                << " (length=" << m_Highways[i].totalLength << ")" << std::endl;
+                        toRemove[i] = true;
+                        removedCount++;
+                        break;
+                    } else {
+                        std::cout << "[TrendAnalysis] Removing shorter highway " << j 
+                                << " (length=" << m_Highways[j].totalLength << ")" << std::endl;
+                        toRemove[j] = true;
+                        removedCount++;
+                    }
+                }
+            }
+        }
+        
+        // Usuń zaznaczone highways (od tyłu)
+        for (int i = m_Highways.size() - 1; i >= 0; --i) {
+            if (toRemove[i]) {
+                RemoveHighway(i);
+            }
+        }
+        
+        std::cout << "[TrendAnalysis] Finished. Removed " << removedCount 
+                << " highways. Final count: " << m_Highways.size() << std::endl;
     }
 
 } // namespace CityGen

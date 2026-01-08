@@ -119,18 +119,23 @@ struct HighwayEnd {
         // Parametry generacji
         static constexpr float HIGHWAY_SEGMENT_LENGTH = 15.0f;
         static constexpr float STREET_SEGMENT_LENGTH = 8.0f;
-        static constexpr int HIGHWAY_MAX_ITERATIONS = 400;
+        static constexpr int HIGHWAY_MAX_ITERATIONS = 1000;
         static constexpr int STREET_MAX_ITERATIONS = 50;
         static constexpr float BRANCH_ANGLE = 0.4f; // ~23 stopnie
 
+        static constexpr float HIGHWAY_BRANCH_DISTANCE = 200.0f;
+        static constexpr float STREET_BRANCH_DISTANCE = 25.0f;
+        static constexpr int HIGHWAY_BRANCH_PROBABILITY = 70;  // Szansa w procentach
+        static constexpr int STREET_BRANCH_PROBABILITY = 60;   // Szansa w procentach
+
         // Parametry ray casting
-        static constexpr float HIGHWAY_VISION_RANGE = 400.0f; 
+        static constexpr float HIGHWAY_VISION_RANGE = 800.0f; 
         static constexpr int HIGHWAY_VISION_SAMPLES = 40;  
 
         // Parametry dla FindBestDirection
         static constexpr int HIGHWAY_NUM_RAYS = 30;
         static constexpr float HIGHWAY_SAMPLE_RADIUS = 600.0f;
-        static constexpr float HIGHWAY_FOV = 3.14159f * 0.333f; // ~60 stopni
+        static constexpr float HIGHWAY_FOV = 3.14159f * 0.15f; // ~60 stopni
         static constexpr float MIN_SCORE_THRESHOLD = 0.01f;
 
         // Parametry GlobalGoals dla branchy
@@ -156,6 +161,19 @@ struct HighwayEnd {
         // Parametry CheckLocalConstraints
         static constexpr float SEARCH_RADIUS_MULTIPLIER = 1.5f;
         static constexpr float HIT_DISTANCE_MULTIPLIER = 0.5f;
+
+        // Parametry wykrywania równoległych branchy
+        static constexpr float BRANCH_PARALLEL_SCAN_DISTANCE = 200.0f;
+        static constexpr float BRANCH_PARALLEL_SCAN_ANGLE_TOLERANCE = 25.0f * 3.14159f / 180.0f;
+
+        // Parametry usuwania redundantnych równoległych highways
+        static constexpr float MERGE_DISTANCE_THRESHOLD = 100.0f;
+        static constexpr float PARALLEL_ANGLE_THRESHOLD = 30.0f * 3.14159f / 180.0f;
+
+        // Parametry wykrywania równoległości przez trend lines
+        static constexpr float TREND_PARALLEL_ANGLE_THRESHOLD = 15.0f * 3.14159f / 180.0f;
+        static constexpr float TREND_PARALLEL_DISTANCE_THRESHOLD = 80.0f;
+        static constexpr float TREND_MIN_OVERLAP_RATIO = 0.5f; // 50% nakładania się projekcji
 
         int m_Width;
         int m_Height;
@@ -214,6 +232,22 @@ struct HighwayEnd {
         bool SegmentIntersectsPolygon(const Point& a, const Point& b, const std::vector<Point>& poly) const;
         float DistanceSegmentToPolyline(const Point& a, const Point& b, const std::vector<Point>& poly) const;
         float RaycastToHighway(const Point& origin, const Point& direction, float maxDistance);
+        void RemoveRedundantParallelHighways();
+
+        // Analiza trendów highways
+        struct TrendLine {
+            Point start;
+            Point end;
+            Point direction;
+            float length;
+            int highwayIdx;
+        };
+
+        TrendLine CalculateTrendLine(const Highway& highway) const;
+        bool AreTrendLinesParallel(const TrendLine& t1, const TrendLine& t2, 
+                                float angleThreshold, float distanceThreshold) const;
+        float AverageDistanceBetweenTrends(const TrendLine& t1, const TrendLine& t2) const;
+        void RemoveParallelHighwaysByTrend();
     
     };
 

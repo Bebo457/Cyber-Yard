@@ -24,6 +24,7 @@
 #include <fstream>
 #include <set>
 #include <memory> // Ważne dla std::make_unique
+#include <set>
 
 namespace ScotlandYard
 {
@@ -502,6 +503,55 @@ namespace ScotlandYard
             m_vec_Highways = hg.GetHighways();
             m_PopulationDensity = hg.GetPopulationDensity();
 
+            // ============================================
+            // LOGI DIAGNOSTYCZNE PO GENERACJI
+            // ============================================
+            std::cout << "\n=== MAP GENERATION RESULTS ===" << std::endl;
+            std::cout << "Nodes: " << m_vec_HighwayNodes.size() << std::endl;
+            std::cout << "Roads: " << m_vec_HighwayRoads.size() << std::endl;
+            std::cout << "Highways: " << m_vec_Highways.size() << std::endl;
+
+            int totalRoadsInHighways = 0;
+            int deletedRoadsInHighways = 0;
+            for (size_t i = 0; i < m_vec_Highways.size(); ++i) {
+                const auto& hw = m_vec_Highways[i];
+                totalRoadsInHighways += hw.roadIndices.size();
+                
+                std::cout << "Highway " << i << ": " << hw.roadIndices.size() << " segments, "
+                        << "length=" << (int)hw.totalLength 
+                        << " [" << hw.startIntersectionIdx << " -> " << hw.endIntersectionIdx << "]" << std::endl;
+                
+                // Sprawdź czy są usunięte segmenty
+                for (int roadIdx : hw.roadIndices) {
+                    if (roadIdx >= 0 && roadIdx < (int)m_vec_HighwayRoads.size()) {
+                        if (m_vec_HighwayRoads[roadIdx].isDeleted) {
+                            deletedRoadsInHighways++;
+                        }
+                    }
+                }
+            }
+
+            std::cout << "Total road segments in highways: " << totalRoadsInHighways << std::endl;
+            std::cout << "Deleted roads in highways: " << deletedRoadsInHighways << std::endl;
+
+            // Policz drogi typu HIGHWAY vs STREET
+            int highwayTypeCount = 0;
+            int streetTypeCount = 0;
+            int deletedCount = 0;
+            for (const auto& road : m_vec_HighwayRoads) {
+                if (road.isDeleted) {
+                    deletedCount++;
+                    continue;
+                }
+                if (road.type == CityGen::RoadType::HIGHWAY) highwayTypeCount++;
+                else streetTypeCount++;
+            }
+
+            std::cout << "Roads by type - HIGHWAY: " << highwayTypeCount 
+                    << ", STREET: " << streetTypeCount 
+                    << ", DELETED: " << deletedCount << std::endl;
+            std::cout << "==============================\n" << std::endl;
+
             // Zaktualizuj teksturę podglądu natychmiast (w pamięci RAM)
             GeneratePreviewTexture();
 
@@ -509,37 +559,38 @@ namespace ScotlandYard
             std::cout << "[MapGen] Generation complete!" << std::endl;
         }
 
-        // Nowa metoda rysująca mapę w pamięci i aktualizująca teksturę
         void MapGeneratorState::GeneratePreviewTexture()
         {
             int W = 1200;
             int H = 900;
 
+            std::cout << "\n[GeneratePreviewTexture] Starting..." << std::endl;
+
             // 1. Utwórz powierzchnię SDL (w pamięci)
             SDL_Surface* surface = SDL_CreateRGBSurface(0, W, H, 32,
                 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000); // RGBA
 
-            if (!surface) return;
+            if (!surface) {
+                std::cout << "[GeneratePreviewTexture ERROR] Failed to create surface!" << std::endl;
+                return;
+            }
 
             SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
-            
 
             auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b)
+            {
+                if (x >= 0 && x < W && y >= 0 && y < H)
                 {
-                    if (x >= 0 && x < W && y >= 0 && y < H)
-                    {
-                        Uint32 color = SDL_MapRGBA(surface->format, r, g, b, 255);
-                        Uint32* pixels = (Uint32*)surface->pixels;
-                        pixels[y * W + x] = color;
-                    }
-                };
-
+                    Uint32 color = SDL_MapRGBA(surface->format, r, g, b, 255);
+                    Uint32* pixels = (Uint32*)surface->pixels;
+                    pixels[y * W + x] = color;
+                }
+            };
 
             if (!m_PopulationDensity.empty()) {
                 for (int y = 0; y < H && y < (int)m_PopulationDensity.size(); ++y) {
                     for (int x = 0; x < W && x < (int)m_PopulationDensity[y].size(); ++x) {
                         float density = m_PopulationDensity[y][x];
-                        // Gradient od ciemnego niebieskiego (niska gęstość) do pomarańczowego (wysoka gęstość)
                         Uint8 r = (Uint8)(density * 180.0f + 20.0f);
                         Uint8 g = (Uint8)(density * 80.0f + 10.0f);
                         Uint8 b = (Uint8)(30.0f - density * 20.0f);
@@ -609,7 +660,7 @@ namespace ScotlandYard
                             }
                         }
                     }
-                    };
+                };
 
                 while (true) {
                     DrawDisc(x, y);
@@ -618,27 +669,118 @@ namespace ScotlandYard
                     if (e2 > -dy) { err -= dy; x += sx; }
                     if (e2 < dx) { err += dx; y += sy; }
                 }
-                };
+            };
 
-            // 4. Rysuj Drogi AI
-            for (const auto& road : m_vec_HighwayRoads) {
-                if (road.isDeleted) continue;
+            // ============================================
+            // 4. RYSUJ AUTOSTRADY Z LOGAMI
+            // ============================================
+            std::cout << "[PreviewTexture] Total Highways: " << m_vec_Highways.size() << std::endl;
+            std::cout << "[PreviewTexture] Total Roads: " << m_vec_HighwayRoads.size() << std::endl;
+            std::cout << "[PreviewTexture] Total Nodes: " << m_vec_HighwayNodes.size() << std::endl;
 
-                if (road.startNodeIdx < 0 || road.startNodeIdx >= m_vec_HighwayNodes.size()) continue;
-                if (road.endNodeIdx < 0 || road.endNodeIdx >= m_vec_HighwayNodes.size()) continue;
+            int totalSegmentsDrawn = 0;
+            int totalSegmentsSkipped = 0;
 
-                const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
-                const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
-
-                if (road.type == CityGen::RoadType::HIGHWAY) {
-                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 2, 255, 140, 0); // Orange
+            for (size_t hwIdx = 0; hwIdx < m_vec_Highways.size(); ++hwIdx) {
+                const auto& highway = m_vec_Highways[hwIdx];
+                
+                std::cout << "[Highway " << hwIdx << "] Start: " << highway.startIntersectionIdx 
+                        << " End: " << highway.endIntersectionIdx 
+                        << " Segments: " << highway.roadIndices.size() 
+                        << " Length: " << (int)highway.totalLength << std::endl;
+                
+                if (highway.roadIndices.empty()) {
+                    std::cout << "  WARNING: Highway has NO road segments!" << std::endl;
+                    continue;
                 }
-                else {
-                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 0, 200, 200, 200); // White/Gray
+                
+                int segmentsDrawnThisHighway = 0;
+                
+                // Iteruj przez wszystkie segmenty drogi tworzące tę autostradę
+                for (size_t i = 0; i < highway.roadIndices.size(); ++i) {
+                    int roadIdx = highway.roadIndices[i];
+                    
+                    if (roadIdx < 0 || roadIdx >= (int)m_vec_HighwayRoads.size()) {
+                        std::cout << "  [Segment " << i << "] ERROR: Invalid roadIdx=" << roadIdx << std::endl;
+                        totalSegmentsSkipped++;
+                        continue;
+                    }
+                    
+                    const auto& road = m_vec_HighwayRoads[roadIdx];
+                    
+                    // TESTOWE: Rysuj nawet usunięte drogi jeśli należą do highway
+                    if (road.isDeleted) {
+                        std::cout << "  [Segment " << i << "] WARNING: Road is deleted (roadIdx=" << roadIdx << ") - DRAWING ANYWAY" << std::endl;
+                        // NIE robimy continue - rysujemy mimo wszystko!
+                    }
+                    
+                    if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) {
+                        std::cout << "  [Segment " << i << "] ERROR: Invalid startNodeIdx=" << road.startNodeIdx << std::endl;
+                        totalSegmentsSkipped++;
+                        continue;
+                    }
+                    if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) {
+                        std::cout << "  [Segment " << i << "] ERROR: Invalid endNodeIdx=" << road.endNodeIdx << std::endl;
+                        totalSegmentsSkipped++;
+                        continue;
+                    }
+                    
+                    const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
+                    const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
+                    
+                    float segmentLength = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+                    
+                    if (i == 0 || i == highway.roadIndices.size() - 1 || i % 10 == 0) {
+                        // Loguj co 10-ty segment + pierwszy i ostatni
+                        std::cout << "  [Segment " << i << "/" << highway.roadIndices.size() 
+                                << "] Road " << roadIdx 
+                                << ": (" << (int)a.x << "," << (int)a.y << ") -> (" << (int)b.x << "," << (int)b.y << ")"
+                                << " len=" << (int)segmentLength 
+                                << " type=" << (road.type == CityGen::RoadType::HIGHWAY ? "HIGHWAY" : "STREET") << std::endl;
+                    }
+                    
+                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 3, 255, 140, 0);
+                    segmentsDrawnThisHighway++;
+                    totalSegmentsDrawn++;
+                }
+                
+                std::cout << "  Highway " << hwIdx << " drawn: " << segmentsDrawnThisHighway << " segments" << std::endl;
+            }
+
+            std::cout << "[PreviewTexture] Total segments drawn: " << totalSegmentsDrawn << std::endl;
+            std::cout << "[PreviewTexture] Total segments skipped: " << totalSegmentsSkipped << std::endl;
+
+            // ============================================
+            // 5. RYSUJ ZWYKŁE ULICE (z logami)
+            // ============================================
+            std::set<int> roadsInHighways;
+            for (const auto& highway : m_vec_Highways) {
+                for (int roadIdx : highway.roadIndices) {
+                    roadsInHighways.insert(roadIdx);
                 }
             }
 
-            // 5. Rysuj węzły
+            int streetsDrawn = 0;
+            for (int i = 0; i < (int)m_vec_HighwayRoads.size(); ++i) {
+                const auto& road = m_vec_HighwayRoads[i];
+                // if (road.isDeleted) continue;
+                if (roadsInHighways.count(i) > 0) continue;
+                
+                if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                
+                const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
+                const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
+                
+                DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
+                streetsDrawn++;
+            }
+
+            std::cout << "[PreviewTexture] Streets drawn: " << streetsDrawn << std::endl;
+
+            // ============================================
+            // 6. Rysuj węzły
+            // ============================================
             for (const auto& n : m_vec_HighwayNodes) {
                 if (!n.isIntersection && n.connectedRoadIndices.size() < 2) continue;
 
@@ -647,7 +789,7 @@ namespace ScotlandYard
 
                 bool isHighwayNode = false;
                 for (int rIdx : n.connectedRoadIndices) {
-                    if (rIdx >= 0 && rIdx < m_vec_HighwayRoads.size()) {
+                    if (rIdx >= 0 && rIdx < (int)m_vec_HighwayRoads.size()) {
                         if (m_vec_HighwayRoads[rIdx].type == CityGen::RoadType::HIGHWAY) {
                             isHighwayNode = true;
                             break;
@@ -657,7 +799,7 @@ namespace ScotlandYard
 
                 Uint8 nr = 255;
                 Uint8 ng = 255;
-                Uint8 nb = isHighwayNode ? 0 : 255; // Yellow for Bus, White for Taxi
+                Uint8 nb = isHighwayNode ? 0 : 255;
 
                 for (int dy = -rad; dy <= rad; ++dy)
                     for (int dx = -rad; dx <= rad; ++dx)
@@ -665,7 +807,9 @@ namespace ScotlandYard
                             SetPixel(cx + dx, cy + dy, nr, ng, nb);
             }
 
-            // 6. Prześlij do tekstury OpenGL
+            // ============================================
+            // 7. Prześlij do tekstury OpenGL
+            // ============================================
             if (m_GLuint_PreviewTexture) {
                 glDeleteTextures(1, &m_GLuint_PreviewTexture);
             }
@@ -686,7 +830,8 @@ namespace ScotlandYard
             m_b_HasPreview = true;
 
             SDL_FreeSurface(surface);
-            std::cout << "[MapGen] Preview texture updated (" << W << "x" << H << ")" << std::endl;
+            std::cout << "[GeneratePreviewTexture] Texture updated successfully (" << W << "x" << H << ")" << std::endl;
+            std::cout << "========================================\n" << std::endl;
         }
 
         void MapGeneratorState::SaveMapToFile()
@@ -757,13 +902,38 @@ namespace ScotlandYard
                 }
                 };
 
-            // Rysuj drogi
-            for (const auto& road : m_vec_HighwayRoads) {
-                if (road.isDeleted) continue;
+            // Rysuj autostrady
+            for (const auto& highway : m_vec_Highways) {
+                for (int roadIdx : highway.roadIndices) {
+                    if (roadIdx < 0 || roadIdx >= (int)m_vec_HighwayRoads.size()) continue;
+                    const auto& road = m_vec_HighwayRoads[roadIdx];
+                    // if (road.isDeleted) continue;
+                    if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                    if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                    
+                    const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
+                    const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
+                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 4, 255, 140, 0);
+                }
+            }
+
+            // Rysuj zwykłe ulice
+            std::set<int> roadsInHighways;
+            for (const auto& highway : m_vec_Highways) {
+                for (int roadIdx : highway.roadIndices) {
+                    roadsInHighways.insert(roadIdx);
+                }
+            }
+
+            for (int i = 0; i < (int)m_vec_HighwayRoads.size(); ++i) {
+                const auto& road = m_vec_HighwayRoads[i];
+                if (road.isDeleted || roadsInHighways.count(i) > 0) continue;
+                if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                
                 const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                 const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
-                if (road.type == CityGen::RoadType::HIGHWAY) DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 3, 255, 140, 0);
-                else DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
+                DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
             }
 
             // Rysuj węzły
