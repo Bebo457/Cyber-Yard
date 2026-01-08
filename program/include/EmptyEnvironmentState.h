@@ -2,8 +2,9 @@
 
 #include "IGameState.h"
 #include "WaterRenderer.h"
+#include "PolygonRenderer.h"
 #include "GeneratedMapData.h"
-// Dodajemy nag³ówki potrzebne do typów danych z generatora
+// Dodajemy nagï¿½ï¿½wki potrzebne do typï¿½w danych z generatora
 #include "HighwayGenerator.h"
 #include "MapGenerator.h"
 
@@ -33,6 +34,9 @@ namespace ScotlandYard {
             );
             // -----------------------------------------------------
 
+            // Bridge utilities
+            void SetBridgeLength(float f_LengthWorld);
+
             void OnEnter(Core::Application* p_App) override;
             void OnExit(Core::Application* p_App) override;
             void OnPause() override;
@@ -46,6 +50,7 @@ namespace ScotlandYard {
             GLuint m_VAO_Plane = 0;
             GLuint m_VBO_Plane = 0;
             GLuint m_ShaderProgram = 0;
+            GLuint m_ShaderBridge = 0;
 
             GLuint m_TexSidewalk = 0;
             GLuint m_TexGrass = 0;
@@ -62,10 +67,28 @@ namespace ScotlandYard {
             // Road material/texture
             GLuint m_TexRoad = 0;
 
+            // Bridge mesh
+            GLuint m_VAO_Bridge = 0;
+            GLuint m_VBO_Bridge = 0;
+            GLuint m_EBO_Bridge = 0;
+            int    m_BridgeIndexCount = 0;
+            glm::vec3 m_vec3_BridgePosition{ 11.0f, 0.0f, 8.0f };
+            glm::vec3 m_vec3_BridgeBaseScale{ 0.165f, 0.165f, 0.165f };
+            glm::vec3 m_vec3_BridgeScale{ 0.165f, 0.165f, 0.165f };
+            float m_f_BridgeModelLength = 1.0f; // original length of bridge model along X (GLB space)
+            GLuint m_TexBridge = 0;
+            bool   m_b_BridgeHasTexture = false;
+
             // Water renderer
             std::unique_ptr<Rendering::WaterRenderer> m_p_WaterRenderer;
             float m_f_Time = 0.0f;
             glm::mat4 m_mat4_GlobalScaleMatrix = glm::mat4(1.0f);
+
+            // Polygon renderers for parks and zones
+            std::vector<std::unique_ptr<Rendering::PolygonRenderer>> m_vec_ParkRenderers;
+
+            // River polygon renderer
+            std::unique_ptr<Rendering::PolygonRenderer> m_p_RiverRenderer;
 
             // Game state
             bool m_b_GameActive = true;
@@ -93,13 +116,18 @@ namespace ScotlandYard {
             // Map data
             MapGen::GeneratedMapData m_MapData;
             bool m_b_MapDataLoaded = false;
+            bool m_b_RiverStripLoaded = false;
 
             // Private methods
             void CreatePlane();
             void CreateShaders();
             void TryLoadGeneratedMap(Core::Application* p_App);
+            void LoadPolygonData(Core::Application* p_App);
             void LoadSampleMapData();
+            void BuildRiverFromMapData();
+            void BuildFallbackRiver();
             void RenderMapData(Core::Application* p_App);
+            void LoadBridgeModel(Core::Application* p_App);
             void RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale,
                 float f_R, float f_G, float f_B, Core::Application* p_App);
 

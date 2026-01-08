@@ -5,14 +5,203 @@
 #include "RoadGenerator.h"
 #include "SampleMapDataGenerator.h"
 #include "MapDataSerializer.h"
-// Ensure MapGenerator is included for definitions if needed
-#include "MapGenerator.h" 
+#include "MapGenerator.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <filesystem>
 #include <iostream>
+#include <fstream>
+#include <cstring>
+#include <algorithm>
+#include <limits>
+#include <type_traits>
+#include <nlohmann/json.hpp>
+
+namespace {
+
+struct BridgeVertex {
+    glm::vec3 pos;
+    glm::vec3 normal;
+    glm::vec2 uv;
+};
+
+struct AccessorView {
+    const uint8_t* data = nullptr;
+    size_t count = 0;
+    size_t stride = 0;
+    int componentType = 0;
+    int components = 0;
+};
+
+size_t ComponentSize(int componentType) {
+    switch (componentType) {
+    case 5120: return sizeof(int8_t);
+    case 5121: return sizeof(uint8_t);
+    case 5122: return sizeof(int16_t);
+    case 5123: return sizeof(uint16_t);
+    case 5125: return sizeof(uint32_t);
+    case 5126: return sizeof(float);
+    default: return 0;
+    }
+}
+
+int ComponentCount(const std::string& type) {
+    if (type == "SCALAR") return 1;
+    if (type == "VEC2") return 2;
+    if (type == "VEC3") return 3;
+    if (type == "VEC4") return 4;
+    return 0;
+}
+
+bool ParseGlbFile(const std::string& path, nlohmann::json& outJson, std::vector<uint8_t>& outBin) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        std::cerr << "[Bridge] Cannot open GLB: " << path << std::endl;
+        return false;
+    }
+
+    file.seekg(0, std::ios::end);
+    const std::streamoff size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    if (size < 20) {
+        std::cerr << "[Bridge] GLB too small: " << path << std::endl;
+        return false;
+    }
+
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    file.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+    if (!file) {
+        std::cerr << "[Bridge] Failed to read GLB: " << path << std::endl;
+        return false;
+    }
+
+    auto read32 = [&](size_t offset) {
+        uint32_t value = 0;
+        std::memcpy(&value, bytes.data() + offset, sizeof(uint32_t));
+        return value;
+    };
+
+    const uint32_t magic = read32(0);
+    const uint32_t version = read32(4);
+    if (magic != 0x46546C67 || version != 2) {
+        std::cerr << "[Bridge] Unsupported GLB header in " << path << std::endl;
+        return false;
+    }
+
+    size_t offset = 12;
+    bool jsonLoaded = false;
+    bool binLoaded = false;
+
+    while (offset + 8 <= bytes.size()) {
+        const uint32_t chunkLen = read32(offset);
+        const uint32_t chunkType = read32(offset + 4);
+        offset += 8;
+
+        if (offset + chunkLen > bytes.size()) {
+            std::cerr << "[Bridge] Truncated GLB chunk in " << path << std::endl;
+            return false;
+        }
+
+        if (chunkType == 0x4E4F534A) { // JSON
+            try {
+                outJson = nlohmann::json::parse(
+                    std::string(reinterpret_cast<const char*>(bytes.data() + offset), chunkLen));
+                jsonLoaded = true;
+            }
+            catch (const std::exception& e) {
+                std::cerr << "[Bridge] JSON parse error: " << e.what() << std::endl;
+                return false;
+            }
+        }
+        else if (chunkType == 0x004E4942) { // BIN
+            outBin.assign(bytes.begin() + offset, bytes.begin() + offset + chunkLen);
+            binLoaded = true;
+        }
+
+        offset += chunkLen;
+    }
+
+    if (!jsonLoaded || !binLoaded) {
+        std::cerr << "[Bridge] Missing JSON or BIN chunk in " << path << std::endl;
+    }
+    return jsonLoaded && binLoaded;
+}
+
+bool GetAccessorView(const nlohmann::json& root, const std::vector<uint8_t>& bin,
+    int accessorIndex, AccessorView& out) {
+    if (accessorIndex < 0) return false;
+    if (!root.contains("accessors") || accessorIndex >= static_cast<int>(root["accessors"].size())) return false;
+
+    const auto& accessor = root["accessors"][accessorIndex];
+    const int bufferViewIndex = accessor.value("bufferView", -1);
+    if (bufferViewIndex < 0) return false;
+
+    if (!root.contains("bufferViews") || bufferViewIndex >= static_cast<int>(root["bufferViews"].size())) return false;
+    const auto& bufferView = root["bufferViews"][bufferViewIndex];
+
+    const int bufferIndex = bufferView.value("buffer", -1);
+    if (bufferIndex != 0) return false; 
+
+    const size_t bufferOffset = bufferView.value("byteOffset", 0);
+    const size_t accessorOffset = accessor.value("byteOffset", 0);
+    const size_t count = accessor.value("count", 0);
+    const int componentType = accessor.value("componentType", 0);
+    const std::string typeStr = accessor.value("type", "");
+
+    const size_t compSize = ComponentSize(componentType);
+    const int components = ComponentCount(typeStr);
+    if (compSize == 0 || components == 0) return false;
+
+    size_t stride = bufferView.value("byteStride", 0);
+    if (stride == 0) {
+        stride = compSize * static_cast<size_t>(components);
+    }
+
+    const size_t start = bufferOffset + accessorOffset;
+    const size_t needed = stride * (count ? count - 1 : 0) + compSize * static_cast<size_t>(components);
+    if (start + needed > bin.size()) return false;
+
+    out.data = bin.data() + start;
+    out.count = count;
+    out.stride = stride;
+    out.componentType = componentType;
+    out.components = components;
+    return true;
+}
+
+uint32_t ReadIndex(const AccessorView& view, size_t i) {
+    const uint8_t* ptr = view.data + i * view.stride;
+    switch (view.componentType) {
+    case 5121: { // uint8
+        return static_cast<uint32_t>(*ptr);
+    }
+    case 5123: { // uint16
+        uint16_t v = 0;
+        std::memcpy(&v, ptr, sizeof(uint16_t));
+        return static_cast<uint32_t>(v);
+    }
+    case 5125: { // uint32
+        uint32_t v = 0;
+        std::memcpy(&v, ptr, sizeof(uint32_t));
+        return v;
+    }
+    default:
+        return 0;
+    }
+}
+
+constexpr float k_MapWidth = 1200.0f;
+constexpr float k_MapHeight = 900.0f;
+constexpr float k_PlaneWidth = 24.0f;
+constexpr float k_PlaneDepth = 18.0f;
+constexpr float k_MapOffsetX = -1.0f;
+constexpr float k_MapOffsetZ = -1.0f;
+
+} // namespace
 
 namespace ScotlandYard {
     namespace States {
@@ -32,23 +221,18 @@ namespace ScotlandYard {
             // 1. Reset danych
             m_MapData = MapGen::GeneratedMapData();
 
-            // 2. Przepisanie Rzeki i Parków (bezpoœrednio)
             m_MapData.vec_RiverPath = vec_RiverPath;
             m_MapData.vec_Parks = vec_Parks;
 
-            // 3. Konwersja Wêz³ów (CityGen::Point -> MapGen::GraphNode)
             m_MapData.vec_GraphNodes.clear();
             // Uzywamy decltype zeby uniknac bledu "niezadeklarowany identyfikator", 
-            // jesli GraphNode jest zdefiniowany wewn¹trz GeneratedMapData lub innej przestrzeni
             using GraphNodeType = typename std::remove_reference<decltype(m_MapData.vec_GraphNodes)>::type::value_type;
 
             for (size_t i = 0; i < vec_Nodes.size(); ++i) {
                 GraphNodeType node;
-                node.i_ID = (int)i; // U¿ywamy indeksu jako ID
+                node.i_ID = (int)i;
                 node.position = MapGen::Point{ vec_Nodes[i].x, vec_Nodes[i].y };
 
-                // Mo¿esz tutaj dodaæ logikê do okreœlania typu stacji (np. sprawdzaj¹c po³¹czenia)
-                // Domyœlnie puste wektory po³¹czeñ, wype³niasz je wedle logiki gry
 
                 m_MapData.vec_GraphNodes.push_back(node);
             }
@@ -67,7 +251,7 @@ namespace ScotlandYard {
 
                 // Mapowanie typu drogi na Tier (do wizualizacji)
                 if (r.type == CityGen::RoadType::HIGHWAY) {
-                    street.i_Tier = 0; // G³ówna
+                    street.i_Tier = 0;
                     street.f_Width = 4.0f;
                 }
                 else {
@@ -75,16 +259,16 @@ namespace ScotlandYard {
                     street.f_Width = 2.0f;
                 }
 
-                // Sprawdzenie czy w parku (uproszczone, mo¿na rozwin¹æ)
                 street.b_IsInPark = false;
 
                 m_MapData.vec_Streets.push_back(street);
             }
 
-            // 5. Oznaczenie, ¿e dane s¹ gotowe
             m_b_MapDataLoaded = true;
             std::cout << "[EmptyEnvironmentState] Injection complete. Nodes: " << m_MapData.vec_GraphNodes.size()
                 << ", Streets: " << m_MapData.vec_Streets.size() << std::endl;
+
+            BuildRiverFromMapData();
         }
         // -----------------------------------
 
@@ -194,6 +378,59 @@ namespace ScotlandYard {
 
             glDeleteShader(roadVs);
             glDeleteShader(roadFs);
+
+            // --- Simple bridge shader --
+            const char* modelVsSrc = R"(#version 330 core
+        layout(location=0) in vec3 aPos;
+        layout(location=1) in vec3 aNormal;
+        layout(location=2) in vec2 aUV;
+
+        uniform mat4 uMVP;
+        uniform mat4 uModel;
+        out float vLight;
+
+        out vec2 vUV;
+        void main() {
+            vec3 normalWS = normalize(mat3(uModel) * aNormal);
+            vec3 lightDir = normalize(vec3(0.3, 1.0, 0.2));
+            vLight = max(dot(normalWS, lightDir), 0.2);
+            vUV = aUV;
+            gl_Position = uMVP * vec4(aPos, 1.0);
+        }
+    )";
+
+            const char* modelFsSrc = R"(#version 330 core
+        in float vLight;
+        uniform vec3 uColor;
+        uniform sampler2D uTex;
+        uniform int uHasTex;
+        in vec2 vUV;
+        out vec4 FragColor;
+        void main() {
+            vec3 base = uColor;
+            if (uHasTex == 1) {
+                vec4 tex = texture(uTex, vUV);
+                base = tex.rgb;
+            }
+            FragColor = vec4(base * vLight, 1.0);
+        }
+    )";
+
+            GLuint modelVs = glCreateShader(GL_VERTEX_SHADER);
+            glShaderSource(modelVs, 1, &modelVsSrc, nullptr);
+            glCompileShader(modelVs);
+
+            GLuint modelFs = glCreateShader(GL_FRAGMENT_SHADER);
+            glShaderSource(modelFs, 1, &modelFsSrc, nullptr);
+            glCompileShader(modelFs);
+
+            m_ShaderBridge = glCreateProgram();
+            glAttachShader(m_ShaderBridge, modelVs);
+            glAttachShader(m_ShaderBridge, modelFs);
+            glLinkProgram(m_ShaderBridge);
+
+            glDeleteShader(modelVs);
+            glDeleteShader(modelFs);
         }
 
         void EmptyEnvironmentState::CreatePlane() {
@@ -223,25 +460,37 @@ namespace ScotlandYard {
         }
 
         void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
-            bool test = true;
+            bool b_EnableTestEnvironment = true;
             CreateTestRoad(p_App);
 
-            if (p_App && !p_App->IsTrainingMode() && test == true) {
+            if (p_App && !p_App->IsTrainingMode() && b_EnableTestEnvironment) {
                 const_cast<Core::Application*>(p_App)->UpdateUIScaling();
 
                 glEnable(GL_DEPTH_TEST);
                 CreateShaders();
                 CreatePlane();
-                m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.png"));
+                m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.jpg"));
                 m_TexGrass = p_App->LoadTexture(p_App->GetAssetPath("textures/grass.png"));
                 TryLoadGeneratedMap(p_App);
+                LoadBridgeModel(p_App);
+                SetBridgeLength(4.0f);
 
-                // NEW: Load sample map data for testing
+                // water renderer
+                m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
+                m_p_WaterRenderer->Initialize();
+                m_p_WaterRenderer->SetWaterHeight(0.1f);
+                m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
+
+                m_b_RiverStripLoaded = false;
+                LoadPolygonData(p_App);
+
                 if (!m_b_MapDataLoaded) {
                     LoadSampleMapData();
+                    BuildRiverFromMapData();
                 }
                 else {
                     std::cout << "[EmptyEnvironmentState] Skipping sample data load (Map injected)." << std::endl;
+                    BuildRiverFromMapData();
                 }
 
                 // HUD setup: load camera icon and hook toggle
@@ -268,11 +517,6 @@ namespace ScotlandYard {
                 UI::SetTicketStates(vec_Slots);
                 UI::SetRound(1);
 
-                // water renderer
-                m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
-                m_p_WaterRenderer->Initialize();
-                m_p_WaterRenderer->SetWaterHeight(0.1f);
-                m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
             }
 
             UI::SetPauseCallback([this]() {
@@ -322,6 +566,11 @@ namespace ScotlandYard {
             if (m_EBO_Road) { glDeleteBuffers(1, &m_EBO_Road); m_EBO_Road = 0; }
             if (m_VAO_Road) { glDeleteVertexArrays(1, &m_VAO_Road); m_VAO_Road = 0; }
             if (m_TexRoad) { p_App->UnloadTexture(m_TexRoad); m_TexRoad = 0; }
+            if (m_VBO_Bridge) { glDeleteBuffers(1, &m_VBO_Bridge); m_VBO_Bridge = 0; }
+            if (m_EBO_Bridge) { glDeleteBuffers(1, &m_EBO_Bridge); m_EBO_Bridge = 0; }
+            if (m_VAO_Bridge) { glDeleteVertexArrays(1, &m_VAO_Bridge); m_VAO_Bridge = 0; }
+            if (m_ShaderBridge) { glDeleteProgram(m_ShaderBridge); m_ShaderBridge = 0; }
+            if (m_TexBridge) { p_App->UnloadTexture(m_TexBridge); m_TexBridge = 0; m_b_BridgeHasTexture = false; }
 
         }
 
@@ -342,6 +591,85 @@ namespace ScotlandYard {
             else {
                 m_b_UseMask = false;
                 m_TexMask = 0;
+            }
+        }
+
+        void EmptyEnvironmentState::LoadPolygonData(Core::Application* p_App) {
+            std::string s_JsonPath = "generated_map.json";
+            if (!std::filesystem::exists(s_JsonPath)) {
+                std::cout << "[PolygonLoader] generated_map.json not found, skipping polygon loading." << std::endl;
+                BuildFallbackRiver();
+                return;
+            }
+
+            const float f_ScaleX = k_PlaneWidth / k_MapWidth;
+            const float f_ScaleZ = k_PlaneDepth / k_MapHeight;
+            const float f_OffsetX = k_MapOffsetX;
+            const float f_OffsetZ = k_MapOffsetZ;
+
+            try {
+                std::ifstream file(s_JsonPath);
+                nlohmann::json json;
+                file >> json;
+
+                if (json.contains("parks") && json["parks"].is_array()) {
+                    for (const auto& parkJson : json["parks"]) {
+                        if (parkJson.contains("vertices") && parkJson["vertices"].is_array()) {
+                            std::vector<glm::vec2> vec_Vertices;
+                            for (const auto& jsonVertex : parkJson["vertices"]) {
+                                float f_X = jsonVertex["x"].get<float>();
+                                float f_Y = jsonVertex["y"].get<float>();
+                                float f_ScaledX = f_X * f_ScaleX + f_OffsetX;
+                                float f_ScaledZ = f_Y * f_ScaleZ + f_OffsetZ;
+                                vec_Vertices.emplace_back(f_ScaledX, f_ScaledZ);
+                            }
+
+                            if (vec_Vertices.size() >= 3) {
+                                auto parkRenderer = std::make_unique<Rendering::PolygonRenderer>();
+                                if (parkRenderer->Initialize()) {
+                                    parkRenderer->SetPolygon(vec_Vertices, 0.001f);
+                                    m_vec_ParkRenderers.push_back(std::move(parkRenderer));
+                                }
+                            }
+                        }
+                    }
+                    std::cout << "[PolygonLoader] Loaded " << m_vec_ParkRenderers.size() << " park polygons." << std::endl;
+                }
+
+                if (json.contains("river") && json["river"].contains("path") && json["river"]["path"].is_array()) {
+                    std::vector<glm::vec2> vec_RiverPath;
+                    for (const auto& jsonPoint : json["river"]["path"]) {
+                        float f_X = jsonPoint["x"].get<float>();
+                        float f_Y = jsonPoint["y"].get<float>();
+                        float f_ScaledX = f_X * f_ScaleX + f_OffsetX;
+                        float f_ScaledZ = f_Y * f_ScaleZ + f_OffsetZ;
+                        vec_RiverPath.emplace_back(f_ScaledX, f_ScaledZ);
+                    }
+
+                    if (vec_RiverPath.size() >= 2) {
+                        float f_RiverWidth = 50.0f * f_ScaleX;
+
+                        m_p_RiverRenderer = std::make_unique<Rendering::PolygonRenderer>();
+                        if (m_p_RiverRenderer->Initialize()) {
+                            m_p_RiverRenderer->SetRiverStrip(vec_RiverPath, f_RiverWidth, 0.001f);
+                        }
+
+                        if (m_p_WaterRenderer) {
+                            m_p_WaterRenderer->SetRiverStrip(vec_RiverPath, f_RiverWidth);
+                        }
+
+                        m_b_RiverStripLoaded = true;
+                        std::cout << "[PolygonLoader] Loaded river strip with " << vec_RiverPath.size() << " path points." << std::endl;
+                    }
+                }
+
+            }
+            catch (const std::exception& e) {
+                std::cerr << "[PolygonLoader] Error loading polygon data: " << e.what() << std::endl;
+            }
+
+            if (!m_b_RiverStripLoaded) {
+                BuildFallbackRiver();
             }
         }
 
@@ -427,6 +755,10 @@ namespace ScotlandYard {
                 mat4_Projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 10.0f);
             }
 
+            if (m_p_WaterRenderer) {
+                m_p_WaterRenderer->RenderRiverStrip(mat4_Projection * mat4_View, m_f_Time, glm::mat4(1.0f));
+            }
+
             glm::mat4 mat4_Model(1.0f);
             glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
 
@@ -449,7 +781,7 @@ namespace ScotlandYard {
             glBindTexture(GL_TEXTURE_2D, m_TexGrass);
             glUniform1i(glGetUniformLocation(m_ShaderProgram, "uGrass"), 1);
 
-            // Bind mask
+            // Mask stays enabled to keep fallback grass where polygon data is absent
             glUniform1i(glGetUniformLocation(m_ShaderProgram, "uUseMask"), m_b_UseMask ? 1 : 0);
             if (m_b_UseMask) {
                 glActiveTexture(GL_TEXTURE2);
@@ -484,10 +816,40 @@ namespace ScotlandYard {
                 glBindVertexArray(0);
             }
 
+            // Bridge model
+            if (m_VAO_Bridge && m_ShaderBridge && m_BridgeIndexCount > 0) {
+                glm::mat4 mat4_BridgeModel = glm::translate(glm::mat4(1.0f), m_vec3_BridgePosition);
+                mat4_BridgeModel = glm::scale(mat4_BridgeModel, m_vec3_BridgeScale);
+                glm::mat4 mat4_BridgeMVP = mat4_Projection * mat4_View * mat4_BridgeModel;
 
-            // Render water
-            if (m_p_WaterRenderer) {
-                m_p_WaterRenderer->Render(mat4_Projection * mat4_View, m_f_Time, m_mat4_GlobalScaleMatrix);
+                glUseProgram(m_ShaderBridge);
+                glUniformMatrix4fv(glGetUniformLocation(m_ShaderBridge, "uMVP"), 1, GL_FALSE, glm::value_ptr(mat4_BridgeMVP));
+                glUniformMatrix4fv(glGetUniformLocation(m_ShaderBridge, "uModel"), 1, GL_FALSE, glm::value_ptr(mat4_BridgeModel));
+                glUniform3f(glGetUniformLocation(m_ShaderBridge, "uColor"), 0.82f, 0.82f, 0.78f);
+                glUniform1i(glGetUniformLocation(m_ShaderBridge, "uHasTex"), m_b_BridgeHasTexture ? 1 : 0);
+                if (m_b_BridgeHasTexture && m_TexBridge) {
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, m_TexBridge);
+                    glUniform1i(glGetUniformLocation(m_ShaderBridge, "uTex"), 0);
+                }
+
+                glBindVertexArray(m_VAO_Bridge);
+                glDrawElements(GL_TRIANGLES, m_BridgeIndexCount, GL_UNSIGNED_INT, 0);
+                glBindVertexArray(0);
+            }
+
+            if (!m_vec_ParkRenderers.empty() && m_TexGrass) {
+                glEnable(GL_POLYGON_OFFSET_FILL);
+                glPolygonOffset(-1.0f, -1.0f);
+
+                glm::mat4 mat4_MVP_Parks = mat4_Projection * mat4_View;
+                glm::vec2 tileScale(12.0f, 9.0f);
+
+                for (const auto& parkRenderer : m_vec_ParkRenderers) {
+                    parkRenderer->Render(mat4_MVP_Parks, m_TexGrass, tileScale);
+                }
+
+                glDisable(GL_POLYGON_OFFSET_FILL);
             }
 
             // HUD
@@ -636,40 +998,40 @@ namespace ScotlandYard {
         }
 
         void EmptyEnvironmentState::CreateTestRoad(Core::Application* p_App) {
-            std::vector<glm::vec2> roadPoints;
+            std::vector<glm::vec2> vec_RoadPoints;
 
-            int segments = 20;
-            float radius = 10.0f; // larger radius
-            glm::vec2 center(0.0f, 0.0f);
-            for (int i = 0; i <= segments; ++i) {
-                float angle = glm::half_pi<float>() * i / segments; // 90 degree curve
-                float x = center.x + radius * cos(angle);
-                float y = center.y + radius * sin(angle);
-                roadPoints.emplace_back(x, y);
+            int i_Segments = 20;
+            float f_Radius = 10.0f; 
+            glm::vec2 vec2_Center(0.0f, 0.0f);
+            for (int i = 0; i <= i_Segments; ++i) {
+                float f_Angle = glm::half_pi<float>() * i / i_Segments; 
+                float f_X = vec2_Center.x + f_Radius * cos(f_Angle);
+                float f_Y = vec2_Center.y + f_Radius * sin(f_Angle);
+                vec_RoadPoints.emplace_back(f_X, f_Y);
             }
 
-            std::vector<float> roadWidths;
-            for (int i = 0; i <= segments; ++i) {
-                // float w = 2.0f + 2.0f * sin((float)i / segments * glm::half_pi<float>()); // road widens along the curve
-                // float w = 1.0f; // constant width
-                float w = 1.0f - 0.05f * i;
-                roadWidths.push_back(w);
+            std::vector<float> vec_RoadWidths;
+            for (int i = 0; i <= i_Segments; ++i) {
+                // float f_WidthTemp = 2.0f + 2.0f * sin((float)i / i_Segments * glm::half_pi<float>()); // road widens along the curve
+                // float f_WidthTemp = 1.0f; // constant width
+                float f_Width = 1.0f - 0.05f * i;
+                vec_RoadWidths.push_back(f_Width);
             }
 
-            ScotlandYard::Core::RoadMesh roadMesh = ScotlandYard::Core::RoadGenerator::GenerateRoad(
-                roadPoints,
-                roadWidths,
+            ScotlandYard::Core::RoadMesh mesh_Road = ScotlandYard::Core::RoadGenerator::GenerateRoad(
+                vec_RoadPoints,
+                vec_RoadWidths,
                 2.0f // texture repeats every 2 meters
             );
 
-            for (auto& v : roadMesh.vertices) {
-                v.y = 0.5f;
+            for (auto& vertex : mesh_Road.vertices) {
+                vertex.y = 0.5f;
             }
 
-            struct Vertex { glm::vec3 pos; glm::vec3 normal; glm::vec2 uv; };
-            std::vector<Vertex> vertices;
-            for (size_t i = 0; i < roadMesh.vertices.size(); ++i) {
-                vertices.push_back({ roadMesh.vertices[i], roadMesh.normals[i], roadMesh.texCoords[i] });
+            struct RoadVertex { glm::vec3 pos; glm::vec3 normal; glm::vec2 uv; };
+            std::vector<RoadVertex> vec_Vertices;
+            for (size_t i = 0; i < mesh_Road.vertices.size(); ++i) {
+                vec_Vertices.push_back({ mesh_Road.vertices[i], mesh_Road.normals[i], mesh_Road.texCoords[i] });
             }
 
             glGenVertexArrays(1, &m_VAO_Road);
@@ -679,23 +1041,23 @@ namespace ScotlandYard {
             glBindVertexArray(m_VAO_Road);
 
             glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Road);
-            glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, vec_Vertices.size() * sizeof(RoadVertex), vec_Vertices.data(), GL_STATIC_DRAW);
 
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_Road);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, roadMesh.indices.size() * sizeof(unsigned int),
-                roadMesh.indices.data(), GL_STATIC_DRAW);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh_Road.indices.size() * sizeof(unsigned int),
+                mesh_Road.indices.data(), GL_STATIC_DRAW);
 
             // Vertex attributes
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0); // position
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)0); // position
             glEnableVertexAttribArray(0);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal)); // normal
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)offsetof(RoadVertex, normal)); // normal
             glEnableVertexAttribArray(1);
-            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, uv)); // uv
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)offsetof(RoadVertex, uv)); // uv
             glEnableVertexAttribArray(2);
 
             glBindVertexArray(0);
 
-            m_RoadIndexCount = static_cast<int>(roadMesh.indices.size());
+            m_RoadIndexCount = static_cast<int>(mesh_Road.indices.size());
 
             // Load road texture
             m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
@@ -706,6 +1068,162 @@ namespace ScotlandYard {
             else {
                 std::cout << "[Road] Road texture loaded successfully." << std::endl;
             }
+        }
+
+        void EmptyEnvironmentState::LoadBridgeModel(Core::Application* p_App) {
+            const std::string s_ModelPath = p_App->GetAssetPath("models/bridge.glb");
+
+            nlohmann::json gltf;
+            std::vector<uint8_t> bin;
+            if (!ParseGlbFile(s_ModelPath, gltf, bin)) {
+                std::cerr << "[Bridge] Failed to parse GLB: " << s_ModelPath << std::endl;
+                return;
+            }
+
+            if (!gltf.contains("meshes") || !gltf["meshes"].is_array() || gltf["meshes"].empty()) {
+                std::cerr << "[Bridge] No meshes in GLB" << std::endl;
+                return;
+            }
+
+            std::vector<BridgeVertex> vertices;
+            std::vector<uint32_t> indices;
+
+            auto appendPrimitive = [&](const nlohmann::json& prim) {
+                const auto& attrs = prim.value("attributes", nlohmann::json::object());
+                const int posAccessor = attrs.value("POSITION", -1);
+                const int normalAccessor = attrs.value("NORMAL", -1);
+                const int uvAccessor = attrs.value("TEXCOORD_0", -1);
+                const int idxAccessor = prim.value("indices", -1);
+
+                AccessorView posView, normView, uvView, idxView;
+                if (!GetAccessorView(gltf, bin, posAccessor, posView)) {
+                    std::cerr << "[Bridge] Skip primitive: POSITION missing/invalid" << std::endl;
+                    return;
+                }
+                if (posView.componentType != 5126 || posView.components != 3) {
+                    std::cerr << "[Bridge] Skip primitive: POSITION not float3" << std::endl;
+                    return;
+                }
+
+                bool hasNormals = normalAccessor >= 0 && GetAccessorView(gltf, bin, normalAccessor, normView) &&
+                    normView.componentType == 5126 && normView.components >= 3;
+                bool hasUV = uvAccessor >= 0 && GetAccessorView(gltf, bin, uvAccessor, uvView) &&
+                    uvView.componentType == 5126 && uvView.components >= 2;
+
+                const size_t baseVertex = vertices.size();
+                vertices.reserve(vertices.size() + posView.count);
+                for (size_t i = 0; i < posView.count; ++i) {
+                    const float* pPos = reinterpret_cast<const float*>(posView.data + i * posView.stride);
+                    glm::vec3 pos{ pPos[0], pPos[1], pPos[2] };
+
+                    glm::vec3 normal{ 0.0f, 1.0f, 0.0f };
+                    if (hasNormals) {
+                        const float* pNorm = reinterpret_cast<const float*>(normView.data + i * normView.stride);
+                        normal = glm::vec3{ pNorm[0], pNorm[1], pNorm[2] };
+                    }
+
+                    glm::vec2 uv{ 0.0f, 0.0f };
+                    if (hasUV) {
+                        const float* pUV = reinterpret_cast<const float*>(uvView.data + i * uvView.stride);
+                        uv = glm::vec2{ pUV[0], pUV[1] };
+                    }
+
+                    vertices.push_back({ pos, normal, uv });
+                }
+
+                std::vector<uint32_t> localIndices;
+                if (GetAccessorView(gltf, bin, idxAccessor, idxView) &&
+                    (idxView.componentType == 5121 || idxView.componentType == 5123 || idxView.componentType == 5125)) {
+                    localIndices.reserve(idxView.count);
+                    for (size_t i = 0; i < idxView.count; ++i) {
+                        localIndices.push_back(ReadIndex(idxView, i));
+                    }
+                }
+                else {
+                    localIndices.reserve(posView.count);
+                    for (uint32_t i = 0; i < posView.count; ++i) {
+                        localIndices.push_back(i);
+                    }
+                }
+
+                indices.reserve(indices.size() + localIndices.size());
+                for (uint32_t idx : localIndices) {
+                    indices.push_back(idx + static_cast<uint32_t>(baseVertex));
+                }
+            };
+
+            for (const auto& mesh : gltf["meshes"]) {
+                if (!mesh.contains("primitives") || !mesh["primitives"].is_array()) continue;
+                for (const auto& prim : mesh["primitives"]) {
+                    appendPrimitive(prim);
+                }
+            }
+
+            if (vertices.empty() || indices.empty()) {
+                std::cerr << "[Bridge] Failed to assemble mesh data (vertices: " << vertices.size()
+                    << ", indices: " << indices.size() << ")" << std::endl;
+                return;
+            }
+
+            // Capture original model length along X for length-only scaling
+            float f_MinX = std::numeric_limits<float>::max();
+            float f_MaxX = std::numeric_limits<float>::lowest();
+            for (const auto& v : vertices) {
+                f_MinX = std::min(f_MinX, v.pos.x);
+                f_MaxX = std::max(f_MaxX, v.pos.x);
+            }
+            m_f_BridgeModelLength = std::max(0.0f, f_MaxX - f_MinX);
+            m_vec3_BridgeScale = m_vec3_BridgeBaseScale;
+            if (m_f_BridgeModelLength <= 0.0f) {
+                std::cerr << "[Bridge] Model length is zero; length scaling disabled" << std::endl;
+            }
+
+            const std::string s_BridgeTex = p_App->GetAssetPath("textures/bridge.png");
+            if (std::filesystem::exists(s_BridgeTex)) {
+                m_TexBridge = p_App->LoadTexture(s_BridgeTex);
+                m_b_BridgeHasTexture = (m_TexBridge != 0);
+                if (!m_b_BridgeHasTexture) {
+                    std::cerr << "[Bridge] Failed to load bridge texture: " << s_BridgeTex << std::endl;
+                }
+            }
+            else {
+                m_b_BridgeHasTexture = false;
+            }
+
+            glGenVertexArrays(1, &m_VAO_Bridge);
+            glGenBuffers(1, &m_VBO_Bridge);
+            glGenBuffers(1, &m_EBO_Bridge);
+
+            glBindVertexArray(m_VAO_Bridge);
+
+            glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Bridge);
+            glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(BridgeVertex), vertices.data(), GL_STATIC_DRAW);
+
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_Bridge);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
+
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BridgeVertex), (void*)0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(BridgeVertex), (void*)offsetof(BridgeVertex, normal));
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(BridgeVertex), (void*)offsetof(BridgeVertex, uv));
+            glEnableVertexAttribArray(2);
+
+            glBindVertexArray(0);
+
+            m_BridgeIndexCount = static_cast<int>(indices.size());
+            std::cout << "[Bridge] Loaded bridge.glb: " << vertices.size() << " vertices, "
+                << m_BridgeIndexCount << " indices (merged primitives)" << std::endl;
+        }
+
+        void EmptyEnvironmentState::SetBridgeLength(float f_LengthWorld) {
+            if (m_f_BridgeModelLength <= 0.0f) return;
+            if (f_LengthWorld <= 0.0f) return;
+
+            float f_ScaleX = f_LengthWorld / m_f_BridgeModelLength;
+            m_vec3_BridgeScale.x = f_ScaleX;
+            m_vec3_BridgeScale.y = m_vec3_BridgeBaseScale.y;
+            m_vec3_BridgeScale.z = m_vec3_BridgeBaseScale.z;
         }
 
         // Load sample map data
@@ -769,6 +1287,72 @@ namespace ScotlandYard {
             //               << ", inPark=" << (street.b_IsInPark ? "yes" : "no")
             //               << std::endl;
             // }
+        }
+
+        void EmptyEnvironmentState::BuildRiverFromMapData() {
+            if (!m_p_WaterRenderer) return;
+            if (!m_b_MapDataLoaded || m_MapData.vec_RiverPath.empty()) {
+                BuildFallbackRiver();
+                return;
+            }
+
+            const float f_ScaleX = k_PlaneWidth / k_MapWidth;
+            const float f_ScaleZ = k_PlaneDepth / k_MapHeight;
+            const float f_OffsetX = k_MapOffsetX;
+            const float f_OffsetZ = k_MapOffsetZ;
+
+            std::vector<glm::vec2> vec_RiverPath;
+            vec_RiverPath.reserve(m_MapData.vec_RiverPath.size());
+            for (const auto& point : m_MapData.vec_RiverPath) {
+                float f_ScaledX = point.x * f_ScaleX + f_OffsetX;
+                float f_ScaledZ = point.y * f_ScaleZ + f_OffsetZ;
+                vec_RiverPath.emplace_back(f_ScaledX, f_ScaledZ);
+            }
+
+            if (vec_RiverPath.size() < 2) {
+                BuildFallbackRiver();
+                return;
+            }
+
+            float f_RiverWidth = 50.0f * f_ScaleX;
+            m_p_WaterRenderer->SetRiverStrip(vec_RiverPath, f_RiverWidth);
+
+            m_p_RiverRenderer = std::make_unique<Rendering::PolygonRenderer>();
+            if (m_p_RiverRenderer->Initialize()) {
+                m_p_RiverRenderer->SetRiverStrip(vec_RiverPath, f_RiverWidth, 0.001f);
+            }
+
+            m_b_RiverStripLoaded = true;
+            std::cout << "[EmptyEnvironmentState] River path built from map data (" << vec_RiverPath.size()
+                << " points)." << std::endl;
+        }
+
+        void EmptyEnvironmentState::BuildFallbackRiver() {
+            if (!m_p_WaterRenderer || m_b_RiverStripLoaded) return;
+
+            std::vector<glm::vec2> vec_FallbackPath = {
+                { -1.0f, 4.0f },
+                { 1.5f, 4.6f },
+                { 4.0f, 5.3f },
+                { 7.0f, 6.1f },
+                { 10.5f, 6.9f },
+                { 14.0f, 7.6f },
+                { 17.5f, 8.4f },
+                { 21.0f, 9.1f },
+                { 24.0f, 9.8f }
+            };
+
+            float f_FallbackWidth = 2.8f;
+            m_p_WaterRenderer->SetRiverStrip(vec_FallbackPath, f_FallbackWidth);
+
+            m_p_RiverRenderer = std::make_unique<Rendering::PolygonRenderer>();
+            if (m_p_RiverRenderer->Initialize()) {
+                m_p_RiverRenderer->SetRiverStrip(vec_FallbackPath, f_FallbackWidth, 0.001f);
+            }
+
+            m_b_RiverStripLoaded = true;
+            std::cout << "[EmptyEnvironmentState] Using fallback river strip (" << vec_FallbackPath.size()
+                << " points)." << std::endl;
         }
 
         // render map data (placeholder - to be implemented by graphics team)

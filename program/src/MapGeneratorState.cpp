@@ -149,6 +149,10 @@ namespace ScotlandYard
 
         void MapGeneratorState::LayoutUI(int W, int H, Core::Application* p_App)
         {
+            // Use virtual dimensions for UI layout
+            W = p_App->GetVirtualWidth();
+            H = p_App->GetVirtualHeight();
+            
             int outer = std::max(12, (int)(H * 0.04f));
             int pad = 24;
             int gap = 15;
@@ -273,12 +277,18 @@ namespace ScotlandYard
             if (p_App->IsTrainingMode()) return;  // Skip rendering in headless mode
 
             m_pApp = p_App;
+            
+            // Clear the entire framebuffer to prevent black artifacts
+            glClearColor(col_bg.r, col_bg.g, col_bg.b, col_bg.a);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            
             glDisable(GL_DEPTH_TEST);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            const int W = p_App->GetWidth();
-            const int H = p_App->GetHeight();
+            // Use virtual dimensions for rendering
+            const int W = p_App->GetVirtualWidth();
+            const int H = p_App->GetVirtualHeight();
 
             DrawRoundedRectScreen(0, 0, (float)W, (float)H, col_bg, 0, p_App);
             LayoutUI(W, H, p_App);
@@ -846,12 +856,13 @@ namespace ScotlandYard
 
             glUseProgram(m_ShaderProgram_Preview);
 
-            int i_WindowWidth = p_App->GetWidth();
-            int i_WindowHeight = p_App->GetHeight();
+            // Use virtual dimensions for orthographic projection
+            int i_VirtualWidth = p_App->GetVirtualWidth();
+            int i_VirtualHeight = p_App->GetVirtualHeight();
 
             glm::mat4 projection = glm::ortho(
-                0.0f, (float)i_WindowWidth,
-                0.0f, (float)i_WindowHeight,
+                0.0f, (float)i_VirtualWidth,
+                0.0f, (float)i_VirtualHeight,
                 -1.0f, 1.0f);
 
             glm::mat4 model = glm::mat4(1.0f);
@@ -964,6 +975,15 @@ namespace ScotlandYard
         {
             switch (ev.type)
             {
+            case SDL_WINDOWEVENT:
+                if (ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+                    ev.window.event == SDL_WINDOWEVENT_RESIZED)
+                {
+                    // Force UI recalculation on window resize (including fullscreen toggle)
+                    // The next Render() call will automatically use updated virtual dimensions
+                }
+                break;
+
             case SDL_KEYDOWN:
                 if (ev.key.keysym.sym == SDLK_ESCAPE)
                 {
@@ -996,7 +1016,15 @@ namespace ScotlandYard
             case SDL_MOUSEBUTTONDOWN:
                 if (ev.button.button == SDL_BUTTON_LEFT)
                 {
-                    int mx = ev.button.x, my = p_App->GetHeight() - ev.button.y;
+                    // Transform mouse coordinates to virtual space
+                    float virtualX, virtualY;
+                    p_App->TransformMouseToVirtual(ev.button.x, ev.button.y, virtualX, virtualY);
+                    
+                    int mx = (int)virtualX;
+                    int my = (int)virtualY;
+                    
+                    // Flip Y coordinate (SDL uses top-left, OpenGL uses bottom-left)
+                    my = p_App->GetVirtualHeight() - my;
 
                     // Check field focus
                     bool focused = false;
@@ -1076,7 +1104,13 @@ namespace ScotlandYard
             case SDL_MOUSEMOTION:
                 if (ev.motion.state & SDL_BUTTON_LMASK)
                 {
-                    int mx = ev.motion.x, my = p_App->GetHeight() - ev.motion.y;
+                    // Transform mouse coordinates to virtual space
+                    float virtualX, virtualY;
+                    p_App->TransformMouseToVirtual(ev.motion.x, ev.motion.y, virtualX, virtualY);
+                    
+                    int mx = (int)virtualX;
+                    int my = p_App->GetVirtualHeight() - (int)virtualY;
+                    
                     for (auto& s : m_vec_Sliders)
                     {
                         if (s.b_Dragging)

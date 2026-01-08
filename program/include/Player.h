@@ -18,7 +18,7 @@ public:
 
     PlayerType GetType() const { return m_e_Type; }
     int GetOccupiedNode() const { return m_i_OccupiedNode; }
-    void SetOccupiedNode(int i_Node) { m_i_OccupiedNode = i_Node; }
+    void SetOccupiedNode(int i_Node);
     // Move the player to another node (simple wrapper).
     void MoveTo(int i_Node) { SetOccupiedNode(i_Node); }
 
