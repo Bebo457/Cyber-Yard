@@ -58,7 +58,7 @@ namespace ScotlandYard
             }
 
             static void RasterizeThickSegment(std::vector<uint8_t>& mask, int W, int H,
-                float ax, float ay, float bx, float by, float radius) {
+                float ax, float ay, float bx, float by, float radius, uint8_t zoneValue = 1) {
                 int minx = (int)std::floor(std::min(ax, bx) - radius);
                 int maxx = (int)std::ceil(std::max(ax, bx) + radius);
                 int miny = (int)std::floor(std::min(ay, by) - radius);
@@ -72,13 +72,13 @@ namespace ScotlandYard
                 for (int y = miny; y <= maxy; ++y) {
                     for (int x = minx; x <= maxx; ++x) {
                         float d = DistPointToSegment((float)x + 0.5f, (float)y + 0.5f, ax, ay, bx, by);
-                        if (d * d <= r2) mask[y * W + x] = 1;
+                        if (d * d <= r2) mask[y * W + x] = zoneValue;
                     }
                 }
             }
 
             static void RasterizeCircle(std::vector<uint8_t>& mask, int W, int H,
-                float cx, float cy, float radius) {
+                float cx, float cy, float radius, uint8_t zoneValue = 1) {
                 int minx = std::max(0, (int)std::floor(cx - radius));
                 int maxx = std::min(W - 1, (int)std::ceil(cx + radius));
                 int miny = std::max(0, (int)std::floor(cy - radius));
@@ -89,7 +89,7 @@ namespace ScotlandYard
                     for (int x = minx; x <= maxx; ++x) {
                         float dx = ((float)x + 0.5f) - cx;
                         float dy = ((float)y + 0.5f) - cy;
-                        if (dx * dx + dy * dy <= r2) mask[y * W + x] = 1;
+                        if (dx * dx + dy * dy <= r2) mask[y * W + x] = zoneValue;
                     }
                 }
             }
@@ -475,26 +475,33 @@ namespace ScotlandYard
             // ----------------------------------------------------
 
             // Przygotowanie maski stref (Rzeka i Parki) dla CityGen
+            // Wartości strefy: 0 = normalny teren, 1 = rzeka, 2 = park
             std::vector<uint8_t> zoneMask((size_t)mapW * (size_t)mapH, 0);
 
-            // Rzeka jako gruba linia w masce
+            // Rzeka jako gruba linia w masce (wartość 1)
             const float riverHalfWidthPx = 15.0f;
             if (m_vec_RiverPath.size() >= 2) {
                 for (size_t i = 1; i < m_vec_RiverPath.size(); ++i) {
                     const auto& a = m_vec_RiverPath[i - 1];
                     const auto& b = m_vec_RiverPath[i];
-                    RasterizeThickSegment(zoneMask, mapW, mapH, a.x, a.y, b.x, b.y, riverHalfWidthPx);
+                    RasterizeThickSegment(zoneMask, mapW, mapH, a.x, a.y, b.x, b.y, riverHalfWidthPx, 1);
                 }
             }
 
-            // Parki (zakładamy okrągłe dla uproszczenia maski)
+            // Parki (zakładamy okrągłe dla uproszczenia maski, wartość 2)
             for (const auto& park : m_vec_Parks) {
-                RasterizeCircle(zoneMask, mapW, mapH, park.center.x, park.center.y, park.f_BaseRadius);
+                RasterizeCircle(zoneMask, mapW, mapH, park.center.x, park.center.y, park.f_BaseRadius, 2);
             }
 
             // Uruchomienie HighwayGenerator
             CityGen::HighwayGenerator hg(mapW, mapH);
             hg.SetZoneMask(std::move(zoneMask));
+
+            // Ustaw limit mostów z GUI (slider indeks 3: "Num Bridges")
+            int maxBridges = static_cast<int>(m_vec_Sliders[3].f_Value);
+            hg.SetMaxBridges(maxBridges);
+            std::cout << "[MapGen] Setting max bridges to: " << maxBridges << std::endl;
+
             hg.Generate();
 
             // Pobranie wyników
