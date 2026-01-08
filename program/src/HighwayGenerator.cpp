@@ -34,7 +34,12 @@ namespace CityGen {
 
         // KROK 2: Faza 1 - Główne arterie (Highways / Bus Routes)
         // Zgodnie z PDF: Łączą centra populacji i tworzą szkielet miasta
+        std::cout << "[Highway] Generation finished!" << std::endl;
+        std::cout << "[Highway] Total highways created: " << m_Highways.size() << std::endl;
+        std::cout << "[Highway] Total roads: " << m_Roads.size() << std::endl;
+        std::cout << "[Highway] Total nodes: " << m_RoadNodes.size() << std::endl;
         std::cout << "[CityGen] Phase 1: Generating Highways..." << std::endl;
+        std::cout << "[Highway] Starting generation - initial setup..." << std::endl;
         GenerateHighways();
 
         // Post-processing dla Highways (dzielenie na skrzyżowaniach, usuwanie duplikatów)
@@ -59,9 +64,10 @@ namespace CityGen {
         // Definicja centrów populacji (Dzielnice)
         struct Center { float x, y, r, i; };
         std::vector<Center> centers = {
-            {m_Width * 0.5f, m_Height * 0.5f, 400.0f, 1.0f}, // Główne centrum
-            {m_Width * 0.2f, m_Height * 0.3f, 200.0f, 0.8f}, // Dzielnica 1
-            {m_Width * 0.8f, m_Height * 0.7f, 250.0f, 0.9f}  // Dzielnica 2
+            {m_Width * 0.30f, m_Height * 0.45f, 200.0f, 1.0f},
+            {m_Width * 0.65f, m_Height * 0.3f, 300.0f, 0.9f},
+            {m_Width * 0.35f, m_Height * 0.65f, 100.0f, 0.85f},
+            {m_Width * 0.6f, m_Height * 0.65f, 250.0f, 0.95f}
         };
 
         for (int y = 0; y < m_Height; ++y) {
@@ -85,7 +91,7 @@ namespace CityGen {
                 if (!m_ZoneMask.empty()) {
                     int idx = y * m_Width + x;
                     if (idx < m_ZoneMask.size() && m_ZoneMask[idx] != 0) {
-                        val = 0.0f; // Zerowa gęstość w strefach wykluczonych
+                        // val = 0.0f; // Zerowa gęstość w strefach wykluczonych
                     }
                 }
 
@@ -190,6 +196,16 @@ namespace CityGen {
     }
 
     void HighwayGenerator::GenerateHighways() {
+        std::cout << "[Highway] ====== CONFIGURATION ======" << std::endl;
+        std::cout << "[Highway] Map size: " << m_Width << "x" << m_Height << std::endl;
+        std::cout << "[Highway] HIGHWAY_SEGMENT_LENGTH: " << HIGHWAY_SEGMENT_LENGTH << std::endl;
+        std::cout << "[Highway] STREET_SEGMENT_LENGTH: " << STREET_SEGMENT_LENGTH << std::endl;
+        std::cout << "[Highway] HIGHWAY_MAX_ITERATIONS: " << HIGHWAY_MAX_ITERATIONS << std::endl;
+        std::cout << "[Highway] HIGHWAY_VISION_RANGE: " << HIGHWAY_VISION_RANGE << std::endl;
+        std::cout << "[Highway] HIGHWAY_VISION_SAMPLES: " << HIGHWAY_VISION_SAMPLES << std::endl;
+        std::cout << "[Highway] MIN_BRANCH_DISTANCE: " << 100.0f << " (hardcoded in CreateBranchCandidates)" << std::endl;
+        std::cout << "[Highway] MIN_VIABLE_HIGHWAY_LENGTH: " << MIN_VIABLE_HIGHWAY_LENGTH << std::endl;
+        std::cout << "[Highway] =========================" << std::endl;
         // 1. Znajdź punkt startowy o najwyższej gęstości
         Point startPos;
         float maxDensity = 0.0f;
@@ -214,21 +230,60 @@ namespace CityGen {
 
         // 3. Pętla generacji (L-System growth)
         int iterations = 0;
+        int totalHighwaysCreated = 0;
         while ((!m_ActiveEnds.empty() || !m_SleepingBranches.empty()) && iterations++ < 5000) {
-            for (int i = m_ActiveEnds.size() - 1; i >= 0; --i) {
-                bool grown = GrowOneStep(m_ActiveEnds[i]);
-                if (!grown) {
-                    // Jeśli highway zakończył bieg, sfinalizuj go
-                    if (m_ActiveEnds[i].type == RoadType::HIGHWAY && !m_ActiveEnds[i].roadsSinceLastIntersection.empty()) {
-                        CreateHighway(m_ActiveEnds[i].lastIntersectionIdx, m_ActiveEnds[i].currentNodeIdx, m_ActiveEnds[i].roadsSinceLastIntersection);
-                    }
-                    m_ActiveEnds.erase(m_ActiveEnds.begin() + i);
+            std::cout << "\n[Iteration " << iterations << "] =============" << std::endl;
+            std::cout << "[Iteration " << iterations << "] ActiveEnds: " << m_ActiveEnds.size() 
+                    << ", Sleeping: " << m_SleepingBranches.size() 
+                    << ", Total roads: " << m_Roads.size()
+                    << ", Total highways: " << m_Highways.size() << std::endl;
+            if (iterations % 50 == 0) {  // Co 50 iteracji
+                std::cout << "[Highway Iteration " << iterations << "] ActiveEnds: " 
+                        << m_ActiveEnds.size() << ", Sleeping: " << m_SleepingBranches.size() 
+                        << ", Highways created so far: " << m_Highways.size() << std::endl;
+            }
+        for (int i = m_ActiveEnds.size() - 1; i >= 0; --i) {
+            bool grown = GrowOneStep(m_ActiveEnds[i]);
+            
+            if (!grown) {
+                // Jeśli highway zakończył bieg, sfinalizuj go
+                if (m_ActiveEnds[i].type == RoadType::HIGHWAY && !m_ActiveEnds[i].roadsSinceLastIntersection.empty()) {
+                    std::cout << "[Highway] Creating final Highway for ended agent (roads: " 
+                            << m_ActiveEnds[i].roadsSinceLastIntersection.size() << ")" << std::endl;
+                    CreateHighway(m_ActiveEnds[i].lastIntersectionIdx, m_ActiveEnds[i].currentNodeIdx, m_ActiveEnds[i].roadsSinceLastIntersection);
+                    totalHighwaysCreated++;
                 }
-                else {
-                    CreateBranchCandidates(m_ActiveEnds[i]);
+                m_ActiveEnds.erase(m_ActiveEnds.begin() + i);
+                continue;  // <-- DODAJ to continue!
+            }
+            
+            // NOWE: Sprawdź rozmiar przed i po CreateBranchCandidates
+            size_t activeEndsBeforeCreate = m_ActiveEnds.size();
+            CreateBranchCandidates(m_ActiveEnds[i]);
+            size_t activeEndsAfterCreate = m_ActiveEnds.size();
+            
+            // Jeśli utworzono nową kontynuację, usuń starego agenta
+            bool newEndCreated = (activeEndsAfterCreate > activeEndsBeforeCreate);
+            
+            if (newEndCreated) {
+                std::cout << "    -> New continuation HighwayEnd created, removing current end" << std::endl;
+                m_ActiveEnds.erase(m_ActiveEnds.begin() + i);
+                continue;  // <-- KLUCZOWE: przerywa dalsze przetwarzanie tego agenta
+            }
+            
+            // Reset dystansu jeśli utworzono branche (ale NIE kontynuację)
+            bool createdBranches = false;
+            for (const auto& branch : m_SleepingBranches) {
+                if (branch.parentNodeIdx == m_ActiveEnds[i].currentNodeIdx && branch.delay >= 0) {
+                    createdBranches = true;
+                    break;
                 }
             }
-            UpdateSleepingBranches();
+            if (createdBranches) {
+                m_ActiveEnds[i].distanceSinceLastBranch = 0.0f;
+            }
+        }
+        UpdateSleepingBranches();
         }
     }
 
@@ -266,6 +321,7 @@ namespace CityGen {
         while ((!m_ActiveEnds.empty() || !m_SleepingBranches.empty()) && iterations++ < 5000) {
             for (int i = m_ActiveEnds.size() - 1; i >= 0; --i) {
                 bool grown = GrowOneStep(m_ActiveEnds[i]);
+                // std::cout << "[Highway] End " << i << " stopped growing" << std::endl;
                 if (!grown) {
                     m_ActiveEnds.erase(m_ActiveEnds.begin() + i);
                 }
@@ -278,33 +334,87 @@ namespace CityGen {
     }
 
     bool HighwayGenerator::GrowOneStep(HighwayEnd& agent) {
-        if (agent.iterationsLeft <= 0) return false;
+        bool isHighway = (agent.type == RoadType::HIGHWAY);
+        
+        if (isHighway) {
+            std::cout << "  [GrowOneStep] START - Node: " << agent.currentNodeIdx 
+                    << ", Iterations left: " << agent.iterationsLeft 
+                    << ", Distance since branch: " << agent.distanceSinceLastBranch << std::endl;
+        }
+        
+        if (agent.iterationsLeft <= 0) {
+            if (isHighway) {
+                std::cout << "  [GrowOneStep] No iterations left, stopping" << std::endl;
+            }
+            return false;
+        }
 
         Point currentPos = m_RoadNodes[agent.currentNodeIdx];
+        if (isHighway) {
+            std::cout << "  [GrowOneStep] Current pos: (" << currentPos.x << ", " << currentPos.y << ")" << std::endl;
+        }
 
-        // 1. Wybierz kierunek (Global Goals)
-        Point newDir = ApplyGlobalGoals(currentPos, agent.direction, agent.type);
-        if (newDir.x == 0 && newDir.y == 0) return false;
+        // 1. Wybierz kierunek
+        Point newDir;
+        if (agent.type == RoadType::HIGHWAY) {
+            std::cout << "  [GrowOneStep] Calling FindBestDirection..." << std::endl;
+            newDir = FindBestDirection(currentPos, agent.direction);
+            std::cout << "  [GrowOneStep] New direction: (" << newDir.x << ", " << newDir.y << ")" << std::endl;
+        } else {
+            // STREETS: Używaj ApplyGlobalGoals (wzorce Raster/Organic/Radial)
+            newDir = ApplyGlobalGoals(currentPos, agent.direction, agent.type);
+        }
+        
+        if (newDir.x == 0 && newDir.y == 0) {
+            if (isHighway) {
+                std::cout << "  [GrowOneStep] Zero direction returned, stopping" << std::endl;
+            }
+            return false;
+        }
 
         // Długość zależy od typu (autostrady dłuższe, ulice krótsze)
         float len = (agent.type == RoadType::HIGHWAY) ? HIGHWAY_SEGMENT_LENGTH : STREET_SEGMENT_LENGTH;
         Point newPos(currentPos.x + newDir.x * len, currentPos.y + newDir.y * len);
 
+        if (isHighway) {
+            std::cout << "  [GrowOneStep] New pos: (" << newPos.x << ", " << newPos.y << ")" << std::endl;
+        }
+
         // Granice mapy
-        if (newPos.x < 0 || newPos.x >= m_Width || newPos.y < 0 || newPos.y >= m_Height) return false;
+        if (newPos.x < 0 || newPos.x >= m_Width || newPos.y < 0 || newPos.y >= m_Height) {
+            if (isHighway) {
+                std::cout << "  [GrowOneStep] Out of bounds, stopping" << std::endl;
+            }
+            return false;
+        }
 
         // Unikanie równoległych autostrad (dla estetyki)
-        if (agent.type == RoadType::HIGHWAY) {
-            if (!CheckParallelDuringGrowth(currentPos, newPos, agent.currentNodeIdx)) {
-                return false;
-            }
-        }
+        // if (agent.type == RoadType::HIGHWAY) {
+        //     std::cout << "  [GrowOneStep] Checking parallel constraints..." << std::endl;
+        //     if (!CheckParallelDuringGrowth(currentPos, newPos, agent.currentNodeIdx)) {
+        //         std::cout << "  [GrowOneStep] Parallel constraint failed, stopping" << std::endl;
+        //         return false;
+        //     }
+        //     std::cout << "  [GrowOneStep] Parallel check passed" << std::endl;
+        // }
 
         // 2. Local Constraints (Kolizje, Snapowanie)
         int newNodeIdx = -1;
+        if (isHighway) {
+            std::cout << "  [GrowOneStep] Checking local constraints..." << std::endl;
+        }
         bool constraintsMet = CheckLocalConstraints(currentPos, newPos, agent.currentNodeIdx, newNodeIdx, agent.type);
 
-        if (!constraintsMet) return false; 
+        if (!constraintsMet) {
+            if (isHighway) {
+                std::cout << "  [GrowOneStep] Local constraints failed, stopping" << std::endl;
+            }
+            return false;
+        }
+        
+        if (isHighway) {
+            std::cout << "  [GrowOneStep] Local constraints passed, newNodeIdx: " << newNodeIdx << std::endl;
+        }
 
         bool wasIntersection = m_RoadNodes[newNodeIdx].isIntersection;
 
@@ -315,20 +425,39 @@ namespace CityGen {
         m_RoadNodes[agent.currentNodeIdx].connectedRoadIndices.push_back(newRoadIdx);
         m_RoadNodes[newNodeIdx].connectedRoadIndices.push_back(newRoadIdx);
 
-        //  Logika Highways (zarządzanie obiektami Highway) 
+        if (isHighway) {
+            std::cout << "  [GrowOneStep] Road created: " << agent.currentNodeIdx 
+                    << " -> " << newNodeIdx << " (idx: " << newRoadIdx << ")" << std::endl;
+        }
+
         if (agent.type == RoadType::HIGHWAY) {
             agent.roadsSinceLastIntersection.push_back(newRoadIdx);
+        }
 
-            // Jeśli trafiliśmy na węzeł będący skrzyżowaniem
+        // Logika Highways (zarządzanie obiektami Highway)
+        if (agent.type == RoadType::HIGHWAY) {
+            // Sprawdź czy trafiło na skrzyżowanie (inne niż aktualny węzeł)
             if (m_RoadNodes[newNodeIdx].isIntersection && newNodeIdx != agent.currentNodeIdx) {
+                std::cout << "    [GrowOneStep] Hit intersection at node " << newNodeIdx << std::endl;
+                
+                // Utwórz Highway dla dotychczasowego odcinka
+                if (!agent.roadsSinceLastIntersection.empty()) {
+                    std::cout << "    [GrowOneStep] Creating Highway from " 
+                            << agent.lastIntersectionIdx << " to " << newNodeIdx << std::endl;
+                    CreateHighway(agent.lastIntersectionIdx, newNodeIdx, agent.roadsSinceLastIntersection);
+                }
+                
+                // Podziel highways jeśli trzeba
                 if (!wasIntersection) {
                     SplitHighwaysAtIntersection(newNodeIdx);
                 }
-
-                CreateHighway(agent.lastIntersectionIdx, newNodeIdx, agent.roadsSinceLastIntersection);
-                agent.lastIntersectionIdx = newNodeIdx;
-                agent.roadsSinceLastIntersection.clear();
+                
+                // Zakończ ten agent (trafiliśmy na intersection)
+                agent.currentNodeIdx = newNodeIdx;
+                return false;
             }
+            
+            // Przeszliśmy przez zwykły węzeł - kontynuuj tracking
         }
 
         // Logika Streets 
@@ -343,8 +472,33 @@ namespace CityGen {
         // Aktualizuj stan agenta
         agent.currentNodeIdx = newNodeIdx;
         agent.direction = newDir;
-        agent.iterationsLeft--;
         agent.distanceSinceLastBranch += len;
+        agent.iterationsLeft--;
+        
+        if (isHighway) {
+            std::cout << "  [GrowOneStep] State updated - distance since branch: " 
+                    << agent.distanceSinceLastBranch << ", iterations left: " 
+                    << agent.iterationsLeft << std::endl;
+        }
+        
+        //Jeśli to HIGHWAY i przeszliśmy przez węzeł który stał się intersection
+        if (agent.type == RoadType::HIGHWAY && m_RoadNodes[newNodeIdx].isIntersection) {
+            std::cout << "    [GrowOneStep] Passed through intersection " << newNodeIdx << std::endl;
+            
+            // Podziel highways jeśli trzeba
+            if (!wasIntersection) {
+                SplitHighwaysAtIntersection(newNodeIdx);
+            }
+            
+            // Utwórz Highway dla dotychczasowego odcinka
+            if (!agent.roadsSinceLastIntersection.empty()) {
+                CreateHighway(agent.lastIntersectionIdx, newNodeIdx, agent.roadsSinceLastIntersection);
+            }
+            
+            // Zresetuj tracking - zaczynamy nowy Highway
+            agent.lastIntersectionIdx = newNodeIdx;
+            agent.roadsSinceLastIntersection.clear();
+        }
 
         return true;
     }
@@ -369,11 +523,35 @@ namespace CityGen {
             // Próba lewa i prawa
             if (rand() % 100 < prob) {
                 Point dir(std::cos(currentAngle + branchAngle), std::sin(currentAngle + branchAngle));
-                m_SleepingBranches.push_back(Branch(parent.currentNodeIdx, dir, 5, parent.iterationsLeft, parent.type));
+                Branch newBranch(parent.currentNodeIdx, dir, -1, parent.iterationsLeft, parent.type);
+                
+                // Waliduj branch przez GlobalGoals (tylko dla HIGHWAY)
+                if (parent.type == RoadType::HIGHWAY) {
+                    GlobalGoalsForBranch(newBranch, parent);
+                } else {
+                    // Streets - ustaw prosty delay
+                    newBranch.delay = 5;
+                }
+                
+                if (newBranch.delay >= 0) {
+                    m_SleepingBranches.push_back(newBranch);
+                }
             }
             if (rand() % 100 < prob) {
                 Point dir(std::cos(currentAngle - branchAngle), std::sin(currentAngle - branchAngle));
-                m_SleepingBranches.push_back(Branch(parent.currentNodeIdx, dir, 5, parent.iterationsLeft, parent.type));
+                Branch newBranch(parent.currentNodeIdx, dir, -1, parent.iterationsLeft, parent.type);
+                
+                // Waliduj branch przez GlobalGoals (tylko dla HIGHWAY)
+                if (parent.type == RoadType::HIGHWAY) {
+                    GlobalGoalsForBranch(newBranch, parent);
+                } else {
+                    // Streets - ustaw prosty delay
+                    newBranch.delay = 5;
+                }
+                
+                if (newBranch.delay >= 0) {
+                    m_SleepingBranches.push_back(newBranch);
+                }
             }
 
             // Jeśli Highway się rozgałęzia, oznaczamy węzeł jako skrzyżowanie
@@ -384,34 +562,235 @@ namespace CityGen {
                 }
             }
         }
+        // Sprawdź czy utworzono jakieś akceptowalne branche
+        bool hasAcceptedBranches = false;
+        for (const auto& branch : m_SleepingBranches) {
+            if (branch.parentNodeIdx == parent.currentNodeIdx && branch.delay >= 0) {
+                hasAcceptedBranches = true;
+                break;
+            }
+        }
+        
+
+        // Jeśli są branche i to HIGHWAY - kontynuuj wzrost po rozgałęzieniu
+        if (hasAcceptedBranches && parent.type == RoadType::HIGHWAY) {
+            std::cout << "    [CreateBranch] Branches accepted - marking node " 
+                    << parent.currentNodeIdx << " as intersection" << std::endl;
+            
+            bool wasIntersection = m_RoadNodes[parent.currentNodeIdx].isIntersection;
+            m_RoadNodes[parent.currentNodeIdx].isIntersection = true;
+            
+            // Podziel highways jeśli trzeba
+            if (!wasIntersection) {
+                SplitHighwaysAtIntersection(parent.currentNodeIdx);
+            }
+            
+            // Utwórz Highway dla dotychczasowego odcinka
+            if (!parent.roadsSinceLastIntersection.empty()) {
+                std::cout << "    [CreateBranch] Creating Highway from " 
+                        << parent.lastIntersectionIdx << " to " << parent.currentNodeIdx << std::endl;
+                CreateHighway(parent.lastIntersectionIdx, parent.currentNodeIdx, 
+                            parent.roadsSinceLastIntersection);
+            }
+            
+            //  Utwórz nowy HighwayEnd kontynuujący wzrost w tym samym kierunku
+            std::cout << "    [CreateBranch] Creating continuation HighwayEnd" << std::endl;
+            HighwayEnd newEnd(
+                parent.currentNodeIdx,
+                parent.direction,
+                parent.iterationsLeft,
+                parent.type
+            );
+            
+            m_ActiveEnds.push_back(newEnd);
+        }
+    }
+
+    void HighwayGenerator::GlobalGoalsForBranch(Branch& branch, const HighwayEnd& parent) {
+        // ========== FLAGI AKTYWACJI KRYTERIÓW ==========
+        const bool ENABLE_DENSITY_CHECK = false;
+        const bool ENABLE_BOUNDS_CHECK = false;
+        const bool ENABLE_PARALLEL_CHECK = true;
+        const bool ENABLE_AREA_COVERAGE_CHECK = false;
+        const bool ENABLE_HIGHWAY_PROXIMITY_CHECK = true;
+        
+        // ========== PARAMETRY DO DOSTRAJANIA ==========
+        const float MIN_DENSITY_SCORE = BRANCH_MIN_DENSITY_SCORE;
+        const float PARALLEL_ANGLE_DEG = BRANCH_PARALLEL_ANGLE_THRESHOLD;
+        const float PARALLEL_RADIUS = BRANCH_PARALLEL_SEARCH_RADIUS;
+        const float AREA_RADIUS = BRANCH_AREA_SEARCH_RADIUS;
+        const int MAX_ROADS_IN_AREA = BRANCH_AREA_MAX_ROADS;
+        
+        std::cout << "[GlobalGoals] Evaluating branch from node " << branch.parentNodeIdx << std::endl;
+        
+        // KRYTERIUM 1: Gęstość w kierunku branch
+        if (ENABLE_DENSITY_CHECK) {
+            Point parentPos = m_RoadNodes[branch.parentNodeIdx];
+            float angle = std::atan2(branch.direction.y, branch.direction.x);
+            float score = ShootRay(parentPos, angle);
+            
+            std::cout << "[GlobalGoals] Density score: " << score << std::endl;
+            
+            if (score < MIN_DENSITY_SCORE) {
+                std::cout << "[GlobalGoals] REJECTED: Low density" << std::endl;
+                branch.delay = -1;
+                return;
+            }
+        }
+        
+        // KRYTERIUM 2: Branch prowadzi poza mapę
+        if (ENABLE_BOUNDS_CHECK) {
+            Point parentPos = m_RoadNodes[branch.parentNodeIdx];
+            Point targetPos(
+                parentPos.x + branch.direction.x * BRANCH_LOOKAHEAD_DISTANCE,
+                parentPos.y + branch.direction.y * BRANCH_LOOKAHEAD_DISTANCE
+            );
+            
+            if (targetPos.x < 0 || targetPos.x >= m_Width || 
+                targetPos.y < 0 || targetPos.y >= m_Height) {
+                std::cout << "[GlobalGoals] REJECTED: Out of bounds" << std::endl;
+                branch.delay = -1;
+                return;
+            }
+        }
+        
+        // KRYTERIUM 3: Branch zbyt blisko równoległej drogi
+        if (ENABLE_PARALLEL_CHECK) {
+            Point parentPos = m_RoadNodes[branch.parentNodeIdx];
+            std::vector<int> nearbyRoads = FindNearbyRoadIndices(parentPos, PARALLEL_RADIUS);
+            
+            for (int roadIdx : nearbyRoads) {
+                const Road& road = m_Roads[roadIdx];
+                const Point& roadStart = m_RoadNodes[road.startNodeIdx];
+                const Point& roadEnd = m_RoadNodes[road.endNodeIdx];
+                
+                // Kierunek drogi
+                Point roadDir(roadEnd.x - roadStart.x, roadEnd.y - roadStart.y);
+                float roadLen = std::sqrt(roadDir.x * roadDir.x + roadDir.y * roadDir.y);
+                if (roadLen > 0.01f) {
+                    roadDir.x /= roadLen;
+                    roadDir.y /= roadLen;
+                }
+                
+                // Kąt między branch a drogą
+                float dotProduct = branch.direction.x * roadDir.x + branch.direction.y * roadDir.y;
+                float angle = std::acos(std::max(-1.0f, std::min(1.0f, dotProduct)));
+                
+                // Uwzględnij symetrię (180° to też równoległość)
+                if (angle > 3.14159f / 2.0f) {
+                    angle = 3.14159f - angle;
+                }
+                
+                if (angle < PARALLEL_ANGLE_DEG) {
+                    std::cout << "[GlobalGoals] REJECTED: Parallel to existing road" << std::endl;
+                    branch.delay = -1;
+                    return;
+                }
+            }
+        }
+        
+        // KRYTERIUM 4: Obszar już dobrze obsłużony
+        if (ENABLE_AREA_COVERAGE_CHECK) {
+            Point parentPos = m_RoadNodes[branch.parentNodeIdx];
+            Point targetPos(
+                parentPos.x + branch.direction.x * AREA_RADIUS,
+                parentPos.y + branch.direction.y * AREA_RADIUS
+            );
+            
+            std::vector<int> nearbyRoads = FindNearbyRoadIndices(targetPos, AREA_RADIUS);
+            
+            if ((int)nearbyRoads.size() >= MAX_ROADS_IN_AREA) {
+                std::cout << "[GlobalGoals] REJECTED: Area already covered" << std::endl;
+                branch.delay = -1;
+                return;
+            }
+        }
+        
+        // KRYTERIUM 5: Branch trafiłby zbyt szybko na istniejący highway
+        if (ENABLE_HIGHWAY_PROXIMITY_CHECK) {
+            Point parentPos = m_RoadNodes[branch.parentNodeIdx];
+            
+            float minHitDistance = RAY_CAST_DISTANCE + 1.0f;
+            
+            // Strzel kilka rayów w kierunku brancha (z małym spreadem)
+            for (int i = 0; i < HIGHWAY_PROXIMITY_NUM_RAYS; ++i) {
+                // Oblicz kąt dla tego raya
+                float spreadFraction = (float)i / (HIGHWAY_PROXIMITY_NUM_RAYS - 1);  // 0.0 do 1.0
+                float angleOffset = (spreadFraction - 0.5f) * RAY_SPREAD_ANGLE;  // -spread/2 do +spread/2
+                
+                float baseAngle = std::atan2(branch.direction.y, branch.direction.x);
+                float rayAngle = baseAngle + angleOffset;
+                
+                Point rayDir(std::cos(rayAngle), std::sin(rayAngle));
+                
+                // Strzel rayem
+                float hitDist = RaycastToHighway(parentPos, rayDir, RAY_CAST_DISTANCE);
+                
+                if (hitDist > 0.0f && hitDist < minHitDistance) {
+                    minHitDistance = hitDist;
+                }
+            }
+            
+            // Jeśli którykolwiek ray trafił bliżej niż MIN_VIABLE_HIGHWAY_LENGTH
+            if (minHitDistance < MIN_VIABLE_HIGHWAY_LENGTH) {
+                std::cout << "[GlobalGoals] REJECTED: Would create too short highway (hit at " 
+                        << minHitDistance << " < " << MIN_VIABLE_HIGHWAY_LENGTH << ")" << std::endl;
+                branch.delay = -1;
+                return;
+            }
+        }
+
+        // WSZYSTKIE KRYTERIA SPEŁNIONE - ustaw losowy delay
+        branch.delay = BRANCH_DELAY_MIN + (rand() % (BRANCH_DELAY_MAX - BRANCH_DELAY_MIN + 1));
+        std::cout << "[GlobalGoals] ACCEPTED: delay = " << branch.delay << std::endl;
     }
 
     bool HighwayGenerator::CheckLocalConstraints(const Point& start, const Point& end, int startNodeIdx, int& endNodeIdx, RoadType type) {
-        // 1. Sprawdź maskę terenu (woda/parki) - blokada budowy
+        bool isHighway = (type == RoadType::HIGHWAY);
+        
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] Checking segment from node " << startNodeIdx 
+                    << " (" << start.x << "," << start.y << ") to (" << end.x << "," << end.y << ")" << std::endl;
+        }
+        
+        // 1. Sprawdź maskę terenu (woda/parki) - blokada budowy TYLKO dla STREET
         int ix = (int)end.x;
         int iy = (int)end.y;
-        if (!m_ZoneMask.empty() && (ix >= 0 && ix < m_Width && iy >= 0 && iy < m_Height)) {
-            if (m_ZoneMask[iy * m_Width + ix] != 0) return false;
+        if (type == RoadType::STREET && !m_ZoneMask.empty() && (ix >= 0 && ix < m_Width && iy >= 0 && iy < m_Height)) {
+            if (m_ZoneMask[iy * m_Width + ix] != 0) {
+                std::cout << "    [LocalConstraints] STREET BLOCKED by zone mask at (" << ix << "," << iy << ")" << std::endl;
+                return false;
+            }
         }
 
         // 2. Snapowanie (przyciąganie) do istniejących węzłów
         float searchRadius = (type == RoadType::HIGHWAY) ? 15.0f : 12.0f;
         int nearest = FindNearestNode(end, searchRadius);
         if (nearest != -1 && nearest != startNodeIdx) {
+            if (isHighway) {
+                std::cout << "    [LocalConstraints] Snapping to existing node " << nearest << std::endl;
+            }
             endNodeIdx = nearest;
             return true;
+        }
+
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] No nearby node found (radius " << searchRadius << "), checking intersections..." << std::endl;
         }
 
         // 3. Sprawdź przecięcia z innymi drogami
         Point intersection;
         float minDist = 10000.0f;
         int hitRoadIdx = -1;
+        int checkedRoads = 0;
 
         for (int i = 0; i < m_Roads.size(); ++i) {
             const auto& r = m_Roads[i];
             if (r.isDeleted) continue;
             if (r.startNodeIdx == startNodeIdx || r.endNodeIdx == startNodeIdx) continue;
 
+            checkedRoads++;
+            
             Point p1 = m_RoadNodes[r.startNodeIdx];
             Point p2 = m_RoadNodes[r.endNodeIdx];
 
@@ -424,7 +803,16 @@ namespace CityGen {
             }
         }
 
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] Checked " << checkedRoads << " roads for intersection" << std::endl;
+        }
+
         if (hitRoadIdx != -1) {
+            if (isHighway) {
+                std::cout << "    [LocalConstraints] Found intersection with road " << hitRoadIdx 
+                        << " at (" << intersection.x << "," << intersection.y << ")" << std::endl;
+            }
+            
             // Znaleziono przecięcie -> Podziel istniejącą drogę i wstaw węzeł
             int intersectNodeIdx = CreateOrGetNode(intersection, true);
             Road oldRoad = m_Roads[hitRoadIdx];
@@ -446,20 +834,149 @@ namespace CityGen {
             }
 
             endNodeIdx = intersectNodeIdx;
+            
+            if (isHighway) {
+                std::cout << "    [LocalConstraints] Created intersection node " << intersectNodeIdx << std::endl;
+            }
+            
             return true;
         }
 
+        // 3b. "WPADNIĘCIE" W ŚRODEK DROGI (distance check)
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] No intersection found, checking distance to nearby roads..." << std::endl;
+        }
+        
+        float segmentLength = (type == RoadType::HIGHWAY) ? HIGHWAY_SEGMENT_LENGTH : STREET_SEGMENT_LENGTH;
+        const float SEARCH_RADIUS = segmentLength * SEARCH_RADIUS_MULTIPLIER;
+        const float HIT_DISTANCE = segmentLength * HIT_DISTANCE_MULTIPLIER;
+        
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] Search radius: " << SEARCH_RADIUS 
+                    << ", Hit distance: " << HIT_DISTANCE << std::endl;
+        }
+        
+        std::vector<int> nearbyRoadIndices = FindNearbyRoadIndices(start, SEARCH_RADIUS);
+        
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] Found " << nearbyRoadIndices.size() 
+                    << " nearby roads within radius " << SEARCH_RADIUS << std::endl;
+        }
+        
+        for (int roadIdx : nearbyRoadIndices) {
+            if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+            
+            const Road& otherRoad = m_Roads[roadIdx];
+            if (otherRoad.isDeleted) continue;
+            
+            // Ignoruj własne drogi
+            if (otherRoad.startNodeIdx == startNodeIdx || otherRoad.endNodeIdx == startNodeIdx)
+                continue;
+            
+            const Point& segA = m_RoadNodes[otherRoad.startNodeIdx];
+            const Point& segB = m_RoadNodes[otherRoad.endNodeIdx];
+            
+            Point closest;
+            float dist = DistancePointToSegment(end, segA, segB);
+            
+            if (isHighway && dist < HIT_DISTANCE * 2.0f) {  // Log jeśli blisko
+                std::cout << "    [LocalConstraints] Road " << roadIdx << " distance: " << dist 
+                        << " (threshold: " << HIT_DISTANCE << ")" << std::endl;
+            }
+            
+            if (dist < HIT_DISTANCE) {
+                // Oblicz najbliższy punkt na segmencie
+                float l2 = std::pow(segA.x - segB.x, 2) + std::pow(segA.y - segB.y, 2);
+                if (l2 > 0) {
+                    float t = ((end.x - segA.x) * (segB.x - segA.x) + (end.y - segA.y) * (segB.y - segA.y)) / l2;
+                    t = std::max(0.0f, std::min(1.0f, t));
+                    closest.x = segA.x + t * (segB.x - segA.x);
+                    closest.y = segA.y + t * (segB.y - segA.y);
+                }
+                
+                if (isHighway) {
+                    std::cout << "    [LocalConstraints] HIT road " << roadIdx << " at distance " << dist 
+                            << ", closest point: (" << closest.x << "," << closest.y << ")" << std::endl;
+                }
+                
+                // Sprawdź czy węzeł nie istniał wcześniej
+                int existingNode = FindNearestNode(closest, 2.0f);
+                bool wasIntersection = (existingNode != -1) ? m_RoadNodes[existingNode].isIntersection : false;
+                
+                int nodeIdx = CreateOrGetNode(closest, true);
+                endNodeIdx = nodeIdx;
+                
+                // Podziel istniejącą drogę jeśli trzeba
+                if (nodeIdx != otherRoad.startNodeIdx && nodeIdx != otherRoad.endNodeIdx) {
+                    if (isHighway) {
+                        std::cout << "    [LocalConstraints] Splitting road " << roadIdx << std::endl;
+                    }
+                    
+                    // Stwórz nową drogę od closest do końca starej drogi
+                    Road oldRoad = m_Roads[roadIdx];
+                    m_Roads[roadIdx].isDeleted = true;
+                    
+                    m_Roads.push_back(Road(oldRoad.startNodeIdx, nodeIdx, oldRoad.type));
+                    int r1 = m_Roads.size() - 1;
+                    m_RoadNodes[oldRoad.startNodeIdx].connectedRoadIndices.push_back(r1);
+                    m_RoadNodes[nodeIdx].connectedRoadIndices.push_back(r1);
+                    
+                    m_Roads.push_back(Road(nodeIdx, oldRoad.endNodeIdx, oldRoad.type));
+                    int r2 = m_Roads.size() - 1;
+                    m_RoadNodes[nodeIdx].connectedRoadIndices.push_back(r2);
+                    m_RoadNodes[oldRoad.endNodeIdx].connectedRoadIndices.push_back(r2);
+                    
+                    if (oldRoad.type == RoadType::HIGHWAY && !wasIntersection) {
+                        SplitHighwaysAtIntersection(nodeIdx);
+                    }
+                }
+                
+                // Jeśli właśnie stał się intersection, podziel highways
+                if (!wasIntersection && type == RoadType::HIGHWAY) {
+                    SplitHighwaysAtIntersection(nodeIdx);
+                }
+                
+                if (isHighway) {
+                    std::cout << "    [LocalConstraints] Created/reused node " << nodeIdx << std::endl;
+                }
+                
+                return true;
+            }
+        }
+
         // 4. Brak kolizji - nowy węzeł
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] No constraints hit, creating new node" << std::endl;
+        }
+        
         endNodeIdx = CreateOrGetNode(end, false);
+        
+        if (isHighway) {
+            std::cout << "    [LocalConstraints] Created new node " << endNodeIdx << std::endl;
+        }
+        
         return true;
     }
 
     // Helpers 
 
     int HighwayGenerator::CreateOrGetNode(const Point& pos, bool isIntersection) {
-        Point p = pos;
-        p.isIntersection = isIntersection;
-        m_RoadNodes.push_back(p);
+        const float SNAP_RADIUS = HIGHWAY_SEGMENT_LENGTH * 0.5f;
+        int existingIdx = FindNearestNode(pos, SNAP_RADIUS);
+        
+        if (existingIdx != -1) {
+            // Znaleziono istniejący punkt - ewentualnie uaktualnij flagę
+            if (isIntersection) {
+                m_RoadNodes[existingIdx].isIntersection = true;
+            }
+            return existingIdx;
+        }
+        
+        // Nie znaleziono - utwórz nowy punkt
+        Point newNode = pos;
+        newNode.isIntersection = isIntersection;
+        m_RoadNodes.push_back(newNode);
+        
         return m_RoadNodes.size() - 1;
     }
 
@@ -480,18 +997,121 @@ namespace CityGen {
     }
 
     float HighwayGenerator::ShootRay(Point pos, float angle) {
-        float step = 15.0f;
-        float score = 0.0f;
-        for (int i = 1; i <= 8; ++i) {
-            float px = pos.x + std::cos(angle) * step * i;
-            float py = pos.y + std::sin(angle) * step * i;
-            score += GetDensityAt((int)px, (int)py);
+        float totalScore = 0.0f;
+        
+        // Próbkuj wzdłuż promienia
+        for (int i = 1; i <= HIGHWAY_VISION_SAMPLES; ++i) {
+            float distance = (HIGHWAY_SAMPLE_RADIUS / HIGHWAY_VISION_SAMPLES) * i;
+            
+            // Pozycja próbki
+            Point samplePos(
+                pos.x + std::cos(angle) * distance,
+                pos.y + std::sin(angle) * distance
+            );
+            
+            // Pobierz gęstość (GetDensityAt sprawdza granice)
+            float density = GetDensityAt(
+                static_cast<int>(samplePos.x), 
+                static_cast<int>(samplePos.y)
+            );
+            
+            // Waga odwrotna do odległości
+            float weight = density / distance;
+            
+            totalScore += weight;
         }
-        return score;
+        
+        return totalScore;
     }
 
+    Point HighwayGenerator::FindBestDirection(Point pos, Point prevDirection) {
+        std::cout << "    [FindBestDir] Pos: (" << pos.x << ", " << pos.y << ")" << std::endl;
+        std::cout << "    [FindBestDir] Prev dir: (" << prevDirection.x << ", " << prevDirection.y << ")" << std::endl;
+        
+        float bestScore = -1.0f;
+        float bestAngle = 0.0f;
+        
+        const float PI = 3.14159265359f;
+        
+        float centerAngle = 0.0f;
+        if (prevDirection.x != 0.0f || prevDirection.y != 0.0f) {
+            centerAngle = std::atan2(prevDirection.y, prevDirection.x);
+        }
+        std::cout << "    [FindBestDir] Center angle: " << (centerAngle * 180.0f / PI) << " degrees" << std::endl;
+        std::cout << "    [FindBestDir] FOV: " << (HIGHWAY_FOV * 180.0f / PI) << " degrees" << std::endl;
+        std::cout << "    [FindBestDir] Num rays: " << HIGHWAY_NUM_RAYS << std::endl;
+        
+        // Strzel rayami TYLKO w zakresie FOV wokół poprzedniego kierunku
+        for (int i = 0; i < HIGHWAY_NUM_RAYS; ++i) {
+            // Kąt od -FOV/2 do +FOV/2 względem centerAngle
+            float angleOffset = (HIGHWAY_FOV * i) / (HIGHWAY_NUM_RAYS - 1) - HIGHWAY_FOV / 2.0f;
+            float angle = centerAngle + angleOffset;
+            
+            float score = ShootRay(pos, angle);
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestAngle = angle;
+            }
+        }
+        
+        std::cout << "    [FindBestDir] Best score: " << bestScore 
+                << ", Best angle: " << (bestAngle * 180.0f / PI) << " degrees" << std::endl;
+        
+        // Jeśli score jest zbyt niski, zatrzymaj się
+        if (bestScore < MIN_SCORE_THRESHOLD) {
+            std::cout << "    [FindBestDir] Score too low (< " << MIN_SCORE_THRESHOLD 
+                    << "), returning zero direction" << std::endl;
+            return Point(0.0f, 0.0f);
+        }
+        
+        return Point(std::cos(bestAngle), std::sin(bestAngle));
+    }
+
+
+
     float HighwayGenerator::RaycastToHighway(const Point& origin, const Point& direction, float maxDistance) {
-        return -1.0f; 
+        float minHitDistance = maxDistance + 1.0f;  // Większe niż max = nie trafiono
+        bool hitAny = false;
+        
+        // Dla każdego highway w systemie
+        for (const Highway& highway : m_Highways) {
+            // Sprawdź każdy road w highway
+            for (int roadIdx : highway.roadIndices) {
+                if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+                if (m_Roads[roadIdx].isDeleted) continue;
+                
+                const Road& road = m_Roads[roadIdx];
+                const Point& roadStart = m_RoadNodes[road.startNodeIdx];
+                const Point& roadEnd = m_RoadNodes[road.endNodeIdx];
+                
+                // Oblicz przecięcie raya z segmentem drogi
+                // Ray: P = origin + t * direction (gdzie t >= 0)
+                // Segment: Q = roadStart + s * (roadEnd - roadStart) (gdzie 0 <= s <= 1)
+                
+                Point roadDir(roadEnd.x - roadStart.x, roadEnd.y - roadStart.y);
+                
+                // Rozwiąż układ równań metodą Cramera
+                float denom = direction.x * roadDir.y - direction.y * roadDir.x;
+                
+                if (std::abs(denom) < 1e-6f) continue;  // Równoległe
+                
+                Point originToRoadStart(roadStart.x - origin.x, roadStart.y - origin.y);
+                
+                float t = (originToRoadStart.x * roadDir.y - originToRoadStart.y * roadDir.x) / denom;
+                float s = (originToRoadStart.x * direction.y - originToRoadStart.y * direction.x) / (-denom);
+                
+                // Sprawdź czy przecięcie jest w zakresie
+                if (t >= 0.0f && t <= maxDistance && s >= 0.0f && s <= 1.0f) {
+                    hitAny = true;
+                    if (t < minHitDistance) {
+                        minHitDistance = t;
+                    }
+                }
+            }
+        }
+        
+        return hitAny ? minHitDistance : -1.0f;
     }
 
     std::vector<int> HighwayGenerator::FindNearbyRoadIndices(const Point& pos, float radius) {
@@ -535,14 +1155,41 @@ namespace CityGen {
 
     void HighwayGenerator::UpdateSleepingBranches() {
         for (int i = m_SleepingBranches.size() - 1; i >= 0; --i) {
-            m_SleepingBranches[i].delay--;
-            if (m_SleepingBranches[i].delay <= 0) {
-                m_ActiveEnds.push_back(HighwayEnd(
-                    m_SleepingBranches[i].parentNodeIdx,
-                    m_SleepingBranches[i].direction,
-                    m_SleepingBranches[i].iterationsLeft,
-                    m_SleepingBranches[i].type
-                ));
+            Branch& branch = m_SleepingBranches[i];
+            
+            branch.delay--;
+            
+            if (branch.delay == 0) {
+                // std::cout << "[UpdateBranches] Activated branch from node " 
+                        //   << branch.parentNodeIdx << std::endl;
+                
+                // Oznacz węzeł jako skrzyżowanie (bo tutaj rozgałęzia się droga)
+                if (branch.parentNodeIdx >= 0 && branch.parentNodeIdx < (int)m_RoadNodes.size()) {
+                    bool wasIntersection = m_RoadNodes[branch.parentNodeIdx].isIntersection;
+                    m_RoadNodes[branch.parentNodeIdx].isIntersection = true;
+                    // std::cout << "[UpdateBranches] Marked node " << branch.parentNodeIdx 
+                            //   << " as intersection (branching point)" << std::endl;
+                    
+                    // Jeśli węzeł nie był wcześniej skrzyżowaniem, podziel highways
+                    if (!wasIntersection && branch.type == RoadType::HIGHWAY) {
+                        SplitHighwaysAtIntersection(branch.parentNodeIdx);
+                    }
+                }
+                
+                HighwayEnd newEnd(
+                    branch.parentNodeIdx,
+                    branch.direction,
+                    branch.iterationsLeft,
+                    branch.type
+                );
+                
+                m_ActiveEnds.push_back(newEnd);
+                m_SleepingBranches.erase(m_SleepingBranches.begin() + i);
+            }
+            else if (branch.delay < 0) {
+                // Branch został odrzucony przez GlobalGoals
+                std::cout << "[UpdateBranches] Removing rejected branch from node " 
+                          << branch.parentNodeIdx << std::endl;
                 m_SleepingBranches.erase(m_SleepingBranches.begin() + i);
             }
         }
@@ -640,15 +1287,236 @@ namespace CityGen {
     }
 
     void HighwayGenerator::MergeSimpleIntersections() {
-        // Logika opcjonalna - łączenie highwayów
+        std::cout << "\n[MergeSimple] ====== MERGING SIMPLE INTERSECTIONS ======" << std::endl;
+        std::cout << "[MergeSimple] Initial highways: " << m_Highways.size() << std::endl;
+        
+        int mergedCount = 0;
+        
+        // Dla każdego węzła oznaczonego jako intersection
+        for (size_t nodeIdx = 0; nodeIdx < m_RoadNodes.size(); ++nodeIdx) {
+            Point& node = m_RoadNodes[nodeIdx];
+            
+            if (!node.isIntersection) {
+                continue;
+            }
+            
+            // Znajdź wszystkie highways połączone z tym węzłem
+            std::vector<int> connectedHighways;
+            
+            for (int hwIdx = 0; hwIdx < (int)m_Highways.size(); ++hwIdx) {
+                const Highway& hw = m_Highways[hwIdx];
+                
+                if (hw.startIntersectionIdx == (int)nodeIdx || 
+                    hw.endIntersectionIdx == (int)nodeIdx) {
+                    connectedHighways.push_back(hwIdx);
+                }
+            }
+            
+            // Jeśli dokładnie 2 highways się spotykają - możemy połączyć
+            if (connectedHighways.size() == 2) {
+                std::cout << "[MergeSimple] Node " << nodeIdx 
+                          << " connects exactly 2 highways: " 
+                          << connectedHighways[0] << " and " << connectedHighways[1] << std::endl;
+                
+                int hw1Idx = connectedHighways[0];
+                int hw2Idx = connectedHighways[1];
+                
+                const Highway& hw1 = m_Highways[hw1Idx];
+                const Highway& hw2 = m_Highways[hw2Idx];
+                
+                // Określ nowy początek i koniec
+                int newStart = -1;
+                int newEnd = -1;
+                
+                // hw1 kończy się w nodeIdx, hw2 zaczyna się w nodeIdx
+                if (hw1.endIntersectionIdx == (int)nodeIdx && 
+                    hw2.startIntersectionIdx == (int)nodeIdx) {
+                    newStart = hw1.startIntersectionIdx;
+                    newEnd = hw2.endIntersectionIdx;
+                }
+                // hw1 zaczyna się w nodeIdx, hw2 kończy się w nodeIdx
+                else if (hw1.startIntersectionIdx == (int)nodeIdx && 
+                         hw2.endIntersectionIdx == (int)nodeIdx) {
+                    newStart = hw2.startIntersectionIdx;
+                    newEnd = hw1.endIntersectionIdx;
+                }
+                // hw1 zaczyna się w nodeIdx, hw2 zaczyna się w nodeIdx
+                else if (hw1.startIntersectionIdx == (int)nodeIdx && 
+                         hw2.startIntersectionIdx == (int)nodeIdx) {
+                    newStart = hw1.endIntersectionIdx;
+                    newEnd = hw2.endIntersectionIdx;
+                }
+                // hw1 kończy się w nodeIdx, hw2 kończy się w nodeIdx
+                else if (hw1.endIntersectionIdx == (int)nodeIdx && 
+                         hw2.endIntersectionIdx == (int)nodeIdx) {
+                    newStart = hw1.startIntersectionIdx;
+                    newEnd = hw2.startIntersectionIdx;
+                }
+                
+                if (newStart == -1 || newEnd == -1) {
+                    std::cout << "[MergeSimple] Cannot determine merge direction, skipping" << std::endl;
+                    continue;
+                }
+                
+                // Połącz roads z obu highways
+                std::vector<int> mergedRoads;
+                
+                // Dodaj roads z hw1 (w odpowiedniej kolejności)
+                if (hw1.endIntersectionIdx == (int)nodeIdx) {
+                    mergedRoads.insert(mergedRoads.end(), hw1.roadIndices.begin(), hw1.roadIndices.end());
+                } else {
+                    mergedRoads.insert(mergedRoads.end(), hw1.roadIndices.rbegin(), hw1.roadIndices.rend());
+                }
+                
+                // Dodaj roads z hw2 (w odpowiedniej kolejności)
+                if (hw2.startIntersectionIdx == (int)nodeIdx) {
+                    mergedRoads.insert(mergedRoads.end(), hw2.roadIndices.begin(), hw2.roadIndices.end());
+                } else {
+                    mergedRoads.insert(mergedRoads.end(), hw2.roadIndices.rbegin(), hw2.roadIndices.rend());
+                }
+                
+                float mergedLength = hw1.totalLength + hw2.totalLength;
+                
+                std::cout << "[MergeSimple] Creating merged highway: " 
+                          << newStart << " -> " << newEnd 
+                          << " (length=" << mergedLength << ", roads=" << mergedRoads.size() << ")" << std::endl;
+                
+                // Utwórz nowy połączony highway
+                Highway mergedHighway(newStart, newEnd, mergedRoads, mergedLength);
+                
+                // Usuń stare highways (od tyłu!)
+                int toRemove1 = std::max(hw1Idx, hw2Idx);
+                int toRemove2 = std::min(hw1Idx, hw2Idx);
+                
+                m_Highways.erase(m_Highways.begin() + toRemove1);
+                m_Highways.erase(m_Highways.begin() + toRemove2);
+                
+                // Dodaj nowy
+                m_Highways.push_back(mergedHighway);
+                
+                // Usuń flagę intersection z tego węzła
+                node.isIntersection = false;
+                
+                mergedCount++;
+                std::cout << "[MergeSimple] Successfully merged!" << std::endl;
+                
+                // WAŻNE: Przerwij pętlę po modyfikacji, bo indeksy się zmieniły
+                // Zacznij od nowa
+                nodeIdx = 0;
+            }
+        }
+        
+        std::cout << "[MergeSimple] Total merges performed: " << mergedCount << std::endl;
+        std::cout << "[MergeSimple] Final highways: " << m_Highways.size() << std::endl;
+        std::cout << "[MergeSimple] =======================================" << std::endl;
     }
 
     void HighwayGenerator::PostProcessIntersections() {
-        for (size_t i = 0; i < m_RoadNodes.size(); ++i) {
-            if (m_RoadNodes[i].isIntersection) {
-                SplitHighwaysAtIntersection(i);
+        std::cout << "[PostProcess] Checking all intersections against highways..." << std::endl;
+        
+        int totalSplits = 0;
+        
+        // Dla każdego węzła który jest intersection
+        for (size_t nodeIdx = 0; nodeIdx < m_RoadNodes.size(); ++nodeIdx) {
+            const Point& intersection = m_RoadNodes[nodeIdx];
+            
+            if (!intersection.isIntersection) {
+                continue;
+            }
+            
+            std::cout << "[PostProcess] Checking intersection at node " << nodeIdx << std::endl;
+            
+            // Sprawdź wszystkie highways (od tyłu, bo będziemy modyfikować listę)
+            for (int hwIdx = m_Highways.size() - 1; hwIdx >= 0; --hwIdx) {
+                const Highway& highway = m_Highways[hwIdx];
+                
+                // Pomiń highways które zaczynają się lub kończą w tym węźle
+                if (highway.startIntersectionIdx == (int)nodeIdx || 
+                    highway.endIntersectionIdx == (int)nodeIdx) {
+                    continue;
+                }
+                
+                // Sprawdź czy punkt leży na tym highway
+                if (IsPointOnHighway(intersection, highway)) {
+                    std::cout << "[PostProcess] Intersection " << nodeIdx 
+                              << " lies on highway " << hwIdx 
+                              << " (" << highway.startIntersectionIdx 
+                              << " -> " << highway.endIntersectionIdx << ")" << std::endl;
+                    
+                    // Znajdź pozycję węzła w sekwencji roads
+                    std::vector<int> firstPart;
+                    std::vector<int> secondPart;
+                    bool foundSplit = false;
+                    
+                    for (int roadIdx : highway.roadIndices) {
+                        if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+                        
+                        const Road& road = m_Roads[roadIdx];
+                        
+                        if (!foundSplit) {
+                            firstPart.push_back(roadIdx);
+                            
+                            // Jeśli koniec tego road to nasz węzeł, przełącz na drugą część
+                            if (road.endNodeIdx == (int)nodeIdx) {
+                                foundSplit = true;
+                            }
+                        } else {
+                            secondPart.push_back(roadIdx);
+                        }
+                    }
+                    
+                    if (firstPart.empty() || secondPart.empty()) {
+                        std::cout << "[PostProcess] Cannot split highway " << hwIdx 
+                                  << " (invalid split point)" << std::endl;
+                        continue;
+                    }
+                    
+                    // Oblicz długości
+                    float length1 = 0.0f;
+                    for (int roadIdx : firstPart) {
+                        const Road& road = m_Roads[roadIdx];
+                        const Point& start = m_RoadNodes[road.startNodeIdx];
+                        const Point& end = m_RoadNodes[road.endNodeIdx];
+                        float dx = end.x - start.x;
+                        float dy = end.y - start.y;
+                        length1 += std::sqrt(dx * dx + dy * dy);
+                    }
+                    
+                    float length2 = 0.0f;
+                    for (int roadIdx : secondPart) {
+                        const Road& road = m_Roads[roadIdx];
+                        const Point& start = m_RoadNodes[road.startNodeIdx];
+                        const Point& end = m_RoadNodes[road.endNodeIdx];
+                        float dx = end.x - start.x;
+                        float dy = end.y - start.y;
+                        length2 += std::sqrt(dx * dx + dy * dy);
+                    }
+                    
+                    // Utwórz dwa nowe highways
+                    Highway hw1(highway.startIntersectionIdx, nodeIdx, firstPart, length1);
+                    Highway hw2(nodeIdx, highway.endIntersectionIdx, secondPart, length2);
+                    
+                    std::cout << "[PostProcess] Split highway into:" << std::endl;
+                    std::cout << "  Part 1: " << hw1.startIntersectionIdx 
+                              << " -> " << hw1.endIntersectionIdx 
+                              << " (length=" << hw1.totalLength << ")" << std::endl;
+                    std::cout << "  Part 2: " << hw2.startIntersectionIdx 
+                              << " -> " << hw2.endIntersectionIdx 
+                              << " (length=" << hw2.totalLength << ")" << std::endl;
+                    
+                    // Usuń stary highway
+                    m_Highways.erase(m_Highways.begin() + hwIdx);
+                    
+                    // Dodaj nowe highways
+                    m_Highways.push_back(hw1);
+                    m_Highways.push_back(hw2);
+                    
+                    totalSplits++;
+                }
             }
         }
+        
+        std::cout << "[PostProcess] Total highways split: " << totalSplits << std::endl;
     }
 
     //  Helpers Math 
@@ -690,7 +1558,64 @@ namespace CityGen {
         return DistancePointToSegmentClosest(p, a, b, c);
     }
 
-    bool HighwayGenerator::IsNodeOnHighway(int nodeIdx, const Highway& highway, float tolerance) const {
+    bool HighwayGenerator::IsPointOnHighway(const Point& point, const Highway& highway, float tolerance) const {
+        // Sprawdź każdy road w highway
+        for (int roadIdx : highway.roadIndices) {
+            if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+            
+            const Road& road = m_Roads[roadIdx];
+            const Point& roadStart = m_RoadNodes[road.startNodeIdx];
+            const Point& roadEnd = m_RoadNodes[road.endNodeIdx];
+            
+            // Sprawdź czy punkt jest jednym z końców tego segmentu
+            // Porównanie przez indeks węzła
+            for (size_t i = 0; i < m_RoadNodes.size(); ++i) {
+                if (&m_RoadNodes[i] == &point) {
+                    if (road.startNodeIdx == (int)i || road.endNodeIdx == (int)i) {
+                        return true;
+                    }
+                }
+            }
+            
+            // Oblicz odległość punktu od segmentu
+            Point closest;
+            float dx = roadEnd.x - roadStart.x;
+            float dy = roadEnd.y - roadStart.y;
+            float l2 = dx * dx + dy * dy;
+            
+            if (l2 < 0.01f) continue; // Segment zbyt krótki
+            
+            float t = ((point.x - roadStart.x) * dx + (point.y - roadStart.y) * dy) / l2;
+            t = std::max(0.0f, std::min(1.0f, t));
+            
+            closest.x = roadStart.x + t * dx;
+            closest.y = roadStart.y + t * dy;
+            
+            float distX = point.x - closest.x;
+            float distY = point.y - closest.y;
+            float dist = std::sqrt(distX * distX + distY * distY);
+            
+            if (dist < tolerance) {
+                // Dodatkowo sprawdź czy punkt leży między końcami segmentu
+                float segmentLength = std::sqrt(l2);
+                
+                float distToStart = std::sqrt(
+                    (point.x - roadStart.x) * (point.x - roadStart.x) +
+                    (point.y - roadStart.y) * (point.y - roadStart.y)
+                );
+                
+                float distToEnd = std::sqrt(
+                    (point.x - roadEnd.x) * (point.x - roadEnd.x) +
+                    (point.y - roadEnd.y) * (point.y - roadEnd.y)
+                );
+                
+                // Punkt leży na segmencie jeśli suma odległości ≈ długość segmentu
+                if (std::abs((distToStart + distToEnd) - segmentLength) < tolerance) {
+                    return true;
+                }
+            }
+        }
+        
         return false;
     }
 

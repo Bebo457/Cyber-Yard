@@ -490,6 +490,7 @@ namespace ScotlandYard
             m_vec_HighwayNodes = hg.GetRoadNodes();
             m_vec_HighwayRoads = hg.GetRoads();
             m_vec_Highways = hg.GetHighways();
+            m_PopulationDensity = hg.GetPopulationDensity();
 
             // Zaktualizuj teksturę podglądu natychmiast (w pamięci RAM)
             GeneratePreviewTexture();
@@ -511,6 +512,7 @@ namespace ScotlandYard
             if (!surface) return;
 
             SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
+            
 
             auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b)
                 {
@@ -521,6 +523,22 @@ namespace ScotlandYard
                         pixels[y * W + x] = color;
                     }
                 };
+
+
+            if (!m_PopulationDensity.empty()) {
+                for (int y = 0; y < H && y < (int)m_PopulationDensity.size(); ++y) {
+                    for (int x = 0; x < W && x < (int)m_PopulationDensity[y].size(); ++x) {
+                        float density = m_PopulationDensity[y][x];
+                        // Gradient od ciemnego niebieskiego (niska gęstość) do pomarańczowego (wysoka gęstość)
+                        Uint8 r = (Uint8)(density * 180.0f + 20.0f);
+                        Uint8 g = (Uint8)(density * 80.0f + 10.0f);
+                        Uint8 b = (Uint8)(30.0f - density * 20.0f);
+                        SetPixel(x, y, r, g, b);
+                    }
+                }
+            } else {
+                SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
+            }
 
             // 2. Rysuj Parki
             for (const auto& park : m_vec_Parks)

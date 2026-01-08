@@ -77,6 +77,7 @@ namespace ScotlandYard {
             std::vector<CityGen::Point> m_vec_HighwayNodes;
             std::vector<CityGen::Road>  m_vec_HighwayRoads;
             std::vector<CityGen::Highway> m_vec_Highways;
+            std::vector<std::vector<float>> m_PopulationDensity;
 
 
             GLuint m_VAO_PreviewQuad = 0;
@@ -96,7 +97,7 @@ namespace ScotlandYard {
             void TryGenerateMap();
             void RandomizeSeed();
 
-            // Metody do obs³ugi tekstury i zapisu
+            // Metody do obsï¿½ugi tekstury i zapisu
             void GeneratePreviewTexture();
             void RenderPreviewTexture(Core::Application* p_App);
             void CreatePreviewQuad();
