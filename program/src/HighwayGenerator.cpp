@@ -11,6 +11,9 @@ namespace CityGen {
     HighwayGenerator::HighwayGenerator(int width, int height)
         : m_Width(width)
         , m_Height(height)
+        , m_MaxBridges(999) // Default: unlimited
+        , m_BridgesCreated(0)
+        , m_IsSeeding(false)
     {
         // Inicjalizacja generatora liczb losowych
         std::srand(static_cast<unsigned int>(std::time(nullptr)));
@@ -29,6 +32,9 @@ namespace CityGen {
         m_Highways.clear();
         m_ActiveEnds.clear();
         m_SleepingBranches.clear();
+        m_BridgesCreated = 0; // Reset bridge counter
+
+        std::cout << "[CityGen] Bridge limit set to: " << m_MaxBridges << std::endl;
 
         // KROK 1: Generowanie mapy gęstości zaludnienia
         // Uwzględnia ona strefy (parki, rzeki) poprzez m_ZoneMask
@@ -44,10 +50,15 @@ namespace CityGen {
         std::cout << "[Highway] Starting generation - initial setup..." << std::endl;
         GenerateHighways();
 
+        // KROK 2.5: Seed dodatkowych mostów jeśli nie osiągnięto targetu
+        std::cout << "[CityGen] Phase 1.5: Seeding additional bridges if needed..." << std::endl;
+        SeedAdditionalBridges();
+
         // Post-processing dla Highways (dzielenie na skrzyżowaniach, usuwanie duplikatów)
         std::cout << "[CityGen] Phase 1 Post-processing..." << std::endl;
         PostProcessIntersections();
         MergeSimpleIntersections();
+        RemoveShortHighways();
         // RemoveRedundantParallelHighways();
         RemoveParallelHighwaysByTrend();
         // KROK 3: Faza 2 - Ulice lokalne (Streets / Taxi Routes)
@@ -59,9 +70,7 @@ namespace CityGen {
             << ", Roads: " << m_Roads.size()
             << ", Highways: " << m_Highways.size() << std::endl;
 
-                std::cout << "[CityGen] Generation complete. Nodes: " << m_RoadNodes.size()
-            << ", Roads: " << m_Roads.size()
-            << ", Highways: " << m_Highways.size() << std::endl;
+        std::cout << "[CityGen] Bridges created: " << m_BridgesCreated << " / " << m_MaxBridges << std::endl;
 
         // DODAJ TEN KOD TUTAJ:
         std::cout << "\n[CityGen] ====== HIGHWAYS SUMMARY ======" << std::endl;
@@ -69,14 +78,28 @@ namespace CityGen {
             const Highway& hw = m_Highways[i];
             const Point& startNode = m_RoadNodes[hw.startIntersectionIdx];
             const Point& endNode = m_RoadNodes[hw.endIntersectionIdx];
-            
+
             std::cout << "[Highway #" << i << "] "
                     << "Start: (" << startNode.x << ", " << startNode.y << ") -> "
                     << "End: (" << endNode.x << ", " << endNode.y << ") | "
-                    << "Length: " << hw.totalLength 
+                    << "Length: " << hw.totalLength
                     << " | Roads: " << hw.roadIndices.size() << std::endl;
         }
         std::cout << "[CityGen] ============================" << std::endl;
+
+        // Bridge diagnostics
+        std::cout << "\n[CityGen] ====== BRIDGE DIAGNOSTICS ======" << std::endl;
+        std::cout << "[Bridge] Target bridges: " << m_MaxBridges << std::endl;
+        std::cout << "[Bridge] Total bridges created: " << m_BridgesCreated << std::endl;
+        std::cout << "[Bridge]   - Natural bridges (during GenerateHighways): " << m_BridgeDiag.naturalBridges << std::endl;
+        std::cout << "[Bridge]   - Seeded bridges (during SeedAdditionalBridges): " << m_BridgeDiag.seededBridges << std::endl;
+        std::cout << "[Bridge] Agents blocked by limit: " << m_BridgeDiag.blockedByLimit << std::endl;
+        std::cout << "[Bridge] Seed phase statistics:" << std::endl;
+        std::cout << "[Bridge]   - Candidates found near river: " << m_BridgeDiag.candidatesFound << std::endl;
+        std::cout << "[Bridge]   - Spawn points selected: " << m_BridgeDiag.spawnPointsSelected << std::endl;
+        std::cout << "[Bridge]   - Agents spawned: " << m_BridgeDiag.agentsSpawned << std::endl;
+        std::cout << "[Bridge]   - Seed growth iterations: " << m_BridgeDiag.seededIterations << std::endl;
+        std::cout << "[CityGen] ========================================" << std::endl;
     }
 
 
@@ -89,41 +112,88 @@ namespace CityGen {
         std::vector<Center> centers;
 
         // Parametry generacji
-        const int numCenters = 20 + rand() % 4; // 4-7 centrów
+        const int numCenters = 10; // Stała liczba centrów
+        // const int numCenters = 10 + rand() % 4; // 10-13 centrów
         const float minDistance = std::min(m_Width, m_Height) * 0.25f; // Min odległość między centrami
         const int maxAttempts = 30; // Maksymalna liczba prób na centrum
+        const float MIN_RIVER_DISTANCE = 80.0f; // Minimalna odległość od brzegu rzeki
+
+        // Sprawdź czy mamy rzekę - jeśli tak, wymuszaj centra po obu stronach
+        bool hasRiver = HasRiver();
+        int leftSideCenters = 0;
+        int rightSideCenters = 0;
+        int requiredPerSide = hasRiver ? 2 : 0; // Minimum 2 centra po każdej stronie
 
         for (int i = 0; i < numCenters; ++i) {
             bool placed = false;
-            
+
+            // Określ docelową stronę rzeki (jeśli trzeba wymusić balans)
+            int targetSide = 0; // 0 = dowolna, -1 = lewa, 1 = prawa
+            if (hasRiver) {
+                if (leftSideCenters < requiredPerSide) {
+                    targetSide = -1;
+                } else if (rightSideCenters < requiredPerSide) {
+                    targetSide = 1;
+                }
+            }
+
             for (int attempt = 0; attempt < maxAttempts && !placed; ++attempt) {
                 // Losowa pozycja z marginesem od krawędzi
                 float x = (m_Width * 0.1f) + (rand() % (int)(m_Width * 0.8f));
                 float y = (m_Height * 0.1f) + (rand() % (int)(m_Height * 0.8f));
-                
+
+                // NOWE: Sprawdź wymagania dotyczące rzeki
+                if (hasRiver) {
+                    // Sprawdź odległość od rzeki
+                    float distToRiver = DistanceToRiver((int)x, (int)y);
+                    if (distToRiver < MIN_RIVER_DISTANCE) {
+                        continue; // Za blisko rzeki
+                    }
+
+                    // Sprawdź czy jest po właściwej stronie rzeki (jeśli wymuszamy)
+                    if (targetSide != 0) {
+                        int actualSide = DetermineRiverSide((int)x, (int)y);
+                        if (actualSide != targetSide) {
+                            continue; // Niewłaściwa strona rzeki
+                        }
+                    }
+                }
+
                 // Sprawdź odległość od innych centrów
                 bool tooClose = false;
                 for (const auto& existing : centers) {
                     float dx = x - existing.x;
                     float dy = y - existing.y;
                     float dist = std::sqrt(dx * dx + dy * dy);
-                    
+
                     if (dist < minDistance) {
                         tooClose = true;
                         break;
                     }
                 }
-                
+
                 if (!tooClose) {
                     // Losowe parametry centrum
                     float radius = 100.0f + (rand() % 250); // 100-350
                     float intensity = 0.7f + (rand() % 30) / 100.0f; // 0.7-1.0
-                    
+
                     centers.push_back({x, y, radius, intensity});
                     placed = true;
-                    
-                    std::cout << "[PopDensity] Center " << i << ": pos=(" << x << "," << y 
-                            << "), radius=" << radius << ", intensity=" << intensity << std::endl;
+
+                    // Zlicz centra po stronach rzeki
+                    if (hasRiver) {
+                        int side = DetermineRiverSide((int)x, (int)y);
+                        if (side == -1) leftSideCenters++;
+                        else if (side == 1) rightSideCenters++;
+                    }
+
+                    std::cout << "[PopDensity] Center " << i << ": pos=(" << x << "," << y
+                            << "), radius=" << radius << ", intensity=" << intensity;
+                    if (hasRiver) {
+                        int side = DetermineRiverSide((int)x, (int)y);
+                        std::cout << ", river_side=" << (side == -1 ? "LEFT" : (side == 1 ? "RIGHT" : "ON"));
+                    }
+                    std::cout << std::endl;
                 }
             }
             
@@ -133,27 +203,55 @@ namespace CityGen {
                 for (int attempt = 0; attempt < maxAttempts && !placed; ++attempt) {
                     float x = (m_Width * 0.1f) + (rand() % (int)(m_Width * 0.8f));
                     float y = (m_Height * 0.1f) + (rand() % (int)(m_Height * 0.8f));
-                    
+
+                    // NOWE: Sprawdź wymagania dotyczące rzeki (także w fallback)
+                    if (hasRiver) {
+                        float distToRiver = DistanceToRiver((int)x, (int)y);
+                        if (distToRiver < MIN_RIVER_DISTANCE * 0.7f) { // Nieco zrelaksowany wymóg
+                            continue;
+                        }
+
+                        if (targetSide != 0) {
+                            int actualSide = DetermineRiverSide((int)x, (int)y);
+                            if (actualSide != targetSide) {
+                                continue;
+                            }
+                        }
+                    }
+
                     bool tooClose = false;
                     for (const auto& existing : centers) {
                         float dx = x - existing.x;
                         float dy = y - existing.y;
                         float dist = std::sqrt(dx * dx + dy * dy);
-                        
+
                         if (dist < relaxedDistance) {
                             tooClose = true;
                             break;
                         }
                     }
-                    
+
                     if (!tooClose) {
                         float radius = 100.0f + (rand() % 250);
                         float intensity = 0.7f + (rand() % 30) / 100.0f;
                         centers.push_back({x, y, radius, intensity});
                         placed = true;
+
+                        // Zlicz centra po stronach rzeki
+                        if (hasRiver) {
+                            int side = DetermineRiverSide((int)x, (int)y);
+                            if (side == -1) leftSideCenters++;
+                            else if (side == 1) rightSideCenters++;
+                        }
                     }
                 }
             }
+        }
+
+        // Log końcowy z informacją o balansie stron rzeki
+        if (hasRiver) {
+            std::cout << "[PopDensity] River balance: LEFT=" << leftSideCenters
+                      << ", RIGHT=" << rightSideCenters << std::endl;
         }
 
         std::cout << "[PopDensity] Generated " << centers.size() << " population centers" << std::endl;
@@ -417,6 +515,199 @@ namespace CityGen {
         }
         UpdateSleepingBranches();
         }
+
+        // Sprawdź czy wszystkie centra populacji są połączone
+        CheckAndSeedUnconnectedCenters();
+        
+        // Jeśli zasiano nowe highways, kontynuuj generację
+        if (!m_ActiveEnds.empty()) {
+            std::cout << "[Highway] Continuing generation for seeded centers..." << std::endl;
+            
+            while ((!m_ActiveEnds.empty() || !m_SleepingBranches.empty()) && iterations++ < 5000) {
+                // Identyczna logika jak w głównej pętli
+                for (int i = m_ActiveEnds.size() - 1; i >= 0; --i) {
+                    bool grown = GrowOneStep(m_ActiveEnds[i]);
+                    
+                    if (!grown) {
+                        if (m_ActiveEnds[i].type == RoadType::HIGHWAY && !m_ActiveEnds[i].roadsSinceLastIntersection.empty()) {
+                            CreateHighway(m_ActiveEnds[i].lastIntersectionIdx, m_ActiveEnds[i].currentNodeIdx, m_ActiveEnds[i].roadsSinceLastIntersection);
+                        }
+                        m_ActiveEnds.erase(m_ActiveEnds.begin() + i);
+                        continue;
+                    }
+                    
+                    size_t activeEndsBeforeCreate = m_ActiveEnds.size();
+                    CreateBranchCandidates(m_ActiveEnds[i]);
+                    size_t activeEndsAfterCreate = m_ActiveEnds.size();
+                    
+                    bool newEndCreated = (activeEndsAfterCreate > activeEndsBeforeCreate);
+                    
+                    if (newEndCreated) {
+                        m_ActiveEnds.erase(m_ActiveEnds.begin() + i);
+                        continue;
+                    }
+                }
+                UpdateSleepingBranches();
+            }
+        }
+
+    }
+
+    void HighwayGenerator::SeedAdditionalBridges() {
+        if (!HasRiver()) return;
+        if (m_BridgesCreated >= m_MaxBridges) return;
+
+        int bridgesNeeded = m_MaxBridges - m_BridgesCreated;
+        std::cout << "[SeedBridges] Need " << bridgesNeeded << " more bridges" << std::endl;
+
+        // Struktura kandydata na punkt startu mostu
+        struct BridgeCandidate {
+            int nodeIdx;
+            float distToRiver;
+            int side; // -1 lub 1
+            Point dirToRiver;
+        };
+
+        std::vector<BridgeCandidate> candidates;
+
+        // Znajdź wszystkie węzły highway w pobliżu rzeki
+        const float MAX_DISTANCE_FROM_RIVER = 400.0f;
+        const float MIN_DISTANCE_FROM_RIVER = 30.0f;
+
+        for (size_t i = 0; i < m_RoadNodes.size(); ++i) {
+            const Point& node = m_RoadNodes[i];
+
+            // Sprawdź czy węzeł należy do jakiejś drogi (jest podłączony)
+            if (node.connectedRoadIndices.empty()) continue;
+
+            // Sprawdź odległość od rzeki
+            float distToRiver = DistanceToRiver((int)node.x, (int)node.y);
+
+            if (distToRiver < MIN_DISTANCE_FROM_RIVER || distToRiver > MAX_DISTANCE_FROM_RIVER) {
+                continue; // Za blisko lub za daleko
+            }
+
+            // Określ stronę rzeki
+            int side = DetermineRiverSide((int)node.x, (int)node.y);
+            if (side == 0) continue; // Na rzece
+
+            // Znajdź kierunek do najbliższego punktu rzeki
+            Point dirToRiver(0.0f, 0.0f);
+            float minDist = 999999.0f;
+
+            for (int dy = -100; dy <= 100; dy += 5) {
+                for (int dx = -100; dx <= 100; dx += 5) {
+                    int rx = (int)node.x + dx;
+                    int ry = (int)node.y + dy;
+
+                    if (rx >= 0 && rx < m_Width && ry >= 0 && ry < m_Height) {
+                        if (IsRiver(rx, ry)) {
+                            float dist = std::sqrt((float)(dx * dx + dy * dy));
+                            if (dist < minDist) {
+                                minDist = dist;
+                                dirToRiver.x = dx / dist;
+                                dirToRiver.y = dy / dist;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (minDist < 999999.0f) {
+                candidates.push_back({(int)i, distToRiver, side, dirToRiver});
+            }
+        }
+
+        m_BridgeDiag.candidatesFound = (int)candidates.size(); // Diagnostic
+        std::cout << "[SeedBridges] Found " << candidates.size() << " candidate nodes near river" << std::endl;
+
+        if (candidates.empty()) {
+            std::cout << "[SeedBridges] No suitable nodes found near river" << std::endl;
+            return;
+        }
+
+        // Sortuj kandydatów po odległości od rzeki (najbliżsi pierwsi)
+        std::sort(candidates.begin(), candidates.end(),
+            [](const BridgeCandidate& a, const BridgeCandidate& b) {
+                return a.distToRiver < b.distToRiver;
+            });
+
+        // Wybierz bridgesNeeded kandydatów, starając się o równomierne rozmieszczenie
+        std::vector<BridgeCandidate> selected;
+        const float MIN_DISTANCE_BETWEEN_BRIDGES = 100.0f;
+
+        for (const auto& candidate : candidates) {
+            if ((int)selected.size() >= bridgesNeeded) break;
+
+            // Sprawdź czy nie jest za blisko już wybranych
+            bool tooClose = false;
+            for (const auto& sel : selected) {
+                Point& selNode = m_RoadNodes[sel.nodeIdx];
+                Point& candNode = m_RoadNodes[candidate.nodeIdx];
+
+                float dx = selNode.x - candNode.x;
+                float dy = selNode.y - candNode.y;
+                float dist = std::sqrt(dx * dx + dy * dy);
+
+                if (dist < MIN_DISTANCE_BETWEEN_BRIDGES) {
+                    tooClose = true;
+                    break;
+                }
+            }
+
+            if (!tooClose) {
+                selected.push_back(candidate);
+            }
+        }
+
+        m_BridgeDiag.spawnPointsSelected = (int)selected.size(); // Diagnostic
+        std::cout << "[SeedBridges] Selected " << selected.size() << " spawn points" << std::endl;
+
+        // Włącz tryb seedowania
+        m_IsSeeding = true;
+
+        // Spawn agentów dla każdego wybranego punktu
+        for (const auto& spawn : selected) {
+            Point& startNode = m_RoadNodes[spawn.nodeIdx];
+
+            // Oblicz kierunek prostopadły do rzeki
+            Point bridgeDir = FindRiverCrossingDirection(startNode, spawn.dirToRiver);
+
+            std::cout << "[SeedBridges] Spawning bridge agent from node " << spawn.nodeIdx
+                      << " at (" << startNode.x << ", " << startNode.y << ")" << std::endl;
+
+            // Utwórz agenta z wyłączonym branchowaniem - daj mu pełny limit iteracji jak normalny highway
+            HighwayEnd agent(spawn.nodeIdx, bridgeDir, HIGHWAY_MAX_ITERATIONS, RoadType::HIGHWAY);
+            agent.disableBranching = true; // Wyłącz tworzenie gałęzi bocznych
+            m_ActiveEnds.push_back(agent);
+            m_BridgeDiag.agentsSpawned++; // Diagnostic
+        }
+
+        // Uruchom pętlę wzrostu dla nowych agentów
+        std::cout << "[SeedBridges] Growing bridge agents..." << std::endl;
+        int iterations = 0;
+        while (!m_ActiveEnds.empty() && iterations++ < 200) {
+            m_BridgeDiag.seededIterations++; // Diagnostic
+            for (int i = m_ActiveEnds.size() - 1; i >= 0; --i) {
+                bool grown = GrowOneStep(m_ActiveEnds[i]);
+
+                if (!grown) {
+                    m_ActiveEnds.erase(m_ActiveEnds.begin() + i);
+                }
+            }
+
+            // Przerwij gdy osiągniemy target
+            if (m_BridgesCreated >= m_MaxBridges) {
+                std::cout << "[SeedBridges] Target bridges reached, stopping" << std::endl;
+                break;
+            }
+        }
+
+        // Wyłącz tryb seedowania
+        m_IsSeeding = false;
+
+        std::cout << "[SeedBridges] Seeding complete. Bridges created: " << m_BridgesCreated
+                  << " / " << m_MaxBridges << std::endl;
     }
 
     void HighwayGenerator::GenerateStreets() {
@@ -488,7 +779,14 @@ namespace CityGen {
 
         // 1. Wybierz kierunek
         Point newDir;
-        if (agent.type == RoadType::HIGHWAY) {
+
+        // Jeśli jesteśmy na moście, używaj zablokowanego kierunku
+        if (agent.isOnBridge) {
+            newDir = agent.bridgeDirection;
+            if (isHighway) {
+                std::cout << "  [GrowOneStep] Using locked bridge direction: (" << newDir.x << ", " << newDir.y << ")" << std::endl;
+            }
+        } else if (agent.type == RoadType::HIGHWAY) {
             std::cout << "  [GrowOneStep] Calling FindBestDirection..." << std::endl;
             newDir = FindBestDirection(currentPos, agent.direction);
             std::cout << "  [GrowOneStep] New direction: (" << newDir.x << ", " << newDir.y << ")" << std::endl;
@@ -496,7 +794,7 @@ namespace CityGen {
             // STREETS: Używaj ApplyGlobalGoals (wzorce Raster/Organic/Radial)
             newDir = ApplyGlobalGoals(currentPos, agent.direction, agent.type);
         }
-        
+
         if (newDir.x == 0 && newDir.y == 0) {
             if (isHighway) {
                 std::cout << "  [GrowOneStep] Zero direction returned, stopping" << std::endl;
@@ -506,6 +804,101 @@ namespace CityGen {
 
         // Długość zależy od typu (autostrady dłuższe, ulice krótsze)
         float len = (agent.type == RoadType::HIGHWAY) ? HIGHWAY_SEGMENT_LENGTH : STREET_SEGMENT_LENGTH;
+
+        // BRIDGE LOGIC: Obsługa zbliżania się do rzeki i przekraczania
+        bool currentOnLand = !IsRiver((int)currentPos.x, (int)currentPos.y);
+
+        if (agent.type == RoadType::HIGHWAY && currentOnLand && !agent.isOnBridge) {
+            // Sprawdź czy zbliżamy się do rzeki
+            if (IsApproachingRiver(currentPos, newDir, len * 2.0f)) {
+                // Sprawdź limit mostów
+                if (m_BridgesCreated >= m_MaxBridges) {
+                    if (isHighway) {
+                        std::cout << "  [GrowOneStep] Bridge limit reached (" << m_BridgesCreated << "/" << m_MaxBridges
+                                  << ") - stopping agent" << std::endl;
+                    }
+                    m_BridgeDiag.blockedByLimit++; // Diagnostic: agent zablokowany przez limit
+                    return false; // Zatrzymaj tego agenta
+                }
+
+                std::cout << "  [GrowOneStep] Approaching river - finding bank intersection" << std::endl;
+
+                // Znajdź dokładny punkt brzegu
+                Point bankIntersection;
+                if (FindRiverBankIntersection(currentPos, newDir, len * 3.0f, bankIntersection)) {
+                    std::cout << "  [GrowOneStep] Creating node at river bank: (" << bankIntersection.x << ", " << bankIntersection.y << ")" << std::endl;
+
+                    // Utwórz węzeł na brzegu rzeki
+                    int bankNodeIdx = CreateOrGetNode(bankIntersection, false);
+
+                    // Utwórz drogę do brzegu
+                    int roadIdx = (int)m_Roads.size();
+                    m_Roads.push_back(Road(agent.currentNodeIdx, bankNodeIdx, agent.type));
+                    m_RoadNodes[agent.currentNodeIdx].connectedRoadIndices.push_back(roadIdx);
+                    m_RoadNodes[bankNodeIdx].connectedRoadIndices.push_back(roadIdx);
+
+                    if (agent.type == RoadType::HIGHWAY) {
+                        agent.roadsSinceLastIntersection.push_back(roadIdx);
+                    }
+
+                    // Teraz rozpocznij most - oblicz kierunek prostopadły
+                    Point bridgeDir = FindRiverCrossingDirection(bankIntersection, newDir);
+                    agent.bridgeDirection = bridgeDir;
+                    agent.isOnBridge = true;
+                    agent.currentNodeIdx = bankNodeIdx;
+                    agent.direction = bridgeDir;
+                    agent.iterationsLeft--;
+
+                    // INCREMENT BRIDGE COUNTER
+                    m_BridgesCreated++;
+                    if (m_IsSeeding) {
+                        m_BridgeDiag.seededBridges++; // Diagnostic: most podczas seedowania
+                    } else {
+                        m_BridgeDiag.naturalBridges++; // Diagnostic: most podczas normalnej generacji
+                    }
+                    std::cout << "  [GrowOneStep] Starting bridge #" << m_BridgesCreated << " (max: " << m_MaxBridges
+                              << ") with direction: (" << bridgeDir.x << ", " << bridgeDir.y << ")" << std::endl;
+                    return true;
+                }
+            }
+        }
+
+        // Jeśli jesteśmy na moście i dotarliśmy do drugiego brzegu
+        if (agent.isOnBridge && IsRiver((int)currentPos.x, (int)currentPos.y)) {
+            // Szukaj wyjścia z rzeki
+            Point exitBankIntersection;
+            if (FindRiverBankIntersection(currentPos, agent.bridgeDirection, len * 3.0f, exitBankIntersection)) {
+                std::cout << "  [GrowOneStep] Found exit bank at: (" << exitBankIntersection.x << ", " << exitBankIntersection.y << ")" << std::endl;
+
+                // Sprawdź czy to rzeczywiście brzeg (wyjście z rzeki)
+                if (!IsRiver((int)exitBankIntersection.x, (int)exitBankIntersection.y)) {
+                    std::cout << "  [GrowOneStep] Creating node at exit bank and ending bridge" << std::endl;
+
+                    // Utwórz węzeł na brzegu wyjścia
+                    int exitBankNodeIdx = CreateOrGetNode(exitBankIntersection, false);
+
+                    // Utwórz drogę do brzegu wyjścia
+                    int roadIdx = (int)m_Roads.size();
+                    m_Roads.push_back(Road(agent.currentNodeIdx, exitBankNodeIdx, agent.type));
+                    m_RoadNodes[agent.currentNodeIdx].connectedRoadIndices.push_back(roadIdx);
+                    m_RoadNodes[exitBankNodeIdx].connectedRoadIndices.push_back(roadIdx);
+
+                    if (agent.type == RoadType::HIGHWAY) {
+                        agent.roadsSinceLastIntersection.push_back(roadIdx);
+                    }
+
+                    // Zakończ tryb mostu
+                    agent.isOnBridge = false;
+                    agent.bridgeDirection = Point(0.0f, 0.0f);
+                    agent.currentNodeIdx = exitBankNodeIdx;
+                    agent.iterationsLeft--;
+
+                    std::cout << "  [GrowOneStep] Bridge completed" << std::endl;
+                    return true;
+                }
+            }
+        }
+
         Point newPos(currentPos.x + newDir.x * len, currentPos.y + newDir.y * len);
 
         if (isHighway) {
@@ -556,6 +949,15 @@ namespace CityGen {
 
         m_RoadNodes[agent.currentNodeIdx].connectedRoadIndices.push_back(newRoadIdx);
         m_RoadNodes[newNodeIdx].connectedRoadIndices.push_back(newRoadIdx);
+
+        // if (agent.type == RoadType::HIGHWAY) {
+        //     ConsumePopulationDensity(newPos, DENSITY_CONSUME_RADIUS, DENSITY_CONSUME_INTENSITY);
+            
+        //     if (isHighway) {
+        //         std::cout << "  [GrowOneStep] Consumed density at (" 
+        //                 << newPos.x << ", " << newPos.y << ")" << std::endl;
+        //     }
+        // }
 
         if (isHighway) {
             std::cout << "  [GrowOneStep] Road created: " << agent.currentNodeIdx 
@@ -636,9 +1038,22 @@ namespace CityGen {
     }
 
     void HighwayGenerator::CreateBranchCandidates(const HighwayEnd& parent) {
+        // Jeśli agent ma wyłączone branchowanie, nie twórz gałęzi
+        if (parent.disableBranching) {
+            return;
+        }
+
         float distThreshold = (parent.type == RoadType::HIGHWAY) ? HIGHWAY_BRANCH_DISTANCE : STREET_BRANCH_DISTANCE;
 
         if (parent.distanceSinceLastBranch > distThreshold) {
+            // Sprawdź czy węzeł rodzica jest na rzece - jeśli tak, blokuj tworzenie branchy
+            Point parentPos = m_RoadNodes[parent.currentNodeIdx];
+            if (IsRiver((int)parentPos.x, (int)parentPos.y)) {
+                std::cout << "    [CreateBranch] BLOCKED: Cannot create branch on river at node "
+                        << parent.currentNodeIdx << std::endl;
+                return;
+            }
+
             PatternType pattern = GetPatternAt(m_RoadNodes[parent.currentNodeIdx].x, m_RoadNodes[parent.currentNodeIdx].y);
 
             // Kąt rozgałęzienia zależny od wzorca
@@ -740,7 +1155,7 @@ namespace CityGen {
 
     void HighwayGenerator::GlobalGoalsForBranch(Branch& branch, const HighwayEnd& parent) {
         // ========== FLAGI AKTYWACJI KRYTERIÓW ==========
-        const bool ENABLE_DENSITY_CHECK = false;
+        const bool ENABLE_DENSITY_CHECK = true;
         const bool ENABLE_BOUNDS_CHECK = false;
         const bool ENABLE_PARALLEL_CHECK = true;
         const bool ENABLE_AREA_COVERAGE_CHECK = false;
@@ -1202,29 +1617,41 @@ namespace CityGen {
 
     float HighwayGenerator::ShootRay(Point pos, float angle) {
         float totalScore = 0.0f;
-        
+        bool bridgeLimitReached = (m_BridgesCreated >= m_MaxBridges);
+
         // Próbkuj wzdłuż promienia
         for (int i = 1; i <= HIGHWAY_VISION_SAMPLES; ++i) {
             float distance = (HIGHWAY_SAMPLE_RADIUS / HIGHWAY_VISION_SAMPLES) * i;
-            
+
             // Pozycja próbki
             Point samplePos(
                 pos.x + std::cos(angle) * distance,
                 pos.y + std::sin(angle) * distance
             );
-            
+
+            // Sprawdź czy próbka jest w granicach
+            int sx = static_cast<int>(samplePos.x);
+            int sy = static_cast<int>(samplePos.y);
+
+            if (sx < 0 || sx >= m_Width || sy < 0 || sy >= m_Height) {
+                break; // Poza mapą - przerwij raycast
+            }
+
+            // RIVER AVOIDANCE: Jeśli limit mostów osiągnięty, traktuj rzekę jako ścianę
+            if (bridgeLimitReached && IsRiver(sx, sy)) {
+                // Rzeka blokuje dalsze próbkowanie - zwróć zero score
+                return 0.0f;
+            }
+
             // Pobierz gęstość (GetDensityAt sprawdza granice)
-            float density = GetDensityAt(
-                static_cast<int>(samplePos.x), 
-                static_cast<int>(samplePos.y)
-            );
-            
+            float density = GetDensityAt(sx, sy);
+
             // Waga odwrotna do odległości
             float weight = density * distance;
-            
+
             totalScore += weight;
         }
-        
+
         return totalScore;
     }
 
@@ -1730,6 +2157,311 @@ namespace CityGen {
         return m_PopulationDensity[y][x];
     }
 
+    uint8_t HighwayGenerator::GetZoneAt(int x, int y) const {
+        if (m_ZoneMask.empty()) return ZONE_NORMAL;
+        if (x < 0 || x >= m_Width || y < 0 || y >= m_Height) return ZONE_NORMAL;
+        return m_ZoneMask[y * m_Width + x];
+    }
+
+    bool HighwayGenerator::IsRiver(int x, int y) const {
+        return GetZoneAt(x, y) == ZONE_RIVER;
+    }
+
+    bool HighwayGenerator::IsPark(int x, int y) const {
+        return GetZoneAt(x, y) == ZONE_PARK;
+    }
+
+    bool HighwayGenerator::IsAnyZone(int x, int y) const {
+        return GetZoneAt(x, y) != ZONE_NORMAL;
+    }
+
+    // Estymuje kierunek rzeki w danym punkcie poprzez analizę sąsiednich pikseli
+    Point HighwayGenerator::EstimateRiverDirection(const Point& pos) const {
+        const int SAMPLE_RADIUS = 20;
+        const int SAMPLE_STEP = 5;
+
+        // Zbierz pozycje pikseli rzeki w okolicy
+        std::vector<Point> riverPixels;
+
+        for (int dy = -SAMPLE_RADIUS; dy <= SAMPLE_RADIUS; dy += SAMPLE_STEP) {
+            for (int dx = -SAMPLE_RADIUS; dx <= SAMPLE_RADIUS; dx += SAMPLE_STEP) {
+                int x = (int)pos.x + dx;
+                int y = (int)pos.y + dy;
+
+                if (IsRiver(x, y)) {
+                    riverPixels.push_back(Point((float)x, (float)y));
+                }
+            }
+        }
+
+        if (riverPixels.size() < 2) {
+            // Nie można określić kierunku, zwróć kierunek prostopadły do domyślnego
+            return Point(0.0f, 1.0f);
+        }
+
+        // Oblicz średni kierunek rzeki używając PCA (uproszczona wersja)
+        float sumX = 0.0f, sumY = 0.0f;
+        for (const auto& p : riverPixels) {
+            sumX += p.x;
+            sumY += p.y;
+        }
+        float meanX = sumX / riverPixels.size();
+        float meanY = sumY / riverPixels.size();
+
+        // Oblicz kowariancję
+        float cov_xx = 0.0f, cov_xy = 0.0f, cov_yy = 0.0f;
+        for (const auto& p : riverPixels) {
+            float dx = p.x - meanX;
+            float dy = p.y - meanY;
+            cov_xx += dx * dx;
+            cov_xy += dx * dy;
+            cov_yy += dy * dy;
+        }
+
+        // Oblicz kierunek głównej osi (największa wariancja = kierunek rzeki)
+        float trace = cov_xx + cov_yy;
+        float det = cov_xx * cov_yy - cov_xy * cov_xy;
+        float lambda1 = trace / 2.0f + std::sqrt(trace * trace / 4.0f - det);
+
+        // Wektor własny dla lambda1
+        Point riverDir;
+        if (std::abs(cov_xy) > 0.001f) {
+            riverDir.x = lambda1 - cov_yy;
+            riverDir.y = cov_xy;
+        } else {
+            riverDir.x = 1.0f;
+            riverDir.y = 0.0f;
+        }
+
+        // Normalizuj
+        float len = std::sqrt(riverDir.x * riverDir.x + riverDir.y * riverDir.y);
+        if (len > 0.001f) {
+            riverDir.x /= len;
+            riverDir.y /= len;
+        }
+
+        return riverDir;
+    }
+
+    // Oblicza dystans przekroczenia rzeki w danym kierunku
+    float HighwayGenerator::CalculateRiverCrossingDistance(const Point& pos, const Point& direction) const {
+        const float MAX_BRIDGE_LENGTH = 100.0f;
+        const float STEP = 2.0f;
+
+        float distance = 0.0f;
+        Point currentPos = pos;
+
+        // Idź w kierunku i mierz dystans przez rzekę
+        while (distance < MAX_BRIDGE_LENGTH) {
+            currentPos.x += direction.x * STEP;
+            currentPos.y += direction.y * STEP;
+            distance += STEP;
+
+            // Jeśli wyszliśmy poza mapę, zwróć bardzo duży dystans
+            if (currentPos.x < 0 || currentPos.x >= m_Width ||
+                currentPos.y < 0 || currentPos.y >= m_Height) {
+                return 99999.0f;
+            }
+
+            // Jeśli wyszliśmy z rzeki, zwróć dystans
+            if (!IsRiver((int)currentPos.x, (int)currentPos.y)) {
+                return distance;
+            }
+        }
+
+        return MAX_BRIDGE_LENGTH;
+    }
+
+    // Znajduje najlepszy kierunek przekroczenia rzeki (możliwie prostopadły do rzeki)
+    Point HighwayGenerator::FindRiverCrossingDirection(const Point& pos, const Point& currentDir) const {
+        // Estymuj kierunek rzeki
+        Point riverDir = EstimateRiverDirection(pos);
+
+        // Oblicz kierunek prostopadły do rzeki (dwa możliwe kierunki)
+        Point perp1(-riverDir.y, riverDir.x);   // Obrót o 90 stopni w lewo
+        Point perp2(riverDir.y, -riverDir.x);   // Obrót o 90 stopni w prawo
+
+        // Wybierz kierunek prostopadły, który jest bliższy aktualnemu kierunkowi
+        float dot1 = currentDir.x * perp1.x + currentDir.y * perp1.y;
+        float dot2 = currentDir.x * perp2.x + currentDir.y * perp2.y;
+
+        Point basePerp = (dot1 > dot2) ? perp1 : perp2;
+
+        // Testuj kilka kierunków wokół prostopadłego
+        const int NUM_RAYS = 7;
+        const float ANGLE_SPREAD = 0.5f; // ~28 stopni w każdą stronę
+
+        float baseAngle = std::atan2(basePerp.y, basePerp.x);
+        float minDistance = 99999.0f;
+        Point bestDirection = basePerp;
+
+        for (int i = 0; i < NUM_RAYS; ++i) {
+            float angleOffset = ((float)i / (NUM_RAYS - 1) - 0.5f) * 2.0f * ANGLE_SPREAD;
+            float testAngle = baseAngle + angleOffset;
+
+            Point testDir(std::cos(testAngle), std::sin(testAngle));
+            float crossingDist = CalculateRiverCrossingDistance(pos, testDir);
+
+            if (crossingDist < minDistance) {
+                minDistance = crossingDist;
+                bestDirection = testDir;
+            }
+        }
+
+        std::cout << "    [Bridge] River crossing: dir=(" << bestDirection.x << "," << bestDirection.y
+                  << ") distance=" << minDistance << std::endl;
+
+        return bestDirection;
+    }
+
+    // Sprawdza czy mapa zawiera rzekę
+    bool HighwayGenerator::HasRiver() const {
+        if (m_ZoneMask.empty()) return false;
+
+        for (uint8_t zone : m_ZoneMask) {
+            if (zone == ZONE_RIVER) return true;
+        }
+        return false;
+    }
+
+    // Oblicza odległość od najbliższego piksela rzeki
+    float HighwayGenerator::DistanceToRiver(int x, int y) const {
+        if (!HasRiver()) return 99999.0f;
+
+        const int SEARCH_RADIUS = 200;
+        float minDist = 99999.0f;
+
+        for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; ++dy) {
+            for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; ++dx) {
+                int nx = x + dx;
+                int ny = y + dy;
+
+                if (nx >= 0 && nx < m_Width && ny >= 0 && ny < m_Height) {
+                    if (IsRiver(nx, ny)) {
+                        float dist = std::sqrt((float)(dx * dx + dy * dy));
+                        if (dist < minDist) {
+                            minDist = dist;
+                        }
+                    }
+                }
+            }
+        }
+
+        return minDist;
+    }
+
+    // Określa po której stronie rzeki znajduje się punkt (-1: lewa, 0: na rzece, 1: prawa)
+    // Zakładamy że rzeka płynie głównie w poziomie lub pionie
+    int HighwayGenerator::DetermineRiverSide(int x, int y) const {
+        if (!HasRiver()) return 0;
+        if (IsRiver(x, y)) return 0;
+
+        // Znajdź środek rzeki
+        int riverSumX = 0, riverSumY = 0, riverCount = 0;
+        for (int ry = 0; ry < m_Height; ++ry) {
+            for (int rx = 0; rx < m_Width; ++rx) {
+                if (IsRiver(rx, ry)) {
+                    riverSumX += rx;
+                    riverSumY += ry;
+                    riverCount++;
+                }
+            }
+        }
+
+        if (riverCount == 0) return 0;
+
+        float riverCenterX = (float)riverSumX / riverCount;
+        float riverCenterY = (float)riverSumY / riverCount;
+
+        // Estymuj kierunek rzeki w centrum
+        Point riverCenter(riverCenterX, riverCenterY);
+        Point riverDir = EstimateRiverDirection(riverCenter);
+
+        // Oblicz wektor prostopadły do rzeki (normalna)
+        Point normal(-riverDir.y, riverDir.x);
+
+        // Oblicz wektor od centrum rzeki do punktu
+        Point toPoint((float)x - riverCenterX, (float)y - riverCenterY);
+
+        // Oblicz iloczyn skalarny - znak określa stronę
+        float dot = toPoint.x * normal.x + toPoint.y * normal.y;
+
+        return (dot < 0) ? -1 : 1;
+    }
+
+    // Sprawdza czy droga zbliża się do rzeki
+    bool HighwayGenerator::IsApproachingRiver(const Point& pos, const Point& direction, float lookAhead) const {
+        if (!HasRiver()) return false;
+        if (IsRiver((int)pos.x, (int)pos.y)) return false; // Już na rzece
+
+        // Sprawdź punkty wzdłuż kierunku
+        const int SAMPLES = 5;
+        for (int i = 1; i <= SAMPLES; ++i) {
+            float dist = (lookAhead / SAMPLES) * i;
+            Point checkPos(pos.x + direction.x * dist, pos.y + direction.y * dist);
+
+            if (checkPos.x >= 0 && checkPos.x < m_Width && checkPos.y >= 0 && checkPos.y < m_Height) {
+                if (IsRiver((int)checkPos.x, (int)checkPos.y)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Znajduje dokładny punkt przecięcia z brzegiem rzeki
+    bool HighwayGenerator::FindRiverBankIntersection(const Point& start, const Point& direction,
+                                                      float maxDistance, Point& intersection) const {
+        if (!HasRiver()) return false;
+
+        // Binary search dla precyzyjnego punktu przecięcia
+        const float PRECISION = 0.5f; // Dokładność do 0.5 piksela
+        float minDist = 0.0f;
+        float maxDist = maxDistance;
+
+        bool startIsRiver = IsRiver((int)start.x, (int)start.y);
+
+        while (maxDist - minDist > PRECISION) {
+            float midDist = (minDist + maxDist) / 2.0f;
+            Point midPos(start.x + direction.x * midDist, start.y + direction.y * midDist);
+
+            if (midPos.x < 0 || midPos.x >= m_Width || midPos.y < 0 || midPos.y >= m_Height) {
+                maxDist = midDist;
+                continue;
+            }
+
+            bool midIsRiver = IsRiver((int)midPos.x, (int)midPos.y);
+
+            if (startIsRiver) {
+                // Szukamy wyjścia z rzeki (z river na land)
+                if (midIsRiver) {
+                    minDist = midDist; // Dalej w rzece
+                } else {
+                    maxDist = midDist; // Znaleźliśmy granicę
+                }
+            } else {
+                // Szukamy wejścia do rzeki (z land na river)
+                if (!midIsRiver) {
+                    minDist = midDist; // Dalej na lądzie
+                } else {
+                    maxDist = midDist; // Znaleźliśmy granicę
+                }
+            }
+        }
+
+        float finalDist = (minDist + maxDist) / 2.0f;
+        intersection.x = start.x + direction.x * finalDist;
+        intersection.y = start.y + direction.y * finalDist;
+
+        // Sprawdź czy znaleźliśmy sensowny punkt
+        if (finalDist > 0.1f && finalDist < maxDistance) {
+            return true;
+        }
+
+        return false;
+    }
+
     bool HighwayGenerator::DoSegmentsIntersect(const Point& a1, const Point& a2, const Point& b1, const Point& b2, Point& intersection) const {
         float s1_x, s1_y, s2_x, s2_y;
         s1_x = a2.x - a1.x; s1_y = a2.y - a1.y;
@@ -2179,6 +2911,184 @@ namespace CityGen {
         
         std::cout << "[TrendAnalysis] Finished. Removed " << removedCount 
                 << " highways. Final count: " << m_Highways.size() << std::endl;
+    }
+
+    bool HighwayGenerator::IsCenterConnectedToHighway(float centerX, float centerY, float radius) {
+        Point centerPos(centerX, centerY);
+        
+        // Sprawdź czy jakikolwiek highway przechodzi w promieniu tego centrum
+        for (const Highway& highway : m_Highways) {
+            for (int roadIdx : highway.roadIndices) {
+                if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+                if (m_Roads[roadIdx].isDeleted) continue;
+                
+                const Road& road = m_Roads[roadIdx];
+                const Point& roadStart = m_RoadNodes[road.startNodeIdx];
+                const Point& roadEnd = m_RoadNodes[road.endNodeIdx];
+                
+                float dist = DistancePointToSegment(centerPos, roadStart, roadEnd);
+                
+                if (dist < radius) {
+                    return true; // Highway przechodzi blisko centrum
+                }
+            }
+        }
+        
+        return false; // Brak highways w pobliżu
+    }
+
+    void HighwayGenerator::CheckAndSeedUnconnectedCenters() {
+        std::cout << "[SeedCenters] Checking for unconnected population centers..." << std::endl;
+        
+        // Znajdź lokalne maksima gęstości (centra populacji)
+        struct PopulationCenter {
+            float x, y;
+            float density;
+            float radius;
+        };
+        
+        std::vector<PopulationCenter> centers;
+        const int SCAN_STEP = 30; // Co ile pikseli skanować
+        const float MIN_CENTER_DENSITY = 0.4f; // Minimalna gęstość centrum
+        const float CENTER_DETECTION_RADIUS = 80.0f; // Promień dla grupowania centrów
+        
+        // Skanuj mapę w poszukiwaniu pików gęstości
+        for (int y = CENTER_DETECTION_RADIUS; y < m_Height - CENTER_DETECTION_RADIUS; y += SCAN_STEP) {
+            for (int x = CENTER_DETECTION_RADIUS; x < m_Width - CENTER_DETECTION_RADIUS; x += SCAN_STEP) {
+                float density = GetDensityAt(x, y);
+                
+                if (density < MIN_CENTER_DENSITY) continue;
+                
+                // Sprawdź czy to lokalne maksimum
+                bool isLocalMax = true;
+                for (int dy = -SCAN_STEP; dy <= SCAN_STEP; dy += SCAN_STEP) {
+                    for (int dx = -SCAN_STEP; dx <= SCAN_STEP; dx += SCAN_STEP) {
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        if (nx < 0 || nx >= m_Width || ny < 0 || ny >= m_Height) continue;
+                        
+                        if (GetDensityAt(nx, ny) > density) {
+                            isLocalMax = false;
+                            break;
+                        }
+                    }
+                    if (!isLocalMax) break;
+                }
+                
+                if (isLocalMax) {
+                    // Sprawdź czy nie za blisko innego centrum
+                    bool tooClose = false;
+                    for (const auto& existing : centers) {
+                        float dist = std::sqrt(
+                            std::pow(x - existing.x, 2) + 
+                            std::pow(y - existing.y, 2)
+                        );
+                        if (dist < CENTER_DETECTION_RADIUS) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!tooClose) {
+                        centers.push_back({(float)x, (float)y, density, CENTER_DETECTION_RADIUS});
+                        std::cout << "[SeedCenters] Found population center at (" 
+                                << x << ", " << y << ") with density " << density << std::endl;
+                    }
+                }
+            }
+        }
+        
+        std::cout << "[SeedCenters] Found " << centers.size() << " population centers" << std::endl;
+        
+        // Sprawdź które centra nie mają połączenia z highway
+        int seededCount = 0;
+        for (const auto& center : centers) {
+            if (!IsCenterConnectedToHighway(center.x, center.y, center.radius)) {
+                std::cout << "[SeedCenters] Center at (" << center.x << ", " << center.y 
+                        << ") is NOT connected - seeding new highway" << std::endl;
+                
+                // Zainicjuj nowy highway ze środka centrum w losowym kierunku
+                int startNode = CreateOrGetNode(Point(center.x, center.y), true);
+                
+                // Losowy kierunek
+                float angle = (rand() % 360) * 3.14159f / 180.0f;
+                Point direction(std::cos(angle), std::sin(angle));
+                
+                // Dodaj nowego agenta
+                m_ActiveEnds.push_back(
+                    HighwayEnd(startNode, direction, HIGHWAY_MAX_ITERATIONS, RoadType::HIGHWAY)
+                );
+                
+                seededCount++;
+            } else {
+                std::cout << "[SeedCenters] Center at (" << center.x << ", " << center.y 
+                        << ") is already connected" << std::endl;
+            }
+        }
+        
+        std::cout << "[SeedCenters] Seeded " << seededCount << " new highways for unconnected centers" << std::endl;
+    }
+
+    void HighwayGenerator::ConsumePopulationDensity(const Point& pos, float radius, float intensity) {
+        // Określ zakres do przetworzenia (z marginesem)
+        int minX = std::max(0, (int)(pos.x - radius));
+        int maxX = std::min(m_Width - 1, (int)(pos.x + radius));
+        int minY = std::max(0, (int)(pos.y - radius));
+        int maxY = std::min(m_Height - 1, (int)(pos.y + radius));
+        
+        // Dla każdego punktu w zakresie
+        for (int y = minY; y <= maxY; ++y) {
+            for (int x = minX; x <= maxX; ++x) {
+                float dx = x - pos.x;
+                float dy = y - pos.y;
+                float dist = std::sqrt(dx * dx + dy * dy);
+                
+                if (dist < radius) {
+                    // Funkcja Gaussa/rozmycia - dalej = słabszy efekt
+                    float falloff = 1.0f - (dist / radius);
+                    falloff = falloff * falloff; // Kwadratowy zanik
+                    
+                    // Zmniejsz gęstość
+                    float reduction = intensity * falloff;
+                    m_PopulationDensity[y][x] *= (1.0f - reduction);
+                    
+                    // Opcjonalnie: nie pozwól zejść poniżej zera
+                    if (m_PopulationDensity[y][x] < 0.0f) {
+                        m_PopulationDensity[y][x] = 0.0f;
+                    }
+                }
+            }
+        }
+    }
+
+    void HighwayGenerator::RemoveShortHighways() {
+        std::cout << "\n[RemoveShort] ====== REMOVING SHORT HIGHWAYS ======" << std::endl;
+        std::cout << "[RemoveShort] Initial highways: " << m_Highways.size() << std::endl;
+        std::cout << "[RemoveShort] Minimum length threshold: " << MIN_HIGHWAY_LENGTH_POSTPROCESS << std::endl;
+        
+        int removedCount = 0;
+        
+        // Iteruj od tyłu, bo będziemy usuwać elementy
+        for (int i = m_Highways.size() - 1; i >= 0; --i) {
+            const Highway& highway = m_Highways[i];
+            
+            if (highway.totalLength < MIN_HIGHWAY_LENGTH_POSTPROCESS) {
+                std::cout << "[RemoveShort] Removing highway " << i 
+                        << " (" << highway.startIntersectionIdx 
+                        << " -> " << highway.endIntersectionIdx 
+                        << ") length=" << highway.totalLength << std::endl;
+                
+                RemoveHighway(i);
+                removedCount++;
+            }
+        }
+        
+        std::cout << "[RemoveShort] Removed " << removedCount << " short highways" << std::endl;
+        std::cout << "[RemoveShort] Final highways: " << m_Highways.size() << std::endl;
+        std::cout << "[RemoveShort] =======================================" << std::endl;
     }
 
 } // namespace CityGen
