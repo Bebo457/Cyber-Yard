@@ -478,7 +478,7 @@ namespace ScotlandYard {
                 // water renderer
                 m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
                 m_p_WaterRenderer->Initialize();
-                m_p_WaterRenderer->SetWaterHeight(0.1f);
+                m_p_WaterRenderer->SetWaterHeight(0.002f);
                 m_mat4_GlobalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
 
                 m_b_RiverStripLoaded = false;
@@ -849,7 +849,7 @@ namespace ScotlandYard {
                 glPolygonOffset(-1.0f, -1.0f);
 
                 glm::mat4 mat4_MVP_Parks = mat4_Projection * mat4_View;
-                glm::vec2 tileScale(12.0f, 9.0f);
+                glm::vec2 tileScale(3.0f, 2.25f);
 
                 for (const auto& parkRenderer : m_vec_ParkRenderers) {
                     parkRenderer->Render(mat4_MVP_Parks, m_TexGrass, tileScale);

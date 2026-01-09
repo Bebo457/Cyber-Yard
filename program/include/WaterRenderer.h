@@ -46,11 +46,17 @@ private:
     GLuint m_EBO_RiverStrip = 0;
     int m_i_RiverStripIndexCount = 0;
 
+    GLuint m_VAO_RiverStripCaustics = 0;
+    GLuint m_VBO_RiverStripCaustics = 0;
+    GLuint m_EBO_RiverStripCaustics = 0;
+    int m_i_RiverStripCausticsIndexCount = 0;
+    float m_f_CausticsWidthMultiplier = 1.3f;
+
     float m_f_WaterHeight = 0.1f;
     float m_f_VoronoiScale1 = 8.0f;
     float m_f_VoronoiScale2 = 12.0f;
     float m_f_RippleDensity = 1.9f;
-    float m_f_CausticsDepth = 0.5f;
+    float m_f_CausticsDepth = 0.15f;
     glm::vec3 m_vec3_WaterColor = glm::vec3(0.1f, 0.3f, 0.5f);
     glm::vec3 m_vec3_FoamColor = glm::vec3(1.0f, 1.0f, 1.0f);
 

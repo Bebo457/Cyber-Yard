@@ -61,6 +61,18 @@ void WaterRenderer::Cleanup() {
         glDeleteVertexArrays(1, &m_VAO_RiverStrip);
         m_VAO_RiverStrip = 0;
     }
+    if (m_EBO_RiverStripCaustics) {
+        glDeleteBuffers(1, &m_EBO_RiverStripCaustics);
+        m_EBO_RiverStripCaustics = 0;
+    }
+    if (m_VBO_RiverStripCaustics) {
+        glDeleteBuffers(1, &m_VBO_RiverStripCaustics);
+        m_VBO_RiverStripCaustics = 0;
+    }
+    if (m_VAO_RiverStripCaustics) {
+        glDeleteVertexArrays(1, &m_VAO_RiverStripCaustics);
+        m_VAO_RiverStripCaustics = 0;
+    }
     if (m_ShaderProgram) {
         glDeleteProgram(m_ShaderProgram);
         m_ShaderProgram = 0;
@@ -459,6 +471,80 @@ void WaterRenderer::SetRiverStrip(const std::vector<glm::vec2>& vec_CenterlinePa
     glBindVertexArray(0);
 
     m_i_RiverStripIndexCount = static_cast<int>(vec_Indices.size());
+
+    // wider caustics mesh
+    std::vector<float> vec_CausticsVertices;
+    std::vector<unsigned int> vec_CausticsIndices;
+    float causticsHalfWidth = halfWidth * m_f_CausticsWidthMultiplier;
+
+    for (size_t i = 0; i < vec_CenterlinePath.size(); ++i) {
+        glm::vec2 tangent;
+        if (i == 0) {
+            glm::vec2 diff = vec_CenterlinePath[1] - vec_CenterlinePath[0];
+            tangent = diff / glm::length(diff);
+        } else if (i == vec_CenterlinePath.size() - 1) {
+            glm::vec2 diff = vec_CenterlinePath[i] - vec_CenterlinePath[i - 1];
+            tangent = diff / glm::length(diff);
+        } else {
+            glm::vec2 diff = vec_CenterlinePath[i + 1] - vec_CenterlinePath[i - 1];
+            tangent = diff / glm::length(diff);
+        }
+
+        glm::vec2 normal(-tangent.y, tangent.x);
+        glm::vec2 rightPos = vec_CenterlinePath[i] + normal * causticsHalfWidth;
+        glm::vec2 leftPos = vec_CenterlinePath[i] - normal * causticsHalfWidth;
+
+        vec_CausticsVertices.push_back(rightPos.x);
+        vec_CausticsVertices.push_back(m_f_WaterHeight);
+        vec_CausticsVertices.push_back(rightPos.y);
+        vec_CausticsVertices.push_back(rightPos.x);
+        vec_CausticsVertices.push_back(rightPos.y);
+
+        vec_CausticsVertices.push_back(leftPos.x);
+        vec_CausticsVertices.push_back(m_f_WaterHeight);
+        vec_CausticsVertices.push_back(leftPos.y);
+        vec_CausticsVertices.push_back(leftPos.x);
+        vec_CausticsVertices.push_back(leftPos.y);
+    }
+
+    for (size_t i = 0; i < vec_CenterlinePath.size() - 1; ++i) {
+        unsigned int rightCurrent = static_cast<unsigned int>(i * 2);
+        unsigned int leftCurrent = rightCurrent + 1;
+        unsigned int rightNext = static_cast<unsigned int>((i + 1) * 2);
+        unsigned int leftNext = rightNext + 1;
+
+        vec_CausticsIndices.push_back(rightCurrent);
+        vec_CausticsIndices.push_back(leftCurrent);
+        vec_CausticsIndices.push_back(rightNext);
+
+        vec_CausticsIndices.push_back(rightNext);
+        vec_CausticsIndices.push_back(leftCurrent);
+        vec_CausticsIndices.push_back(leftNext);
+    }
+
+    if (!m_VAO_RiverStripCaustics) {
+        glGenVertexArrays(1, &m_VAO_RiverStripCaustics);
+        glGenBuffers(1, &m_VBO_RiverStripCaustics);
+        glGenBuffers(1, &m_EBO_RiverStripCaustics);
+    }
+
+    glBindVertexArray(m_VAO_RiverStripCaustics);
+
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO_RiverStripCaustics);
+    glBufferData(GL_ARRAY_BUFFER, vec_CausticsVertices.size() * sizeof(float), vec_CausticsVertices.data(), GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_RiverStripCaustics);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, vec_CausticsIndices.size() * sizeof(unsigned int), vec_CausticsIndices.data(), GL_DYNAMIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+
+    m_i_RiverStripCausticsIndexCount = static_cast<int>(vec_CausticsIndices.size());
 }
 
 void WaterRenderer::Render(const glm::mat4& mat4_ViewProjection, float f_Time, const glm::mat4& mat4_GlobalScale) {
@@ -664,8 +750,8 @@ void WaterRenderer::RenderRiverStrip(const glm::mat4& mat4_ViewProjection,
     glm::mat4 mat4_CausticsMVP = mat4_ViewProjection * mat4_CausticsModel;
     glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_CausticsMVP));
 
-    glBindVertexArray(m_VAO_RiverStrip);
-    glDrawElements(GL_TRIANGLES, m_i_RiverStripIndexCount, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(m_VAO_RiverStripCaustics);
+    glDrawElements(GL_TRIANGLES, m_i_RiverStripCausticsIndexCount, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
     glUniform1i(causticsLayerLoc, 0);
