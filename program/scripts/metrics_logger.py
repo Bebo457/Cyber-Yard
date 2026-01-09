@@ -2,9 +2,10 @@
 Training Metrics Logger
 ========================
 Shared module for logging training metrics to JSON files.
-Used by MRXPPO.py and DetectiveAI.py
+Used by MRXPPO.py, DetectiveAI.py, and other AI scripts.
 
-Now supports separate files for MrX and Detective training.
+Now supports separate files for MrX and Detective training,
+with algorithm-specific subdirectories (PPO, MAPPO, SAC).
 """
 
 import json
@@ -13,16 +14,47 @@ from datetime import datetime
 from threading import Lock
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, "training_data")
-os.makedirs(DATA_DIR, exist_ok=True)
+BASE_DATA_DIR = os.path.join(SCRIPT_DIR, "training_data")
+os.makedirs(BASE_DATA_DIR, exist_ok=True)
 
-METRICS_FILE = os.path.join(DATA_DIR, "training_metrics.json")
-METRICS_FILE_MRX = os.path.join(DATA_DIR, "training_metrics_mrx.json")
-METRICS_FILE_DET = os.path.join(DATA_DIR, "training_metrics_det.json")
+# Current algorithm (can be set by AI scripts or train_ppo.py)
+_current_algorithm = "ppo"
+
+
+def set_algorithm(algorithm: str):
+    """Set the current algorithm for metrics logging (ppo, mappo, sac)"""
+    global _current_algorithm
+    _current_algorithm = algorithm.lower()
+
+
+def get_data_dir(algorithm: str = None) -> str:
+    """Get algorithm-specific data directory"""
+    algo = algorithm or _current_algorithm
+    data_dir = os.path.join(BASE_DATA_DIR, algo.upper())
+    os.makedirs(data_dir, exist_ok=True)
+    return data_dir
+
+
+def get_metrics_file(algorithm: str = None) -> str:
+    return os.path.join(get_data_dir(algorithm), "training_metrics.json")
+
+
+def get_metrics_file_mrx(algorithm: str = None) -> str:
+    return os.path.join(get_data_dir(algorithm), "training_metrics_mrx.json")
+
+
+def get_metrics_file_det(algorithm: str = None) -> str:
+    return os.path.join(get_data_dir(algorithm), "training_metrics_det.json")
+
+
+# Legacy compatibility - default paths (used when algorithm not specified)
+METRICS_FILE = os.path.join(BASE_DATA_DIR, "PPO", "training_metrics.json")
+METRICS_FILE_MRX = os.path.join(BASE_DATA_DIR, "PPO", "training_metrics_mrx.json")
+METRICS_FILE_DET = os.path.join(BASE_DATA_DIR, "PPO", "training_metrics_det.json")
 
 # Opponent tracking files (written by train_ppo.py, read by AI scripts)
-OPPONENT_FILE_MRX = os.path.join(DATA_DIR, "current_opponent_mrx.txt")
-OPPONENT_FILE_DET = os.path.join(DATA_DIR, "current_opponent_det.txt")
+OPPONENT_FILE_MRX = os.path.join(BASE_DATA_DIR, "current_opponent_mrx.txt")
+OPPONENT_FILE_DET = os.path.join(BASE_DATA_DIR, "current_opponent_det.txt")
 
 _lock_main = Lock()
 _lock_mrx = Lock()
@@ -75,7 +107,7 @@ def log_game(winner: str, mrx_reward: float = 0, det_reward: float = 0,
         mrx_reward: Reward for MrX
         det_reward: Reward for Detective
         rounds: Number of rounds
-        training_role: "mrx" or "detective" - which PPO is being trained
+        training_role: "mrx" or "detective" - which agent is being trained
         opponent: Name of the opponent algorithm
     """
     # Auto-detect training role from rewards if not specified
@@ -92,20 +124,24 @@ def log_game(winner: str, mrx_reward: float = 0, det_reward: float = 0,
         "det_reward": det_reward,
         "rounds": rounds,
         "training_role": training_role,
-        "opponent": opponent
+        "opponent": opponent,
+        "algorithm": _current_algorithm
     }
     
-    # Write to role-specific file only (avoids race condition in parallel mode)
+    # Write to role-specific file in algorithm-specific directory
     if training_role == "mrx":
-        _write_to_file(METRICS_FILE_MRX, game_data, _lock_mrx)
-        print(f"[MrX Metrics] Game #{_count_games(METRICS_FILE_MRX)}: {winner} wins")
+        filepath = get_metrics_file_mrx()
+        _write_to_file(filepath, game_data, _lock_mrx)
+        print(f"[MrX {_current_algorithm.upper()}] Game #{_count_games(filepath)}: {winner} wins")
     elif training_role == "detective":
-        _write_to_file(METRICS_FILE_DET, game_data, _lock_det)
-        print(f"[Det Metrics] Game #{_count_games(METRICS_FILE_DET)}: {winner} wins")
+        filepath = get_metrics_file_det()
+        _write_to_file(filepath, game_data, _lock_det)
+        print(f"[Det {_current_algorithm.upper()}] Game #{_count_games(filepath)}: {winner} wins")
     else:
         # Only write to main file when training_role is unknown (non-parallel mode)
-        _write_to_file(METRICS_FILE, game_data, _lock_main)
-        print(f"[Metrics] Game logged: {winner} wins")
+        filepath = get_metrics_file()
+        _write_to_file(filepath, game_data, _lock_main)
+        print(f"[Metrics {_current_algorithm.upper()}] Game logged: {winner} wins")
 
 
 def _count_games(filepath: str) -> int:

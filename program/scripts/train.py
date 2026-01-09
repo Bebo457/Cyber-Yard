@@ -35,8 +35,8 @@ from threading import Thread, Event, Lock
 from concurrent.futures import ThreadPoolExecutor
 import shutil
 
-# Import metrics utilities for opponent tracking
-from metrics_logger import set_current_opponent
+# Import metrics utilities for opponent tracking and algorithm setting
+from metrics_logger import set_current_opponent, set_algorithm
 
 # =============================================================================
 # CONFIGURATION
@@ -63,6 +63,14 @@ def find_python_executable() -> str:
     return sys.executable
 
 
+# AI script mapping by algorithm
+AI_SCRIPTS = {
+    "ppo": {"mrx": "MRXPPO.py", "detective": "DetectiveAI.py"},
+    "mappo": {"mrx": "MRX_MAPPO.py", "detective": "Detective_MAPPO.py"},
+    "sac": {"mrx": "MRX_SAC.py", "detective": "Detective_SAC.py"},
+}
+
+
 @dataclass
 class TrainingConfig:
     """Training configuration with sensible defaults"""
@@ -73,23 +81,28 @@ class TrainingConfig:
     # Python executable (auto-detected venv or current)
     python_exe: str = field(default_factory=find_python_executable)
     
+    # Algorithm: ppo, mappo, or sac
+    algorithm: str = "ppo"
+    
     @property
     def exe_path(self) -> Path:
         return self.script_dir.parent / "build" / "bin" / "Release" / "ScotlandYardPlusPlus.exe"
     
     @property
     def mrx_ai_script(self) -> Path:
-        return self.script_dir / "MRXPPO.py"
+        script_name = AI_SCRIPTS.get(self.algorithm, AI_SCRIPTS["ppo"])["mrx"]
+        return self.script_dir / script_name
     
     @property
     def detective_ai_script(self) -> Path:
-        return self.script_dir / "DetectiveAI.py"
+        script_name = AI_SCRIPTS.get(self.algorithm, AI_SCRIPTS["ppo"])["detective"]
+        return self.script_dir / script_name
     
     @property
     def data_dir(self) -> Path:
-        """Directory for all training data (logs, metrics, summaries)"""
-        data_path = self.script_dir / "training_data"
-        data_path.mkdir(exist_ok=True)
+        """Directory for all training data (logs, metrics, summaries) - algorithm-specific"""
+        data_path = self.script_dir / "training_data" / self.algorithm.upper()
+        data_path.mkdir(parents=True, exist_ok=True)
         return data_path
     
     @property
@@ -964,33 +977,39 @@ class TrainingStats:
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="PPO Training for Cyber-Yard")
+    parser = argparse.ArgumentParser(description="RL Training for Cyber-Yard (PPO, MAPPO, SAC)")
+    parser.add_argument("--algorithm", type=str, default="ppo", choices=["ppo", "mappo", "sac"],
+                        help="Training algorithm (default: ppo)")
     parser.add_argument("--quick-test", action="store_true", help="Quick test with 10 games")
     parser.add_argument("--opponent", type=str, help="Train vs specific opponent only")
     parser.add_argument("--self-play", action="store_true", help="PPO vs PPO self-play")
     parser.add_argument("--games", type=int, default=500, help="Games per opponent (default: 500)")
     parser.add_argument("--mrx-only", action="store_true", help="Train MrX only")
     parser.add_argument("--detective-only", action="store_true", help="Train Detective only")
-    parser.add_argument("--dashboard", action="store_true", help="Also launch training dashboard")
-    parser.add_argument("--reset-metrics", action="store_true", help="Clear metrics before starting")
-    parser.add_argument("--parallel", action="store_true", help="Train both MrX and Detective in parallel (best CPU usage)")
+    # Default-enabled options (use --no-X to disable)
+    parser.add_argument("--no-dashboard", dest="dashboard", action="store_false", default=True,
+                        help="Disable training dashboard")
+    parser.add_argument("--no-reset-metrics", dest="reset_metrics", action="store_false", default=True,
+                        help="Don't clear metrics before starting")
+    parser.add_argument("--no-parallel", dest="parallel", action="store_false", default=True,
+                        help="Disable parallel training (use sequential curriculum)")
     parser.add_argument("--interleaved", action="store_true", help="Alternate between MrX and Detective training")
     args = parser.parse_args()
     
-    # Create config
-    config = TrainingConfig()
+    # Create config with selected algorithm
+    config = TrainingConfig(algorithm=args.algorithm)
     
-    # Reset metrics if requested - clear all metric files
+    # Reset metrics if requested - clear all metric files in algorithm-specific directory
     if args.reset_metrics:
         metrics_files = [
             config.metrics_file,
-            config.script_dir / "training_metrics_mrx.json",
-            config.script_dir / "training_metrics_det.json",
+            config.data_dir / "training_metrics_mrx.json",
+            config.data_dir / "training_metrics_det.json",
         ]
         for mf in metrics_files:
             if mf.exists():
                 mf.unlink()
-        print(f"Cleared all metrics files")
+        print(f"Cleared metrics files for {args.algorithm.upper()}")
     
     if args.games:
         config.games_per_opponent = args.games
@@ -1007,6 +1026,14 @@ def main():
     
     # Setup logging
     logger = setup_logging(config)
+    
+    # Set algorithm for metrics logger
+    set_algorithm(args.algorithm)
+    
+    logger.info(f"Algorithm: {args.algorithm.upper()}")
+    logger.info(f"MrX AI: {config.mrx_ai_script.name}")
+    logger.info(f"Detective AI: {config.detective_ai_script.name}")
+    logger.info(f"Data directory: {config.data_dir}")
     
     # Create session
     session = TrainingSession(config, logger)
