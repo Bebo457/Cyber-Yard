@@ -65,7 +65,27 @@ void AIPlayerController::RequestMove(
         return;
     }
 
-    // Submit AI calculation to ThreadPool
+    // Detect if current player is a Detective (not Mr X)
+    bool b_IsDetective = false;
+    if (gameState.i_CurrentPlayerIndex >= 0 &&
+        gameState.i_CurrentPlayerIndex < static_cast<int>(gameState.vec_AllPlayers.size())) {
+        b_IsDetective = !gameState.vec_AllPlayers[gameState.i_CurrentPlayerIndex].b_IsMisterX;
+    }
+
+    if (b_IsDetective) {
+        // Compute synchronously for Detectives (no multithreading)
+        MoveDecision decision = CalculateBestMove(nullptr, vec_PossibleMoves, gameState);
+        {
+            std::lock_guard<std::mutex> lock(m_mtx_MoveDecision);
+            m_MoveDecision = decision;
+        }
+        m_b_CalculationInProgress = false;
+        m_f_ElapsedTime = 0.0f;
+        m_b_MoveRequested = true;
+        return;
+    }
+
+    // Mr X: submit AI calculation to ThreadPool (keeps previous behavior)
     m_b_CalculationInProgress = true;
     m_Future_MoveCalculation = Threading::ThreadPool::Submit(
         [this, vec_PossibleMoves, gameState]() -> MoveDecision {
