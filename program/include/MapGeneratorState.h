@@ -46,6 +46,15 @@ namespace ScotlandYard {
                 int i_KnobWidth = 14;
             };
 
+            struct BuildingFootprint
+            {
+                std::vector<MapGen::Point> basePoints;// 4 points in order
+                float height;
+                bool hasGableRoof;
+
+                BuildingFootprint() : height(0.0f), hasGableRoof(false) {}
+            };
+
             Core::Application* m_pApp;
 
             std::vector<Field> m_vec_Fields;
@@ -79,6 +88,9 @@ namespace ScotlandYard {
             std::vector<CityGen::Highway> m_vec_Highways;
             std::vector<std::vector<float>> m_PopulationDensity;
 
+            std::vector<BuildingFootprint> m_vec_Buildings;
+            std::vector<uint8_t> m_buildingMask;
+
 
             GLuint m_VAO_PreviewQuad = 0;
             GLuint m_VBO_PreviewQuad = 0;
@@ -96,6 +108,8 @@ namespace ScotlandYard {
 
             void TryGenerateMap();
             void RandomizeSeed();
+
+            void GenerateBuildingFootprints(int mapW, int mapH);
 
             // Metody do obs�ugi tekstury i zapisu
             void GeneratePreviewTexture();

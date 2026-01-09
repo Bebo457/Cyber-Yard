@@ -493,6 +493,20 @@ namespace ScotlandYard
                 RasterizeCircle(zoneMask, mapW, mapH, park.center.x, park.center.y, park.f_BaseRadius, 2);
             }
 
+            for (const auto& road : m_vec_HighwayRoads)
+            {
+                if (road.isDeleted) continue;
+                if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                
+                const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
+                const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
+                
+                // Szersze dla autostrad, węższe dla zwykłych ulic
+                float roadRadius = (road.type == CityGen::RoadType::HIGHWAY) ? 10.0f : 7.0f;
+                RasterizeThickSegment(zoneMask, mapW, mapH, a.x, a.y, b.x, b.y, roadRadius, 3);
+            }
+
             // Uruchomienie HighwayGenerator
             CityGen::HighwayGenerator hg(mapW, mapH);
             hg.SetZoneMask(std::move(zoneMask));
@@ -509,6 +523,8 @@ namespace ScotlandYard
             m_vec_HighwayRoads = hg.GetRoads();
             m_vec_Highways = hg.GetHighways();
             m_PopulationDensity = hg.GetPopulationDensity();
+
+            GenerateBuildingFootprints(mapW, mapH);
 
             // ============================================
             // LOGI DIAGNOSTYCZNE PO GENERACJI
@@ -565,6 +581,194 @@ namespace ScotlandYard
             m_s_InfoText = "Map generated!";
             std::cout << "[MapGen] Generation complete!" << std::endl;
         }
+
+
+        void MapGeneratorState::GenerateBuildingFootprints(int mapW, int mapH)
+        {
+            std::cout << "\n[BuildingGen] Starting building footprint generation..." << std::endl;
+
+            m_vec_Buildings.clear();
+
+            // Inicjalizacja maski budynków (4 = budynek)
+            m_buildingMask.assign((size_t)mapW * (size_t)mapH, 0);
+
+            // Lokalna maska stref: 0 = wolne, 1 = rzeka, 2 = park, 3 = droga
+            std::vector<uint8_t> zoneMask((size_t)mapW * (size_t)mapH, 0);
+
+            // ===== 1. RZEKA (wartość 1) =====
+            const float riverHalfWidthPx = 18.0f; // trochę szerzej niż podgląd, żeby mieć margines
+            if (m_vec_RiverPath.size() >= 2)
+            {
+                for (size_t i = 1; i < m_vec_RiverPath.size(); ++i)
+                {
+                    const auto& a = m_vec_RiverPath[i - 1];
+                    const auto& b = m_vec_RiverPath[i];
+                    RasterizeThickSegment(zoneMask, mapW, mapH,
+                                        a.x, a.y, b.x, b.y,
+                                        riverHalfWidthPx, 1);
+                }
+            }
+
+            // ===== 2. PARKI (wartość 2) =====
+            for (const auto& park : m_vec_Parks)
+            {
+                RasterizeCircle(zoneMask, mapW, mapH,
+                                park.center.x, park.center.y,
+                                park.f_BaseRadius, 2);
+            }
+
+            // ===== 3. DROGI (wartość 3) =====
+            for (const auto& road : m_vec_HighwayRoads)
+            {
+                if (road.isDeleted) continue;
+                if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx   < 0 || road.endNodeIdx   >= (int)m_vec_HighwayNodes.size()) continue;
+
+                const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
+                const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
+
+                float roadRadius = (road.type == CityGen::RoadType::HIGHWAY) ? 10.0f : 7.0f;
+                RasterizeThickSegment(zoneMask, mapW, mapH,
+                                    a.x, a.y, b.x, b.y,
+                                    roadRadius, 3);
+            }
+
+            // ===== 4. Zakresy parametrów budynków =====
+            const float widthMin  = 4.0f;
+            const float widthMax  = 45.0f;
+            const float depthMin  = 2.0f;
+            const float depthMax  = 28.0f;
+            const float gapMin    = 3.0f;
+            const float gapMax    = 14.0f;
+            const float sidewalk  = 2.0f;   // szerokość chodnika
+
+            // ===== 5. Przejdź przez wszystkie drogi i ustawiaj budynki wzdłuż nich =====
+            for (size_t roadIdx = 0; roadIdx < m_vec_HighwayRoads.size(); ++roadIdx)
+            {
+                const auto& road = m_vec_HighwayRoads[roadIdx];
+                if (road.isDeleted) continue;
+                if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx   < 0 || road.endNodeIdx   >= (int)m_vec_HighwayNodes.size()) continue;
+
+                const auto& nodeA = m_vec_HighwayNodes[road.startNodeIdx];
+                const auto& nodeB = m_vec_HighwayNodes[road.endNodeIdx];
+
+                glm::vec2 A(nodeA.x, nodeA.y);
+                glm::vec2 B(nodeB.x, nodeB.y);
+                glm::vec2 roadVec = B - A;
+                float segLen = glm::length(roadVec);
+                if (segLen < 2.0f) continue; // za krótki segment
+
+                glm::vec2 dir = roadVec / segLen;
+                glm::vec2 nrm(-dir.y, dir.x); // normalna do drogi
+
+                float margin = 4.0f;
+                float t = margin;
+
+                // idziemy wzdłuż segmentu z krokiem zależnym od szerokości konkretnego budynku
+                while (t + margin < segLen)
+                {
+                    // Losowe parametry pojedynczego budynku
+                    float w   = widthMin  + (rand() / (float)RAND_MAX) * (widthMax  - widthMin);
+                    float d   = depthMin  + (rand() / (float)RAND_MAX) * (depthMax  - depthMin);
+                    float gap = gapMin    + (rand() / (float)RAND_MAX) * (gapMax    - gapMin);
+
+                    // Jeżeli już się nie zmieści z marginesem, przerwij pętlę po t
+                    if (t + w + margin > segLen)
+                        break;
+
+                    float halfW = w * 0.5f;
+                    float halfD = d * 0.5f;
+
+                    glm::vec2 centerOnRoad = A + dir * t;
+
+                    float roadHalfWidth = (road.type == CityGen::RoadType::HIGHWAY) ? 10.0f : 7.0f;
+
+                    // Spróbuj umieścić budynki po obu stronach drogi
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        float sideSign = (float)side;
+
+                        glm::vec2 center = centerOnRoad + nrm * ( (roadHalfWidth + sidewalk + halfD) * sideSign );
+
+                        // Oblicz 4 rogi prostokątnej podstawy
+                        glm::vec2 along   = dir * halfW;
+                        glm::vec2 outward = nrm * (halfD * sideSign);
+
+                        glm::vec2 p0 = center - along - outward;
+                        glm::vec2 p1 = center + along - outward;
+                        glm::vec2 p2 = center + along + outward;
+                        glm::vec2 p3 = center - along + outward;
+
+                        // ===== Test kolizji z maskami =====
+                        bool canPlace = true;
+
+                        int minX = std::max(0,          (int)std::floor(std::min({p0.x, p1.x, p2.x, p3.x})));
+                        int maxX = std::min(mapW - 1,   (int)std::ceil (std::max({p0.x, p1.x, p2.x, p3.x})));
+                        int minY = std::max(0,          (int)std::floor(std::min({p0.y, p1.y, p2.y, p3.y})));
+                        int maxY = std::min(mapH - 1,   (int)std::ceil (std::max({p0.y, p1.y, p2.y, p3.y})));
+
+                        // Opcjonalnie – nie stawiaj przy krawędzi mapy
+                        if (minX <= 0 || minY <= 0 || maxX >= mapW - 1 || maxY >= mapH - 1)
+                            continue;
+
+                        int sampleCount  = 0;
+                        int blockedCount = 0;
+
+                        // współczynnik próbkowania 2 px, żeby było szybciej
+                        for (int yy = minY; yy <= maxY; yy += 2)
+                        {
+                            for (int xx = minX; xx <= maxX; xx += 2)
+                            {
+                                sampleCount++;
+                                // zablokowane jeśli rzeka/park/droga LUB inny budynek
+                                if (zoneMask[yy * mapW + xx] != 0 ||
+                                    m_buildingMask[yy * mapW + xx] != 0)
+                                {
+                                    blockedCount++;
+                                }
+                            }
+                        }
+
+                        // Więcej niż 25% próbek w kolizji → odrzuć budynek
+                        if (sampleCount > 0 && blockedCount * 4 > sampleCount)
+                            canPlace = false;
+
+                        if (!canPlace)
+                            continue;
+
+                        // ===== Zaakceptuj budynek =====
+                        BuildingFootprint bf;
+                        bf.basePoints = {
+                            MapGen::Point(p0.x, p0.y),
+                            MapGen::Point(p1.x, p1.y),
+                            MapGen::Point(p2.x, p2.y),
+                            MapGen::Point(p3.x, p3.y),
+                        };
+                        bf.height       = 8.0f + (rand() / (float)RAND_MAX) * 17.0f;  // 8–25 jednostek
+                        bf.hasGableRoof = (rand() % 100) < 40;
+
+                        m_vec_Buildings.push_back(bf);
+
+                        // Wypełnij maskę budynków (4) – pełny bbox, żeby inne budynki nie zachodziły
+                        for (int yy = minY; yy <= maxY; ++yy)
+                        {
+                            for (int xx = minX; xx <= maxX; ++xx)
+                            {
+                                m_buildingMask[yy * mapW + xx] = 4;
+                            }
+                        }
+                    }
+
+                    // Przejdź dalej wzdłuż segmentu
+                    t += w + gap;
+                }
+            }
+
+            std::cout << "[BuildingGen] Generated " << m_vec_Buildings.size() << " building footprints" << std::endl;
+        }
+
+
 
         void MapGeneratorState::GeneratePreviewTexture()
         {
@@ -956,6 +1160,29 @@ namespace ScotlandYard
                 for (int dy = -rad; dy <= rad; ++dy)
                     for (int dx = -rad; dx <= rad; ++dx)
                         if (dx * dx + dy * dy <= rad * rad) SetPixel(cx + dx, cy + dy, nr, ng, nb);
+            }
+
+            for (const auto& b : m_vec_Buildings)
+            {
+                if (b.basePoints.size() != 4) continue;
+
+                int x0 = (int)std::round(b.basePoints[0].x);
+                int y0 = (int)std::round(b.basePoints[0].y);
+                int x1 = (int)std::round(b.basePoints[1].x);
+                int y1 = (int)std::round(b.basePoints[1].y);
+                int x2 = (int)std::round(b.basePoints[2].x);
+                int y2 = (int)std::round(b.basePoints[2].y);
+                int x3 = (int)std::round(b.basePoints[3].x);
+                int y3 = (int)std::round(b.basePoints[3].y);
+
+                // Jasnoszary obrys budynku, grubość 2 px
+                Uint8 r = 220, g = 220, bcol = 220;
+                int thickness = 2;
+
+                DrawThickLine(x0, y0, x1, y1, thickness, r, g, bcol);
+                DrawThickLine(x1, y1, x2, y2, thickness, r, g, bcol);
+                DrawThickLine(x2, y2, x3, y3, thickness, r, g, bcol);
+                DrawThickLine(x3, y3, x0, y0, thickness, r, g, bcol);
             }
 
             SDL_UnlockSurface(surface);
