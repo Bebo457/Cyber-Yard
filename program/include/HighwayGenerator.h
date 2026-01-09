@@ -155,14 +155,25 @@ struct HighwayEnd {
         BridgeDiagnostics m_BridgeDiag;
 
         // Parametry generacji
+        // static constexpr float HIGHWAY_SEGMENT_LENGTH = 15.0f;
+        // static constexpr float STREET_SEGMENT_LENGTH = 8.0f;
+        // static constexpr int HIGHWAY_MAX_ITERATIONS = 500;
+        // static constexpr int STREET_MAX_ITERATIONS = 50;
+        // static constexpr float BRANCH_ANGLE = 0.4f; // ~23 stopnie
+
+        // static constexpr float HIGHWAY_BRANCH_DISTANCE = 200.0f;
+        // static constexpr float STREET_BRANCH_DISTANCE = 25.0f;
+        // static constexpr int HIGHWAY_BRANCH_PROBABILITY = 20;  // Szansa w procentach
+        // static constexpr int STREET_BRANCH_PROBABILITY = 60;   // Szansa w procentach
+
         static constexpr float HIGHWAY_SEGMENT_LENGTH = 15.0f;
-        static constexpr float STREET_SEGMENT_LENGTH = 8.0f;
+        static constexpr float STREET_SEGMENT_LENGTH = 50.0f; 
         static constexpr int HIGHWAY_MAX_ITERATIONS = 500;
-        static constexpr int STREET_MAX_ITERATIONS = 50;
+        static constexpr int STREET_MAX_ITERATIONS = 50;      
         static constexpr float BRANCH_ANGLE = 0.4f; // ~23 stopnie
 
         static constexpr float HIGHWAY_BRANCH_DISTANCE = 200.0f;
-        static constexpr float STREET_BRANCH_DISTANCE = 25.0f;
+        static constexpr float STREET_BRANCH_DISTANCE = 60.0f;
         static constexpr int HIGHWAY_BRANCH_PROBABILITY = 20;  // Szansa w procentach
         static constexpr int STREET_BRANCH_PROBABILITY = 60;   // Szansa w procentach
 

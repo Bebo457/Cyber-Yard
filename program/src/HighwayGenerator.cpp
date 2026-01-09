@@ -640,7 +640,7 @@ namespace CityGen {
     void HighwayGenerator::GenerateStreets() {
         // Space Colonization: Skanujemy mapę w poszukiwaniu pustych miejsc
 
-        int attempts = 800; // Ilość prób zasiania ulic
+        int attempts = 500; // Ilość prób zasiania ulic
         for (int i = 0; i < attempts; ++i) {
             float rx = static_cast<float>(rand() % m_Width);
             float ry = static_cast<float>(rand() % m_Height);
@@ -654,7 +654,7 @@ namespace CityGen {
 
             // Warunek 3: Sprawdź czy nie jesteśmy zbyt blisko istniejącej drogi
             Point p(rx, ry);
-            std::vector<int> nearby = FindNearbyRoadIndices(p, 40.0f);
+            std::vector<int> nearby = FindNearbyRoadIndices(p, 60.0f);
 
             if (nearby.empty()) {
                 // Zasiej nową ulicę
