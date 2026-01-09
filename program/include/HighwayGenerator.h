@@ -37,9 +37,10 @@ namespace CityGen {
         int endNodeIdx;
         bool isDeleted;
         RoadType type; // Typ drogi (Autostrada vs Ulica)
+        bool isPartOfBridge; // Protection: bridge roads should not be split
 
         Road(int s, int e, RoadType t = RoadType::HIGHWAY)
-            : startNodeIdx(s), endNodeIdx(e), isDeleted(false), type(t) {
+            : startNodeIdx(s), endNodeIdx(e), isDeleted(false), type(t), isPartOfBridge(false) {
         }
     };
 
@@ -48,12 +49,14 @@ struct Highway {
         int endIntersectionIdx;
         std::vector<int> roadIndices;
         float totalLength;
+        bool containsBridge; // Protection flag: highways with bridges should not be removed in postprocessing
 
         Highway(int start, int end, const std::vector<int>& roads, float length)
             : startIntersectionIdx(start)
             , endIntersectionIdx(end)
             , roadIndices(roads)
-            , totalLength(length) {
+            , totalLength(length)
+            , containsBridge(false) {
         }
     };
 
@@ -84,6 +87,7 @@ struct HighwayEnd {
         bool isOnBridge;
         Point bridgeDirection; // Locked direction for straight bridge
         bool disableBranching; // Disable branch creation for this agent
+        bool hasCrossedBridge; // Track if this agent has created a bridge (for highway protection)
 
         HighwayEnd(int node, Point dir, int iters, RoadType t)
             : currentNodeIdx(node)
@@ -95,7 +99,8 @@ struct HighwayEnd {
             , roadsSinceLastIntersection()
             , isOnBridge(false)
             , bridgeDirection(0.0f, 0.0f)
-            , disableBranching(false) {
+            , disableBranching(false)
+            , hasCrossedBridge(false) {
         }
     };
 
@@ -258,13 +263,14 @@ struct HighwayEnd {
         float DistancePointToSegment(const Point& p, const Point& a, const Point& b) const;
 
         // Zarządzanie grafem
-        void CreateHighway(int startIntersection, int endIntersection, const std::vector<int>& roads);
+        void CreateHighway(int startIntersection, int endIntersection, const std::vector<int>& roads, bool hasBridge = false);
         bool CheckAndRemoveRedundantHighway(const Highway& newHighway);
         void RemoveHighway(int highwayIdx);
         void RemoveRoads(const std::vector<int>& roadIndices);
         void SplitHighwaysAtIntersection(int intersectionNodeIdx);
         void PostProcessIntersections();
         void MergeSimpleIntersections();
+        void UpdateHighwaysAfterRoadSplit(int oldRoadIdx, int newRoad1Idx, int newRoad2Idx);
 
         // Metody pomocnicze (dla kompatybilności i geometrii)
         bool IsPointOnHighway(const Point& point, const Highway& highway, float tolerance = 2.0f) const;
