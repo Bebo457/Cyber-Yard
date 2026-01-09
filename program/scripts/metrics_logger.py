@@ -20,6 +20,10 @@ METRICS_FILE = os.path.join(DATA_DIR, "training_metrics.json")
 METRICS_FILE_MRX = os.path.join(DATA_DIR, "training_metrics_mrx.json")
 METRICS_FILE_DET = os.path.join(DATA_DIR, "training_metrics_det.json")
 
+# Opponent tracking files (written by train_ppo.py, read by AI scripts)
+OPPONENT_FILE_MRX = os.path.join(DATA_DIR, "current_opponent_mrx.txt")
+OPPONENT_FILE_DET = os.path.join(DATA_DIR, "current_opponent_det.txt")
+
 _lock_main = Lock()
 _lock_mrx = Lock()
 _lock_det = Lock()
@@ -125,3 +129,25 @@ def clear_metrics():
         except Exception as e:
             print(f"[Metrics] Error clearing {filepath}: {e}")
     print("[Metrics] Cleared all metrics files")
+
+
+def set_current_opponent(role: str, opponent: str):
+    """Set current opponent for a training role (called by train_ppo.py)"""
+    filepath = OPPONENT_FILE_MRX if role == "mrx" else OPPONENT_FILE_DET
+    try:
+        with open(filepath, 'w') as f:
+            f.write(opponent)
+    except Exception as e:
+        print(f"[Metrics] Error writing opponent file: {e}")
+
+
+def get_current_opponent(role: str) -> str:
+    """Get current opponent for a training role (called by AI scripts)"""
+    filepath = OPPONENT_FILE_MRX if role == "mrx" else OPPONENT_FILE_DET
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                return f.read().strip()
+    except:
+        pass
+    return ""

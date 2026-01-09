@@ -7,7 +7,7 @@ import json
 import numpy as np
 import os
 from typing import Dict, List, Any, Optional
-from metrics_logger import log_game
+from metrics_logger import log_game, get_current_opponent
 # =================================================================
 # 1. KODER OBSERWACJI
 # =================================================================
@@ -186,7 +186,8 @@ try:
                 agent.store_transition(*last_step, mrx_reward, True)
                 agent.update()
             # Log metrics for dashboard
-            log_game(winner=winner, mrx_reward=mrx_reward, rounds=local_moves_count, training_role="mrx")
+            opponent = get_current_opponent("mrx")
+            log_game(winner=winner, mrx_reward=mrx_reward, rounds=local_moves_count, training_role="mrx", opponent=opponent)
             last_step = None
             local_moves_count = 0  # Reset
             sock.send_json({"status": "ok"})

@@ -35,6 +35,9 @@ from threading import Thread, Event, Lock
 from concurrent.futures import ThreadPoolExecutor
 import shutil
 
+# Import metrics utilities for opponent tracking
+from metrics_logger import set_current_opponent
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -107,6 +110,7 @@ class TrainingConfig:
     max_consecutive_failures: int = 5
     retry_delay_seconds: int = 10
     process_startup_delay: float = 3.0
+    game_timeout_seconds: int = 90  # Kill hung games after 90s of no progress
     
     # Curriculum: opponents from easy to hard
     mrx_curriculum: List[str] = field(default_factory=lambda: [
@@ -281,6 +285,7 @@ class TrainingSession:
         self.pm = ProcessManager(logger)
         self.stats = TrainingStats()
         self._interrupted = False
+        self.summary_lock = Lock()
         
         # Register signal handlers
         signal.signal(signal.SIGINT, self._handle_interrupt)
@@ -344,11 +349,12 @@ class TrainingSession:
         }
         
         try:
-            with open(summary_file, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=row.keys())
-                if not file_exists:
-                    writer.writeheader()
-                writer.writerow(row)
+            with self.summary_lock:
+                with open(summary_file, 'a', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=row.keys())
+                    if not file_exists:
+                        writer.writeheader()
+                    writer.writerow(row)
             
             self.logger.info(f"[Summary] {role} vs {opponent}: {wins}/{games} wins ({win_rate:.1f}%) in {duration_secs/60:.1f}min")
         except Exception as e:
@@ -664,6 +670,7 @@ class TrainingSession:
                     if self._interrupted:
                         break
                     self.logger.info(f"\n[MrX] Training vs {opponent} ({self.config.games_per_opponent} games)")
+                    set_current_opponent("mrx", opponent)
                     
                     opponent_start = time.time()
                     games_played = 0
@@ -681,26 +688,46 @@ class TrainingSession:
                         ]
                         
                         if pm.start_process("mrx_game", cmd, cwd=self.config.exe_path.parent):
+                            # Monitor with timeout detection
+                            metrics_file = self.config.data_dir / "training_metrics_mrx.json"
+                            last_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                            last_activity = time.time()
+                            
                             while pm.is_running("mrx_game") and not self._interrupted:
-                                time.sleep(1.0)
+                                time.sleep(2.0)
+                                
+                                # Check for progress
+                                current_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                                if current_size != last_size:
+                                    last_size = current_size
+                                    last_activity = time.time()
+                                elif time.time() - last_activity > self.config.game_timeout_seconds:
+                                    self.logger.warning(f"[MrX] Game hung (no progress for {self.config.game_timeout_seconds}s), restarting...")
+                                    pm.stop_process("mrx_game")
+                                    break
+                            
                             games_played += batch
                             games_remaining -= batch
                     
+
                     # Log summary for this opponent - read wins from metrics file
-                    if games_played > 0:
-                        try:
-                            import json
-                            metrics_file = self.config.script_dir / "training_metrics_mrx.json"
-                            if metrics_file.exists():
-                                with open(metrics_file, 'r') as f:
-                                    data = json.load(f)
-                                # Count recent wins (last games_played games)
-                                recent = data.get('games', [])[-games_played:]
+                    try:
+                        import json
+                        metrics_file = self.config.data_dir / "training_metrics_mrx.json"
+                        if metrics_file.exists():
+                            with open(metrics_file, 'r') as f:
+                                data = json.load(f)
+                            # Count recent wins
+                            games_list = data.get('games', [])
+                            # Simple logic: assume games_played is roughly accurate for tail
+                            # Better: use delta if we tracked it, but simple approach is robust enough if consistent
+                            recent = games_list[-games_played:] if games_played > 0 else []
+                            if recent:
                                 wins = sum(1 for g in recent if g.get('winner') == 'MrX')
                                 duration = time.time() - opponent_start
-                                self.log_opponent_summary("MrX", opponent, games_played, wins, duration)
-                        except Exception as e:
-                            self.logger.warning(f"Could not log MrX summary: {e}")
+                                self.log_opponent_summary("MrX", opponent, len(recent), wins, duration)
+                    except Exception as e:
+                        self.logger.warning(f"Could not log MrX summary: {e}")
             finally:
                 pm.stop_all()
                 self.logger.info("[MrX] Training thread finished")
@@ -720,6 +747,7 @@ class TrainingSession:
                     if self._interrupted:
                         break
                     self.logger.info(f"\n[Detective] Training vs {opponent} ({self.config.games_per_opponent} games)")
+                    set_current_opponent("detective", opponent)
                     
                     opponent_start = time.time()
                     games_played = 0
@@ -737,25 +765,43 @@ class TrainingSession:
                         ]
                         
                         if pm.start_process("det_game", cmd, cwd=self.config.exe_path.parent):
+                            # Monitor with timeout detection
+                            metrics_file = self.config.data_dir / "training_metrics_det.json"
+                            last_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                            last_activity = time.time()
+                            
                             while pm.is_running("det_game") and not self._interrupted:
-                                time.sleep(1.0)
+                                time.sleep(2.0)
+                                
+                                # Check for progress
+                                current_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                                if current_size != last_size:
+                                    last_size = current_size
+                                    last_activity = time.time()
+                                elif time.time() - last_activity > self.config.game_timeout_seconds:
+                                    self.logger.warning(f"[Detective] Game hung (no progress for {self.config.game_timeout_seconds}s), restarting...")
+                                    pm.stop_process("det_game")
+                                    break
+                            
                             games_played += batch
                             games_remaining -= batch
                     
+
                     # Log summary for this opponent
-                    if games_played > 0:
-                        try:
-                            import json
-                            metrics_file = self.config.script_dir / "training_metrics_det.json"
-                            if metrics_file.exists():
-                                with open(metrics_file, 'r') as f:
-                                    data = json.load(f)
-                                recent = data.get('games', [])[-games_played:]
+                    try:
+                        import json
+                        metrics_file = self.config.data_dir / "training_metrics_det.json"
+                        if metrics_file.exists():
+                            with open(metrics_file, 'r') as f:
+                                data = json.load(f)
+                            games_list = data.get('games', [])
+                            recent = games_list[-games_played:] if games_played > 0 else []
+                            if recent:
                                 wins = sum(1 for g in recent if g.get('winner') == 'Detectives')
                                 duration = time.time() - opponent_start
-                                self.log_opponent_summary("Detective", opponent, games_played, wins, duration)
-                        except Exception as e:
-                            self.logger.warning(f"Could not log Detective summary: {e}")
+                                self.log_opponent_summary("Detective", opponent, len(recent), wins, duration)
+                    except Exception as e:
+                        self.logger.warning(f"Could not log Detective summary: {e}")
             finally:
                 pm.stop_all()
                 self.logger.info("[Detective] Training thread finished")
@@ -780,6 +826,7 @@ class TrainingSession:
         except KeyboardInterrupt:
             self.logger.info("\nCaught Ctrl+C - stopping all training...")
             self._interrupted = True
+            self._log_final_summary()
         except Exception as e:
             self.logger.exception(f"Parallel training error: {e}")
         finally:
@@ -818,24 +865,47 @@ class TrainingSession:
                     time.sleep(self.config.retry_delay_seconds)
                     self.start_ai_servers()
             
+            self._log_final_summary()
+            
         finally:
             self.pm.stop_all()
     
     def _log_final_summary(self):
-        """Log final training summary"""
-        self.logger.info("\n" + "="*60)
+        """Log final training summary including heuristic breakdown"""
+        self.logger.info("\n" + "="*80)
         self.logger.info("TRAINING COMPLETE - FINAL SUMMARY")
-        self.logger.info("="*60)
+        self.logger.info("="*80)
         
+        # 1. Total Stats
         stats = self.stats.get_summary()
         self.logger.info(f"Total games played: {stats['total_games']}")
         self.logger.info(f"MrX wins: {stats['mrx_wins']} ({stats['mrx_winrate']:.1f}%)")
         self.logger.info(f"Detective wins: {stats['det_wins']} ({stats['det_winrate']:.1f}%)")
-        self.logger.info(f"\nModel checkpoints saved in: {self.config.script_dir}")
-        self.logger.info(f"  - ppo_mrx.pth")
-        self.logger.info(f"  - ppo_detective.pth")
-        self.logger.info(f"\nTraining logs: {self.config.log_dir}")
-        self.logger.info("="*60)
+        
+        # 2. Breakdown by Opponent (from CSV)
+        summary_file = self.config.summary_file
+        if summary_file.exists():
+            try:
+                import csv
+                self.logger.info("-" * 80)
+                self.logger.info(f"{'ROLE':<10} | {'OPPONENT':<15} | {'GAMES':<6} | {'WINS':<6} | {'WIN %':<8} | {'TIME'}")
+                self.logger.info("-" * 80)
+                
+                with open(summary_file, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for r in reader:
+                        # Only show relevant columns
+                        try:
+                            self.logger.info(f"{r['role']:<10} | {r['opponent']:<15} | {r['games']:<6} | {r['wins']:<6} | {r['win_rate']:<8} | {r['duration_mins']}m")
+                        except KeyError:
+                            pass
+            except Exception as e:
+                self.logger.warning(f"Could not read detailed summary: {e}")
+        
+        self.logger.info("-" * 80)
+        self.logger.info(f"Model checkpoints: {self.config.script_dir}")
+        self.logger.info(f"Training logs: {self.config.log_dir}")
+        self.logger.info("="*80)
 
 
 # =============================================================================

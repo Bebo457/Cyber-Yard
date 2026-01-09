@@ -22,7 +22,7 @@ import json
 import numpy as np
 import os
 from typing import Dict, List, Any, Optional
-from metrics_logger import log_game
+from metrics_logger import log_game, get_current_opponent
 
 # =================================================================
 # 1. OBSERVATION ENCODER
@@ -208,7 +208,8 @@ try:
                 agent.store_transition(*last_step, det_reward, True)
                 agent.update()
             # Log metrics for dashboard (detective perspective)
-            log_game(winner=winner, det_reward=det_reward, rounds=rounds, training_role="detective")
+            opponent = get_current_opponent("detective")
+            log_game(winner=winner, det_reward=det_reward, rounds=rounds, training_role="detective", opponent=opponent)
             last_step = None
             current_round = 0  # Reset
             sock.send_json({"status": "ok"})
