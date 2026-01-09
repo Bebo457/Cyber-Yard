@@ -125,6 +125,7 @@ namespace ScotlandYard {
             void LoadPolygonData(Core::Application* p_App);
             void LoadSampleMapData();
             void BuildRiverFromMapData();
+            void BuildParksFromMapData();
             void BuildFallbackRiver();
             void RenderMapData(Core::Application* p_App);
             void LoadBridgeModel(Core::Application* p_App);

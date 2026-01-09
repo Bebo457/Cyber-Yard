@@ -266,9 +266,9 @@ namespace ScotlandYard {
 
             m_b_MapDataLoaded = true;
             std::cout << "[EmptyEnvironmentState] Injection complete. Nodes: " << m_MapData.vec_GraphNodes.size()
-                << ", Streets: " << m_MapData.vec_Streets.size() << std::endl;
-
-            BuildRiverFromMapData();
+                << ", Streets: " << m_MapData.vec_Streets.size()
+                << ", Parks: " << m_MapData.vec_Parks.size()
+                << ", River points: " << m_MapData.vec_RiverPath.size() << std::endl;
         }
         // -----------------------------------
 
@@ -595,9 +595,15 @@ namespace ScotlandYard {
         }
 
         void EmptyEnvironmentState::LoadPolygonData(Core::Application* p_App) {
+            // PRIORITY 1 - injected map data
+            if (m_b_MapDataLoaded && !m_MapData.vec_Parks.empty()) {
+                BuildParksFromMapData();
+                return;
+            }
+
+            // PRIORITY 2 - Load from JSON file
             std::string s_JsonPath = "generated_map.json";
             if (!std::filesystem::exists(s_JsonPath)) {
-                std::cout << "[PolygonLoader] generated_map.json not found, skipping polygon loading." << std::endl;
                 BuildFallbackRiver();
                 return;
             }
@@ -633,7 +639,7 @@ namespace ScotlandYard {
                             }
                         }
                     }
-                    std::cout << "[PolygonLoader] Loaded " << m_vec_ParkRenderers.size() << " park polygons." << std::endl;
+                    std::cout << "[PolygonLoader] Loaded " << m_vec_ParkRenderers.size() << " park polygons from JSON." << std::endl;
                 }
 
                 if (json.contains("river") && json["river"].contains("path") && json["river"]["path"].is_array()) {
@@ -659,7 +665,7 @@ namespace ScotlandYard {
                         }
 
                         m_b_RiverStripLoaded = true;
-                        std::cout << "[PolygonLoader] Loaded river strip with " << vec_RiverPath.size() << " path points." << std::endl;
+                        std::cout << "[PolygonLoader] Loaded river strip with " << vec_RiverPath.size() << " path points from JSON." << std::endl;
                     }
                 }
 
@@ -1325,6 +1331,40 @@ namespace ScotlandYard {
             m_b_RiverStripLoaded = true;
             std::cout << "[EmptyEnvironmentState] River path built from map data (" << vec_RiverPath.size()
                 << " points)." << std::endl;
+        }
+
+        void EmptyEnvironmentState::BuildParksFromMapData() {
+            if (!m_b_MapDataLoaded || m_MapData.vec_Parks.empty()) {
+                return;
+            }
+
+            const float f_ScaleX = k_PlaneWidth / k_MapWidth;
+            const float f_ScaleZ = k_PlaneDepth / k_MapHeight;
+            const float f_OffsetX = k_MapOffsetX;
+            const float f_OffsetZ = k_MapOffsetZ;
+
+            m_vec_ParkRenderers.clear();
+
+            for (const auto& park : m_MapData.vec_Parks) {
+                if (park.vec_Vertices.empty()) continue;
+
+                std::vector<glm::vec2> vec_ScaledVertices;
+                vec_ScaledVertices.reserve(park.vec_Vertices.size());
+
+                for (const auto& vertex : park.vec_Vertices) {
+                    float f_ScaledX = vertex.x * f_ScaleX + f_OffsetX;
+                    float f_ScaledZ = vertex.y * f_ScaleZ + f_OffsetZ;
+                    vec_ScaledVertices.emplace_back(f_ScaledX, f_ScaledZ);
+                }
+
+                if (vec_ScaledVertices.size() >= 3) {
+                    auto parkRenderer = std::make_unique<Rendering::PolygonRenderer>();
+                    if (parkRenderer->Initialize()) {
+                        parkRenderer->SetPolygon(vec_ScaledVertices, 0.001f);
+                        m_vec_ParkRenderers.push_back(std::move(parkRenderer));
+                    }
+                }
+            }
         }
 
         void EmptyEnvironmentState::BuildFallbackRiver() {
