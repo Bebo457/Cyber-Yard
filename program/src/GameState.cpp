@@ -3639,6 +3639,9 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
                 gameState.b_IsRevealRound = Core::IsRevealRound(i_MrXTurnForAI);
                 gameState.b_IsNextRevealRound = Core::IsRevealRound(i_MrXTurnForAI + 1);
                 gameState.p_Graph = &m_graph;
+                // Initialize with frozen last known position
+                gameState.i_MrXLastKnownPosition = m_i_FrozenMrXLastKnownPosition;
+                gameState.i_MrXLastKnownRound = m_i_FrozenMrXLastKnownRound;
 
                 int i_MrXIndex = -1;
                 int i_MrXPosition = -1;
@@ -3682,16 +3685,20 @@ void GameState::UpdateAIPlayers(Core::Application* p_App, float f_DeltaTime) {
                 // Mr X last known position
                 if (i_MrXIndex != -1) {
                     if (gameState.b_IsRevealRound) {
-                        gameState.i_MrXLastKnownPosition = i_MrXPosition;
-                        gameState.i_MrXLastKnownRound = gameState.i_CurrentRound;
+                        m_i_FrozenMrXLastKnownPosition = i_MrXPosition;
+                        m_i_FrozenMrXLastKnownRound = gameState.i_CurrentRound;
+                        gameState.i_MrXLastKnownPosition = m_i_FrozenMrXLastKnownPosition;
+                        gameState.i_MrXLastKnownRound = m_i_FrozenMrXLastKnownRound;
                     } else {
-                        gameState.i_MrXLastKnownPosition = -1;
+                        
                         gameState.i_MrXLastKnownRound = -1;
                         for (int r = 0; r < Core::k_RevealRoundsCount; ++r) {
                             if (Core::k_RevealRounds[r] < gameState.i_CurrentRound) {
                                 gameState.i_MrXLastKnownRound = Core::k_RevealRounds[r];
-                                gameState.i_MrXLastKnownPosition = -1;
                             }
+                        }
+                        if (gameState.i_MrXLastKnownRound == -1) {
+                            gameState.i_MrXLastKnownPosition = -1;
                         }
                     }
                 }
