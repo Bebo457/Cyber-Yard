@@ -1,0 +1,312 @@
+"""
+Dual Training Dashboard for Parallel PPO Training
+==================================================
+Shows TWO separate windows:
+- Window 1: MrX PPO training progress
+- Window 2: Detective PPO training progress
+
+Used with --parallel mode in train_ppo.py
+"""
+
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from matplotlib.patches import Patch
+from pathlib import Path
+import json
+from datetime import datetime
+from collections import deque
+from threading import Thread
+import sys
+
+SCRIPT_DIR = Path(__file__).parent
+DATA_DIR = SCRIPT_DIR / "training_data"
+METRICS_FILE_MRX = DATA_DIR / "training_metrics_mrx.json"
+METRICS_FILE_DET = DATA_DIR / "training_metrics_det.json"
+LOG_DIR = DATA_DIR / "logs"
+
+MAX_POINTS = 1000
+
+
+class RoleDashboard:
+    """Dashboard for a single training role"""
+    
+    def __init__(self, role: str, metrics_file: Path, color: str, fig_num: int):
+        self.role = role  # "MrX" or "Detective"
+        self.metrics_file = metrics_file
+        self.color = color
+        self.fig_num = fig_num
+        
+        self.games_played = 0
+        self.wins = 0
+        self.losses = 0
+        self.rewards = deque(maxlen=MAX_POINTS)
+        self.win_history = deque(maxlen=MAX_POINTS)
+        self.moves_history = deque(maxlen=MAX_POINTS)
+        self.session_start = datetime.now()
+        self.current_opponent = "..."
+        
+        self.last_file_size = 0
+        self.setup_figure()
+    
+    def setup_figure(self):
+        """Create figure with comprehensive layout"""
+        plt.style.use('dark_background')
+        
+        self.fig = plt.figure(num=self.fig_num, figsize=(14, 9))
+        title = f"PPO {self.role} Training"
+        self.fig.suptitle(title, fontsize=16, fontweight='bold', color=self.color)
+        
+        # 3 rows, 2 columns. Left col for graphs, Right col for stats
+        gs = self.fig.add_gridspec(3, 2, width_ratios=[2.5, 1], hspace=0.35, wspace=0.15,
+                                   left=0.05, right=0.98, top=0.92, bottom=0.05)
+        
+        # 1. Top-Left: Win Rate
+        self.ax_winrate = self.fig.add_subplot(gs[0, 0])
+        self.ax_winrate.set_title('Win Rate (Rolling 50)', fontweight='bold', fontsize=10)
+        self.ax_winrate.set_ylabel('Win %')
+        self.ax_winrate.set_ylim(0, 105)
+        self.ax_winrate.grid(True, alpha=0.3)
+        self.ax_winrate.axhline(y=50, color='gray', linestyle=':', alpha=0.5)
+        self.line_wr, = self.ax_winrate.plot([], [], color=self.color, linewidth=2)
+        self.ax_winrate.set_facecolor('#1a1a2e')
+        self.ax_winrate.tick_params(labelbottom=False)  # Hide x labels for top plots
+        
+        # 2. Mid-Left: Moves per Game
+        self.ax_moves = self.fig.add_subplot(gs[1, 0], sharex=self.ax_winrate)
+        self.ax_moves.set_title('Moves per Game (Rolling 50)', fontweight='bold', fontsize=10)
+        self.ax_moves.set_ylabel('Moves')
+        self.ax_moves.grid(True, alpha=0.3)
+        self.line_moves, = self.ax_moves.plot([], [], color='#eba134', linewidth=1.5)
+        self.ax_moves.set_facecolor('#1a1a2e')
+        self.ax_moves.tick_params(labelbottom=False)
+        
+        # 3. Bottom-Left: Reward
+        self.ax_reward = self.fig.add_subplot(gs[2, 0], sharex=self.ax_winrate)
+        self.ax_reward.set_title('Episode Reward', fontweight='bold', fontsize=10)
+        self.ax_reward.set_xlabel('Games Played')
+        self.ax_reward.set_ylabel('Reward')
+        self.ax_reward.grid(True, alpha=0.3)
+        self.line_reward, = self.ax_reward.plot([], [], color=self.color, linewidth=1, alpha=0.6)
+        self.ax_reward.set_facecolor('#1a1a2e')
+        
+        # 4. Right Side Top: Stats Box (Spanning 2 rows)
+        self.ax_stats = self.fig.add_subplot(gs[0:2, 1])
+        self.ax_stats.axis('off')
+        self.ax_stats.set_facecolor('#1a1a2e')
+        self.stats_text = self.ax_stats.text(
+            0.5, 0.5, 'Waiting for data...',
+            transform=self.ax_stats.transAxes,
+            fontsize=11, family='monospace',
+            verticalalignment='center', horizontalalignment='center',
+            bbox=dict(boxstyle='round,pad=1', facecolor='#1f2937', edgecolor='#374151')
+        )
+        
+        # 5. Right Side Bottom: Pie Chart
+        self.ax_pie = self.fig.add_subplot(gs[2, 1])
+        self.ax_pie.set_title('Win Distribution', fontweight='bold', fontsize=10)
+        self.ax_pie.set_facecolor('#1a1a2e')
+    
+    def load_data(self):
+        """Load metrics from file"""
+        try:
+            if not self.metrics_file.exists():
+                return False
+            
+            file_size = self.metrics_file.stat().st_size
+            if file_size == self.last_file_size:
+                return False  # No change
+            self.last_file_size = file_size
+            
+            with open(self.metrics_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            games = data.get('games', [])
+            if not games:
+                return False
+            
+            self.games_played = len(games)
+            self.wins = 0
+            self.losses = 0
+            self.rewards.clear()
+            self.win_history.clear()
+            self.moves_history.clear()
+            
+            for game in games:
+                winner = game.get('winner', '')
+                rounds = game.get('rounds', 0)
+                
+                # Determine if this role won
+                if self.role == "MrX":
+                    reward = game.get('mrx_reward', 0)
+                    won = winner == "MrX"
+                else:
+                    reward = game.get('det_reward', 0)
+                    won = winner == "Detectives"
+                
+                if won:
+                    self.wins += 1
+                else:
+                    self.losses += 1
+                
+                self.rewards.append(reward)
+                self.win_history.append(1 if won else 0)
+                self.moves_history.append(rounds)
+                
+                # Get opponent from game data
+                opponent = game.get('opponent', '')
+                if opponent:
+                    self.current_opponent = opponent
+            
+            return True
+            
+        except Exception as e:
+            # print(f"[{self.role}] Error loading data: {e}")
+            return False
+    
+    def get_matchup_from_logs(self):
+        """Read current matchup from training logs - cache when found"""
+        try:
+            if LOG_DIR.exists():
+                logs = sorted(LOG_DIR.glob("training_*.log"), key=lambda x: x.stat().st_mtime, reverse=True)
+                if logs:
+                    # Read from start of file to find all Training vs lines
+                    with open(logs[0], 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    
+                    # Look for lines like "[MrX] Training vs random" or "[Detective] Training vs random"
+                    search_tag = f"[{self.role}]" if self.role == "MrX" else "[Detective]"
+                    
+                    for line in reversed(content.split('\n')):
+                        if search_tag in line and 'Training vs' in line:
+                            # Extract opponent: [MrX] Training vs random (500 games)
+                            idx = line.find('Training vs ')
+                            if idx != -1:
+                                rest = line[idx + len('Training vs '):].strip()
+                                # Get first word (opponent name)
+                                opponent = rest.split()[0] if rest else None
+                                if opponent:
+                                    self.current_opponent = opponent.upper()
+                                    return self.current_opponent
+        except Exception as e:
+            pass
+        return self.current_opponent if self.current_opponent != "..." else "?"
+    
+    def rolling_avg(self, data, window=50):
+        """Calculate rolling average"""
+        result = []
+        for i in range(len(data)):
+            start = max(0, i - window + 1)
+            result.append(sum(list(data)[start:i+1]) / (i - start + 1))
+        return result
+    
+    def update(self, frame):
+        """Update animation frame"""
+        self.load_data()
+        
+        if self.games_played == 0:
+            return []
+        
+        x = list(range(1, self.games_played + 1))
+        # Determine x-axis view window
+        view_start = max(1, self.games_played - MAX_POINTS)
+        view_end = self.games_played + 10
+        
+        # 1. Win rate (Rolling 50)
+        win_rates = [w * 100 for w in self.rolling_avg(self.win_history, 50)]
+        self.line_wr.set_data(x[-len(win_rates):], win_rates)
+        self.ax_winrate.set_xlim(view_start, view_end)
+        
+        # 2. Moves (Rolling 50)
+        moves_smooth = self.rolling_avg(self.moves_history, 50)
+        self.line_moves.set_data(x[-len(moves_smooth):], moves_smooth)
+        self.ax_moves.set_xlim(view_start, view_end)
+        if moves_smooth:
+            mmax = max(moves_smooth)
+            self.ax_moves.set_ylim(0, mmax * 1.2)
+        
+        # 3. Rewards
+        reward_list = list(self.rewards)
+        self.line_reward.set_data(x[-len(reward_list):], reward_list)
+        self.ax_reward.set_xlim(view_start, view_end)
+        if reward_list:
+            rmin, rmax = min(reward_list), max(reward_list)
+            margin = max(10, abs(rmax - rmin) * 0.1)
+            self.ax_reward.set_ylim(rmin - margin, rmax + margin)
+        
+        # 4. Stats text
+        duration = datetime.now() - self.session_start
+        win_pct = (self.wins / self.games_played * 100) if self.games_played > 0 else 0
+        secs_per_game = duration.total_seconds() / self.games_played if self.games_played > 0 else 0
+        opponent = self.get_matchup_from_logs()
+        
+        avg_moves = 0
+        if self.moves_history:
+            recent_moves = list(self.moves_history)[-50:]
+            avg_moves = sum(recent_moves) / len(recent_moves)
+        
+        stats = (
+            f"vs {opponent}\n"
+            f"{'='*15}\n\n"
+            f"Total Games: {self.games_played}\n"
+            f"WINS: {self.wins}\n"
+            f"LOSSES: {self.losses}\n"
+            f"Win Rate: {win_pct:.1f}%\n\n"
+            f"Avg Moves (50): {avg_moves:.1f}\n"
+            f"Secs/Game: {secs_per_game:.2f}\n\n"
+            f"Duration: {int(duration.total_seconds()//60)}m {int(duration.total_seconds()%60)}s"
+        )
+        self.stats_text.set_text(stats)
+        
+        # 5. Pie chart
+        self.ax_pie.clear()
+        self.ax_pie.set_title('Win Distribution', fontweight='bold', fontsize=10)
+        self.ax_pie.set_facecolor('#1a1a2e')
+        if self.wins + self.losses > 0:
+            sizes = [self.wins, self.losses]
+            labels = [f'{self.wins}', f'{self.losses}']
+            colors = [self.color, '#444444']
+            self.ax_pie.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%',
+                           textprops={'fontsize': 9, 'color': 'white'}, startangle=90)
+        
+        # Update title
+        self.fig.suptitle(f"PPO {self.role} vs {opponent}", 
+                         fontsize=16, fontweight='bold', color=self.color)
+        
+        return []
+
+
+def run_dual_dashboard():
+    """Run both dashboards side by side"""
+    print("="*50)
+    print("  Dual Training Dashboard")
+    print("="*50)
+    print(f"  MrX metrics: {METRICS_FILE_MRX}")
+    print(f"  Detective metrics: {METRICS_FILE_DET}")
+    print("="*50)
+    
+    # Create both dashboards
+    mrx_dash = RoleDashboard("MrX", METRICS_FILE_MRX, '#ff4444', 1)
+    det_dash = RoleDashboard("Detective", METRICS_FILE_DET, '#00cccc', 2)
+    
+    # Position windows side by side
+    try:
+        mrx_manager = mrx_dash.fig.canvas.manager
+        det_manager = det_dash.fig.canvas.manager
+        
+        # Try to position windows (works on some backends)
+        if hasattr(mrx_manager, 'window'):
+            mrx_manager.window.wm_geometry("+0+0")
+            det_manager.window.wm_geometry("+520+0")
+    except:
+        pass  # Window positioning not supported
+    
+    # Create animations
+    ani_mrx = animation.FuncAnimation(mrx_dash.fig, mrx_dash.update, interval=2000, cache_frame_data=False)
+    ani_det = animation.FuncAnimation(det_dash.fig, det_dash.update, interval=2000, cache_frame_data=False)
+    
+    print("\nWaiting for training data...")
+    plt.show()
+
+
+if __name__ == "__main__":
+    run_dual_dashboard()

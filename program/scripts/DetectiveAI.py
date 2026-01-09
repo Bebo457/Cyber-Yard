@@ -167,7 +167,9 @@ ctx = zmq.Context()
 sock = ctx.socket(zmq.REP)
 sock.bind("tcp://*:5556")  # Port 5556 for detectives (5555 is for Mr X)
 
-print("Detective PPO AI Server listening on 5556")
+print("AI PPO Detective Server listening on 5556")
+
+current_round = 0
 
 try:
     while True:
@@ -178,6 +180,9 @@ try:
 
         try:
             req = json.loads(raw_msg)
+            # Update local round tracking
+            if "game_state" in req and "current_round" in req["game_state"]:
+                current_round = req["game_state"]["current_round"]
         except json.JSONDecodeError:
             print(f"[ERROR] Invalid JSON received!")
             sock.send_json({"status": "error", "message": "Invalid JSON"})
@@ -192,8 +197,10 @@ try:
         # --- GAME OVER ---
         if "[GameOver]" in raw_msg or "winner" in req or "winner" in raw_msg:
             winner = req.get("winner", "MrX" if "MrX" in raw_msg else "Detectives")
-            current_round = req.get("game_state", {}).get("current_round", 0)
-            print(f"[EVENT] Game Over! Winner: {winner}")
+            # Use tracked round
+            rounds = req.get("game_state", {}).get("current_round", current_round)
+            
+            print(f"[EVENT] Game Over! Winner: {winner}, Rounds: {rounds}")
             det_reward = 0.0
             if agent and last_step:
                 # Detectives win = positive reward, Mr X wins = negative reward
@@ -201,8 +208,9 @@ try:
                 agent.store_transition(*last_step, det_reward, True)
                 agent.update()
             # Log metrics for dashboard (detective perspective)
-            log_game(winner=winner, det_reward=det_reward, rounds=current_round)
+            log_game(winner=winner, det_reward=det_reward, rounds=rounds, training_role="detective")
             last_step = None
+            current_round = 0  # Reset
             sock.send_json({"status": "ok"})
             continue
 

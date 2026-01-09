@@ -154,19 +154,17 @@ sock.bind("tcp://*:5555")
 
 print("AI PPO Server listening on 5555")
 
+local_moves_count = 0
+
 try:
     while True:
         msg = sock.recv()
         raw_msg = msg.decode("utf-8").strip()
 
-        # --- LOGOWANIE KAŻDEJ WIADOMOŚCI ---
-        print(f"\n[RECEIVE] RAW MSG: {raw_msg}")
-        # -----------------------------------
-
         try:
             req = json.loads(raw_msg)
         except json.JSONDecodeError:
-            print(f"[ERROR] Odebrano niepoprawny format JSON!")
+            print(f"[ERROR] Invalid JSON received!")
             sock.send_json({"status": "error", "message": "Invalid JSON"})
             continue
 
@@ -179,18 +177,23 @@ try:
         # --- GAME OVER ---
         if "[GameOver]" in raw_msg or "winner" in req or "winner" in raw_msg:
             winner = req.get("winner", "Detectives" if "Detectives" in raw_msg else "MrX")
-            current_round = req.get("game_state", {}).get("current_round", 0)
-            print(f"[EVENT] Game Over! Winner: {winner}")
+            
+            # Use local moves count as rounds/moves
+            print(f"[EVENT] Game Over! Winner: {winner}, Moves: {local_moves_count}")
             mrx_reward = 0.0
             if agent and last_step:
                 mrx_reward = 100.0 if winner == "MrX" else -100.0
                 agent.store_transition(*last_step, mrx_reward, True)
                 agent.update()
             # Log metrics for dashboard
-            log_game(winner=winner, mrx_reward=mrx_reward, rounds=current_round)
+            log_game(winner=winner, mrx_reward=mrx_reward, rounds=local_moves_count, training_role="mrx")
             last_step = None
+            local_moves_count = 0  # Reset
             sock.send_json({"status": "ok"})
             continue
+            
+        # --- MOVE REQUEST ---
+        local_moves_count += 1
 
         # --- OBSŁUGA RUCHU ---
         obs = encoder.encode(req.get('game_state', {}), req.get('players', []))

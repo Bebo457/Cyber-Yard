@@ -1,82 +1,127 @@
 """
 Training Metrics Logger
 ========================
-Shared module for logging training metrics to JSON file.
+Shared module for logging training metrics to JSON files.
 Used by MRXPPO.py and DetectiveAI.py
 
-Fixed: Uses proper file locking and atomic writes to prevent corruption
-when multiple processes write simultaneously.
+Now supports separate files for MrX and Detective training.
 """
 
 import json
 import os
 from datetime import datetime
 from threading import Lock
-import io
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-METRICS_FILE = os.path.join(SCRIPT_DIR, "training_metrics.json")
+DATA_DIR = os.path.join(SCRIPT_DIR, "training_data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
-_lock = Lock()
+METRICS_FILE = os.path.join(DATA_DIR, "training_metrics.json")
+METRICS_FILE_MRX = os.path.join(DATA_DIR, "training_metrics_mrx.json")
+METRICS_FILE_DET = os.path.join(DATA_DIR, "training_metrics_det.json")
 
-def log_game(winner: str, mrx_reward: float = 0, det_reward: float = 0, rounds: int = 0):
-    """Log a completed game to the metrics file with proper file handling"""
-    with _lock:
+_lock_main = Lock()
+_lock_mrx = Lock()
+_lock_det = Lock()
+
+
+def _write_to_file(filepath: str, game_data: dict, lock: Lock):
+    """Write game data to a specific metrics file"""
+    with lock:
         try:
-            # Load existing data with proper file handling
             data = {"games": [], "start_time": datetime.now().isoformat()}
             
-            if os.path.exists(METRICS_FILE):
+            if os.path.exists(filepath):
                 try:
-                    with open(METRICS_FILE, 'r', encoding='utf-8') as f:
+                    with open(filepath, 'r', encoding='utf-8') as f:
                         content = f.read().strip()
                         if content:
                             data = json.loads(content)
-                except json.JSONDecodeError as e:
-                    # File is corrupted - backup and start fresh
-                    backup_path = METRICS_FILE + f".corrupted_{int(datetime.now().timestamp())}"
+                except json.JSONDecodeError:
+                    backup_path = filepath + f".corrupted_{int(datetime.now().timestamp())}"
                     try:
-                        os.rename(METRICS_FILE, backup_path)
-                        print(f"[Metrics] Corrupted file backed up to {backup_path}")
+                        os.rename(filepath, backup_path)
                     except:
                         pass
                     data = {"games": [], "start_time": datetime.now().isoformat()}
             
-            # Add new game
-            data["games"].append({
-                "timestamp": datetime.now().isoformat(),
-                "winner": winner,
-                "mrx_reward": mrx_reward,
-                "det_reward": det_reward,
-                "rounds": rounds
-            })
+            data["games"].append(game_data)
             
-            # Serialize to string first
             json_str = json.dumps(data, indent=2)
-            
-            # Write atomically: temp file -> rename
-            temp_path = METRICS_FILE + ".tmp"
+            temp_path = filepath + ".tmp"
             with open(temp_path, 'w', encoding='utf-8') as f:
                 f.write(json_str)
                 f.flush()
                 os.fsync(f.fileno())
             
-            # Atomic replace
-            if os.path.exists(METRICS_FILE):
-                os.remove(METRICS_FILE)
-            os.rename(temp_path, METRICS_FILE)
-                
-            print(f"[Metrics] Logged game #{len(data['games'])}: {winner} wins")
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            os.rename(temp_path, filepath)
             
         except Exception as e:
-            print(f"[Metrics] Error logging game: {e}")
+            print(f"[Metrics] Error writing to {filepath}: {e}")
+
+
+def log_game(winner: str, mrx_reward: float = 0, det_reward: float = 0, 
+             rounds: int = 0, training_role: str = "unknown", opponent: str = ""):
+    """Log a completed game to metrics files
+    
+    Args:
+        winner: "MrX" or "Detectives"
+        mrx_reward: Reward for MrX
+        det_reward: Reward for Detective
+        rounds: Number of rounds
+        training_role: "mrx" or "detective" - which PPO is being trained
+        opponent: Name of the opponent algorithm
+    """
+    # Auto-detect training role from rewards if not specified
+    if training_role == "unknown":
+        if abs(mrx_reward) > 0.01:
+            training_role = "mrx"
+        elif abs(det_reward) > 0.01:
+            training_role = "detective"
+    
+    game_data = {
+        "timestamp": datetime.now().isoformat(),
+        "winner": winner,
+        "mrx_reward": mrx_reward,
+        "det_reward": det_reward,
+        "rounds": rounds,
+        "training_role": training_role,
+        "opponent": opponent
+    }
+    
+    # Write to role-specific file only (avoids race condition in parallel mode)
+    if training_role == "mrx":
+        _write_to_file(METRICS_FILE_MRX, game_data, _lock_mrx)
+        print(f"[MrX Metrics] Game #{_count_games(METRICS_FILE_MRX)}: {winner} wins")
+    elif training_role == "detective":
+        _write_to_file(METRICS_FILE_DET, game_data, _lock_det)
+        print(f"[Det Metrics] Game #{_count_games(METRICS_FILE_DET)}: {winner} wins")
+    else:
+        # Only write to main file when training_role is unknown (non-parallel mode)
+        _write_to_file(METRICS_FILE, game_data, _lock_main)
+        print(f"[Metrics] Game logged: {winner} wins")
+
+
+def _count_games(filepath: str) -> int:
+    """Count games in a metrics file"""
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return len(data.get("games", []))
+    except:
+        pass
+    return 0
+
 
 def clear_metrics():
-    """Clear all metrics (start fresh)"""
-    with _lock:
+    """Clear all metrics files"""
+    for filepath in [METRICS_FILE, METRICS_FILE_MRX, METRICS_FILE_DET]:
         try:
-            if os.path.exists(METRICS_FILE):
-                os.remove(METRICS_FILE)
-                print("[Metrics] Cleared all metrics")
+            if os.path.exists(filepath):
+                os.remove(filepath)
         except Exception as e:
-            print(f"[Metrics] Error clearing: {e}")
+            print(f"[Metrics] Error clearing {filepath}: {e}")
+    print("[Metrics] Cleared all metrics files")
