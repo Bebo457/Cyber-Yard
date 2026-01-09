@@ -72,6 +72,10 @@ private:
     std::atomic<int> m_i_PlayersRemainingThisRound{0};
     std::mutex m_mtx_GameState;
 
+    // Frozen last known position for Mr X (updated only when he becomes visible)
+    int m_i_FrozenMrXLastKnownPosition = -1;
+    int m_i_FrozenMrXLastKnownRound = -1;
+
     std::atomic_bool m_b_MrXSecondMovePending{false};
 
     GLuint m_VAO_Plane;
