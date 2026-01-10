@@ -5,7 +5,6 @@
 #include "MapGenerator.h"
 #include "HighwayGenerator.h" 
 #include "MapPreviewState.h" 
-// Dodano nagłówek środowiska 3D
 #include "EmptyEnvironmentState.h"
 
 #include <iostream>
@@ -23,14 +22,13 @@
 #include <algorithm>
 #include <fstream>
 #include <set>
-#include <memory> // Ważne dla std::make_unique
+#include <memory>
 #include <set>
 
 namespace ScotlandYard
 {
     namespace States
     {
-
         using ScotlandYard::UI::DrawMenuLikeButton;
         using ScotlandYard::UI::DrawRoundedRectScreen;
         using ScotlandYard::UI::DrawTextCenteredPx;
@@ -150,16 +148,40 @@ namespace ScotlandYard
 
         void MapGeneratorState::LayoutUI(int W, int H, Core::Application* p_App)
         {
-            // Use virtual dimensions for UI layout
             W = p_App->GetVirtualWidth();
             H = p_App->GetVirtualHeight();
-            
+
             int outer = std::max(12, (int)(H * 0.04f));
             int pad = 24;
             int gap = 15;
             int titleH = 44;
-            int btnW = 120, btnH = 40, btnGap = 12;
+
+            int btnH = 50;
+            int btnGap = 12;
             int fieldH = 48;
+
+            const auto& characters = p_App->GetCharacterMap();
+            auto GetTextW = [&](const std::string& text, int height) -> float {
+                float f_Scale = (height * 0.60f) / 48.0f;
+                f_Scale *= 1.15f;
+
+                float w = 0.0f;
+                for (char c : text) {
+                    auto it = characters.find(c);
+                    if (it != characters.end()) {
+                        w += (it->second.m_i_Advance >> 6) * f_Scale;
+                    }
+                }
+                return w;
+                };
+
+            float wGen = GetTextW("GENERATE", btnH);
+            float wPlay = GetTextW("PLAY", btnH);
+            float wBack = GetTextW("BACK", btnH);
+            float maxBtnTextW = std::max({ wGen, wPlay, wBack });
+
+            int btnW = std::max(130, (int)(maxBtnTextW + 50.0f));
+
             int prevW = 400, prevH = 300;
 
             int maxCardW = std::min(1200, (int)(W * 0.96f));
@@ -209,7 +231,11 @@ namespace ScotlandYard
 
             // Seed field
             const int shortW = std::min(cardW - 2 * pad, 520);
-            const int randomBtnW = 80;
+
+            int randomBtnH = 45;
+            float wRandom = GetTextW("RANDOM", randomBtnH);
+            const int randomBtnW = std::max(90, (int)(wRandom + 30.0f));
+
             const int seedFieldW = shortW - randomBtnW - 8;
             const int seedX = cardX + (cardW - shortW) / 2;
 
@@ -218,7 +244,7 @@ namespace ScotlandYard
                 int seedY = y - fieldH;
                 y = seedY - gap;
                 m_vec_Fields[0].rect = SDL_Rect{ seedX, seedY, seedFieldW, fieldH };
-                m_BtnRandomSeed = SDL_Rect{ seedX + seedFieldW + 8, seedY + (fieldH - 32) / 2, randomBtnW, 32 };
+                m_BtnRandomSeed = SDL_Rect{ seedX + seedFieldW + 8, seedY + (fieldH - randomBtnH) / 2, randomBtnW, randomBtnH };
             }
 
             // Sliders
@@ -262,7 +288,6 @@ namespace ScotlandYard
             }
             else
             {
-                // Verical layout if there are less then 4 sliders
                 for (size_t i = 0; i < m_vec_Sliders.size(); ++i)
                 {
                     auto& s = m_vec_Sliders[i];
@@ -275,26 +300,23 @@ namespace ScotlandYard
 
         void MapGeneratorState::Render(Core::Application* p_App)
         {
-            if (p_App->IsTrainingMode()) return;  // Skip rendering in headless mode
+            if (p_App->IsTrainingMode()) return;
 
             m_pApp = p_App;
-            
-            // Clear the entire framebuffer to prevent black artifacts
+
             glClearColor(col_bg.r, col_bg.g, col_bg.b, col_bg.a);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            
+
             glDisable(GL_DEPTH_TEST);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            // Use virtual dimensions for rendering
             const int W = p_App->GetVirtualWidth();
             const int H = p_App->GetVirtualHeight();
 
             DrawRoundedRectScreen(0, 0, (float)W, (float)H, col_bg, 0, p_App);
             LayoutUI(W, H, p_App);
 
-            // Dedicated function for texture render
             RenderPreviewTexture(p_App);
 
             // Render seed field
@@ -354,11 +376,22 @@ namespace ScotlandYard
                     col_txt, p_App, -2.0f);
             }
 
-            // Buttons
-            DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App);
-            DrawMenuLikeButton(m_BtnSave, "PLAY", p_App);
-            DrawMenuLikeButton(m_BtnBack, "BACK", p_App);
-            DrawMenuLikeButton(m_BtnRandomSeed, "RANDOM", p_App);
+
+            int mx, my;
+            SDL_GetMouseState(&mx, &my);
+            float vmx, vmy;
+            p_App->TransformMouseToVirtual(mx, my, vmx, vmy);
+            int imx = (int)vmx;
+            int imy = p_App->GetVirtualHeight() - (int)vmy;
+
+            auto IsHover = [&](const SDL_Rect& r) {
+                return imx >= r.x && imx <= r.x + r.w && imy >= r.y && imy <= r.y + r.h;
+                };
+
+            DrawMenuLikeButton(m_BtnGenerate, "GENERATE", p_App, IsHover(m_BtnGenerate));
+            DrawMenuLikeButton(m_BtnSave, "PLAY", p_App, IsHover(m_BtnSave));
+            DrawMenuLikeButton(m_BtnBack, "BACK", p_App, IsHover(m_BtnBack));
+            DrawMenuLikeButton(m_BtnRandomSeed, "RANDOM", p_App, IsHover(m_BtnRandomSeed));
 
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
         }
@@ -498,10 +531,10 @@ namespace ScotlandYard
                 if (road.isDeleted) continue;
                 if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
                 if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-                
+
                 const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                 const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
-                
+
                 // Szersze dla autostrad, węższe dla zwykłych ulic
                 float roadRadius = (road.type == CityGen::RoadType::HIGHWAY) ? 10.0f : 7.0f;
                 RasterizeThickSegment(zoneMask, mapW, mapH, a.x, a.y, b.x, b.y, roadRadius, 3);
@@ -539,11 +572,11 @@ namespace ScotlandYard
             for (size_t i = 0; i < m_vec_Highways.size(); ++i) {
                 const auto& hw = m_vec_Highways[i];
                 totalRoadsInHighways += hw.roadIndices.size();
-                
+
                 std::cout << "Highway " << i << ": " << hw.roadIndices.size() << " segments, "
-                        << "length=" << (int)hw.totalLength 
-                        << " [" << hw.startIntersectionIdx << " -> " << hw.endIntersectionIdx << "]" << std::endl;
-                
+                    << "length=" << (int)hw.totalLength
+                    << " [" << hw.startIntersectionIdx << " -> " << hw.endIntersectionIdx << "]" << std::endl;
+
                 // Sprawdź czy są usunięte segmenty
                 for (int roadIdx : hw.roadIndices) {
                     if (roadIdx >= 0 && roadIdx < (int)m_vec_HighwayRoads.size()) {
@@ -570,9 +603,9 @@ namespace ScotlandYard
                 else streetTypeCount++;
             }
 
-            std::cout << "Roads by type - HIGHWAY: " << highwayTypeCount 
-                    << ", STREET: " << streetTypeCount 
-                    << ", DELETED: " << deletedCount << std::endl;
+            std::cout << "Roads by type - HIGHWAY: " << highwayTypeCount
+                << ", STREET: " << streetTypeCount
+                << ", DELETED: " << deletedCount << std::endl;
             std::cout << "==============================\n" << std::endl;
 
             // Zaktualizuj teksturę podglądu natychmiast (w pamięci RAM)
@@ -604,8 +637,8 @@ namespace ScotlandYard
                     const auto& a = m_vec_RiverPath[i - 1];
                     const auto& b = m_vec_RiverPath[i];
                     RasterizeThickSegment(zoneMask, mapW, mapH,
-                                        a.x, a.y, b.x, b.y,
-                                        riverHalfWidthPx, 1);
+                        a.x, a.y, b.x, b.y,
+                        riverHalfWidthPx, 1);
                 }
             }
 
@@ -613,8 +646,8 @@ namespace ScotlandYard
             for (const auto& park : m_vec_Parks)
             {
                 RasterizeCircle(zoneMask, mapW, mapH,
-                                park.center.x, park.center.y,
-                                park.f_BaseRadius, 2);
+                    park.center.x, park.center.y,
+                    park.f_BaseRadius, 2);
             }
 
             // ===== 3. DROGI (wartość 3) =====
@@ -622,25 +655,25 @@ namespace ScotlandYard
             {
                 if (road.isDeleted) continue;
                 if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-                if (road.endNodeIdx   < 0 || road.endNodeIdx   >= (int)m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
 
                 const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                 const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
 
                 float roadRadius = (road.type == CityGen::RoadType::HIGHWAY) ? 10.0f : 7.0f;
                 RasterizeThickSegment(zoneMask, mapW, mapH,
-                                    a.x, a.y, b.x, b.y,
-                                    roadRadius, 3);
+                    a.x, a.y, b.x, b.y,
+                    roadRadius, 3);
             }
 
             // ===== 4. Zakresy parametrów budynków =====
-            const float widthMin  = 4.0f;
-            const float widthMax  = 45.0f;
-            const float depthMin  = 2.0f;
-            const float depthMax  = 28.0f;
-            const float gapMin    = 3.0f;
-            const float gapMax    = 14.0f;
-            const float sidewalk  = 2.0f;   // szerokość chodnika
+            const float widthMin = 4.0f;
+            const float widthMax = 45.0f;
+            const float depthMin = 2.0f;
+            const float depthMax = 28.0f;
+            const float gapMin = 3.0f;
+            const float gapMax = 14.0f;
+            const float sidewalk = 2.0f;   // szerokość chodnika
 
             // ===== 5. Przejdź przez wszystkie drogi i ustawiaj budynki wzdłuż nich =====
             for (size_t roadIdx = 0; roadIdx < m_vec_HighwayRoads.size(); ++roadIdx)
@@ -648,7 +681,7 @@ namespace ScotlandYard
                 const auto& road = m_vec_HighwayRoads[roadIdx];
                 if (road.isDeleted) continue;
                 if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-                if (road.endNodeIdx   < 0 || road.endNodeIdx   >= (int)m_vec_HighwayNodes.size()) continue;
+                if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
 
                 const auto& nodeA = m_vec_HighwayNodes[road.startNodeIdx];
                 const auto& nodeB = m_vec_HighwayNodes[road.endNodeIdx];
@@ -669,9 +702,9 @@ namespace ScotlandYard
                 while (t + margin < segLen)
                 {
                     // Losowe parametry pojedynczego budynku
-                    float w   = widthMin  + (rand() / (float)RAND_MAX) * (widthMax  - widthMin);
-                    float d   = depthMin  + (rand() / (float)RAND_MAX) * (depthMax  - depthMin);
-                    float gap = gapMin    + (rand() / (float)RAND_MAX) * (gapMax    - gapMin);
+                    float w = widthMin + (rand() / (float)RAND_MAX) * (widthMax - widthMin);
+                    float d = depthMin + (rand() / (float)RAND_MAX) * (depthMax - depthMin);
+                    float gap = gapMin + (rand() / (float)RAND_MAX) * (gapMax - gapMin);
 
                     // Jeżeli już się nie zmieści z marginesem, przerwij pętlę po t
                     if (t + w + margin > segLen)
@@ -689,10 +722,10 @@ namespace ScotlandYard
                     {
                         float sideSign = (float)side;
 
-                        glm::vec2 center = centerOnRoad + nrm * ( (roadHalfWidth + sidewalk + halfD) * sideSign );
+                        glm::vec2 center = centerOnRoad + nrm * ((roadHalfWidth + sidewalk + halfD) * sideSign);
 
                         // Oblicz 4 rogi prostokątnej podstawy
-                        glm::vec2 along   = dir * halfW;
+                        glm::vec2 along = dir * halfW;
                         glm::vec2 outward = nrm * (halfD * sideSign);
 
                         glm::vec2 p0 = center - along - outward;
@@ -703,16 +736,16 @@ namespace ScotlandYard
                         // ===== Test kolizji z maskami =====
                         bool canPlace = true;
 
-                        int minX = std::max(0,          (int)std::floor(std::min({p0.x, p1.x, p2.x, p3.x})));
-                        int maxX = std::min(mapW - 1,   (int)std::ceil (std::max({p0.x, p1.x, p2.x, p3.x})));
-                        int minY = std::max(0,          (int)std::floor(std::min({p0.y, p1.y, p2.y, p3.y})));
-                        int maxY = std::min(mapH - 1,   (int)std::ceil (std::max({p0.y, p1.y, p2.y, p3.y})));
+                        int minX = std::max(0, (int)std::floor(std::min({ p0.x, p1.x, p2.x, p3.x })));
+                        int maxX = std::min(mapW - 1, (int)std::ceil(std::max({ p0.x, p1.x, p2.x, p3.x })));
+                        int minY = std::max(0, (int)std::floor(std::min({ p0.y, p1.y, p2.y, p3.y })));
+                        int maxY = std::min(mapH - 1, (int)std::ceil(std::max({ p0.y, p1.y, p2.y, p3.y })));
 
                         // Opcjonalnie – nie stawiaj przy krawędzi mapy
                         if (minX <= 0 || minY <= 0 || maxX >= mapW - 1 || maxY >= mapH - 1)
                             continue;
 
-                        int sampleCount  = 0;
+                        int sampleCount = 0;
                         int blockedCount = 0;
 
                         // współczynnik próbkowania 2 px, żeby było szybciej
@@ -745,7 +778,7 @@ namespace ScotlandYard
                             MapGen::Point(p2.x, p2.y),
                             MapGen::Point(p3.x, p3.y),
                         };
-                        bf.height       = 8.0f + (rand() / (float)RAND_MAX) * 17.0f;  // 8–25 jednostek
+                        bf.height = 8.0f + (rand() / (float)RAND_MAX) * 17.0f;  // 8–25 jednostek
                         bf.hasGableRoof = (rand() % 100) < 40;
 
                         m_vec_Buildings.push_back(bf);
@@ -789,14 +822,14 @@ namespace ScotlandYard
             SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
 
             auto SetPixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b)
-            {
-                if (x >= 0 && x < W && y >= 0 && y < H)
                 {
-                    Uint32 color = SDL_MapRGBA(surface->format, r, g, b, 255);
-                    Uint32* pixels = (Uint32*)surface->pixels;
-                    pixels[y * W + x] = color;
-                }
-            };
+                    if (x >= 0 && x < W && y >= 0 && y < H)
+                    {
+                        Uint32 color = SDL_MapRGBA(surface->format, r, g, b, 255);
+                        Uint32* pixels = (Uint32*)surface->pixels;
+                        pixels[y * W + x] = color;
+                    }
+                };
 
             if (!m_PopulationDensity.empty()) {
                 for (int y = 0; y < H && y < (int)m_PopulationDensity.size(); ++y) {
@@ -808,7 +841,8 @@ namespace ScotlandYard
                         SetPixel(x, y, r, g, b);
                     }
                 }
-            } else {
+            }
+            else {
                 SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 0, 0, 0));
             }
 
@@ -871,7 +905,7 @@ namespace ScotlandYard
                             }
                         }
                     }
-                };
+                    };
 
                 while (true) {
                     DrawDisc(x, y);
@@ -880,7 +914,7 @@ namespace ScotlandYard
                     if (e2 > -dy) { err -= dy; x += sx; }
                     if (e2 < dx) { err += dx; y += sy; }
                 }
-            };
+                };
 
             // ============================================
             // 4. RYSUJ AUTOSTRADY Z LOGAMI
@@ -894,37 +928,37 @@ namespace ScotlandYard
 
             for (size_t hwIdx = 0; hwIdx < m_vec_Highways.size(); ++hwIdx) {
                 const auto& highway = m_vec_Highways[hwIdx];
-                
-                std::cout << "[Highway " << hwIdx << "] Start: " << highway.startIntersectionIdx 
-                        << " End: " << highway.endIntersectionIdx 
-                        << " Segments: " << highway.roadIndices.size() 
-                        << " Length: " << (int)highway.totalLength << std::endl;
-                
+
+                std::cout << "[Highway " << hwIdx << "] Start: " << highway.startIntersectionIdx
+                    << " End: " << highway.endIntersectionIdx
+                    << " Segments: " << highway.roadIndices.size()
+                    << " Length: " << (int)highway.totalLength << std::endl;
+
                 if (highway.roadIndices.empty()) {
                     std::cout << "  WARNING: Highway has NO road segments!" << std::endl;
                     continue;
                 }
-                
+
                 int segmentsDrawnThisHighway = 0;
-                
+
                 // Iteruj przez wszystkie segmenty drogi tworzące tę autostradę
                 for (size_t i = 0; i < highway.roadIndices.size(); ++i) {
                     int roadIdx = highway.roadIndices[i];
-                    
+
                     if (roadIdx < 0 || roadIdx >= (int)m_vec_HighwayRoads.size()) {
                         std::cout << "  [Segment " << i << "] ERROR: Invalid roadIdx=" << roadIdx << std::endl;
                         totalSegmentsSkipped++;
                         continue;
                     }
-                    
+
                     const auto& road = m_vec_HighwayRoads[roadIdx];
-                    
+
                     // TESTOWE: Rysuj nawet usunięte drogi jeśli należą do highway
                     if (road.isDeleted) {
                         std::cout << "  [Segment " << i << "] WARNING: Road is deleted (roadIdx=" << roadIdx << ") - DRAWING ANYWAY" << std::endl;
                         // NIE robimy continue - rysujemy mimo wszystko!
                     }
-                    
+
                     if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) {
                         std::cout << "  [Segment " << i << "] ERROR: Invalid startNodeIdx=" << road.startNodeIdx << std::endl;
                         totalSegmentsSkipped++;
@@ -935,26 +969,26 @@ namespace ScotlandYard
                         totalSegmentsSkipped++;
                         continue;
                     }
-                    
+
                     const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                     const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
-                    
+
                     float segmentLength = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
-                    
+
                     if (i == 0 || i == highway.roadIndices.size() - 1 || i % 10 == 0) {
                         // Loguj co 10-ty segment + pierwszy i ostatni
-                        std::cout << "  [Segment " << i << "/" << highway.roadIndices.size() 
-                                << "] Road " << roadIdx 
-                                << ": (" << (int)a.x << "," << (int)a.y << ") -> (" << (int)b.x << "," << (int)b.y << ")"
-                                << " len=" << (int)segmentLength 
-                                << " type=" << (road.type == CityGen::RoadType::HIGHWAY ? "HIGHWAY" : "STREET") << std::endl;
+                        std::cout << "  [Segment " << i << "/" << highway.roadIndices.size()
+                            << "] Road " << roadIdx
+                            << ": (" << (int)a.x << "," << (int)a.y << ") -> (" << (int)b.x << "," << (int)b.y << ")"
+                            << " len=" << (int)segmentLength
+                            << " type=" << (road.type == CityGen::RoadType::HIGHWAY ? "HIGHWAY" : "STREET") << std::endl;
                     }
-                    
+
                     DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 3, 255, 140, 0);
                     segmentsDrawnThisHighway++;
                     totalSegmentsDrawn++;
                 }
-                
+
                 std::cout << "  Highway " << hwIdx << " drawn: " << segmentsDrawnThisHighway << " segments" << std::endl;
             }
 
@@ -976,13 +1010,13 @@ namespace ScotlandYard
                 const auto& road = m_vec_HighwayRoads[i];
                 // if (road.isDeleted) continue;
                 if (roadsInHighways.count(i) > 0) continue;
-                
+
                 if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
                 if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-                
+
                 const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                 const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
-                
+
                 DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
                 streetsDrawn++;
             }
@@ -1121,7 +1155,7 @@ namespace ScotlandYard
                     // if (road.isDeleted) continue;
                     if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
                     if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-                    
+
                     const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                     const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
                     DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 4, 255, 140, 0);
@@ -1141,7 +1175,7 @@ namespace ScotlandYard
                 if (road.isDeleted || roadsInHighways.count(i) > 0) continue;
                 if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
                 if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-                
+
                 const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                 const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
                 DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
@@ -1423,10 +1457,10 @@ namespace ScotlandYard
                     // Transform mouse coordinates to virtual space
                     float virtualX, virtualY;
                     p_App->TransformMouseToVirtual(ev.button.x, ev.button.y, virtualX, virtualY);
-                    
+
                     int mx = (int)virtualX;
                     int my = (int)virtualY;
-                    
+
                     // Flip Y coordinate (SDL uses top-left, OpenGL uses bottom-left)
                     my = p_App->GetVirtualHeight() - my;
 
@@ -1511,10 +1545,10 @@ namespace ScotlandYard
                     // Transform mouse coordinates to virtual space
                     float virtualX, virtualY;
                     p_App->TransformMouseToVirtual(ev.motion.x, ev.motion.y, virtualX, virtualY);
-                    
+
                     int mx = (int)virtualX;
                     int my = p_App->GetVirtualHeight() - (int)virtualY;
-                    
+
                     for (auto& s : m_vec_Sliders)
                     {
                         if (s.b_Dragging)

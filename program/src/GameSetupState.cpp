@@ -3,6 +3,7 @@
 #include "StateManager.h"
 #include "GameSettings.h"
 #include "HUDOverlay.h"
+#include <algorithm> // std::max
 
 namespace ScotlandYard {
     namespace States {
@@ -24,26 +25,50 @@ namespace ScotlandYard {
             m_Page = Page::Main;
         }
 
-
-
-
         void GameSetupState::Layout(Core::Application* app) {
             m_vec_Buttons.clear();
 
             const int W = app->GetVirtualWidth();
             const int H = app->GetVirtualHeight();
 
-            const float btnW = 380.0f;
+
+            const float defaultBtnW = 340.0f;
             const float btnH = 54.0f;
             const float rowGap = 45.0f;
             const float btnGap = 30.0f;
+
+            // text scale
+            const float f_SafetyMultiplier = 1.15f;
+            const float f_TextScale = ((btnH * 0.60f) / 48.0f) * f_SafetyMultiplier;
+            const auto& characters = app->GetCharacterMap();
+
+            // width text 
+            auto GetTextW = [&](const char* text) -> float {
+                float w = 0.0f;
+                std::string s(text);
+                for (char c : s) {
+                    auto it = characters.find(c);
+                    if (it != characters.end()) {
+                        w += (it->second.m_i_Advance >> 6) * f_TextScale;
+                    }
+                }
+                return w;
+                };
 
             int rows = 0;
             switch (m_Page) {
             case Page::Main:      rows = IsPvBot() ? 4 : 3; break;
             case Page::AIType:    rows = 2; break;
             case Page::HumanSide: rows = 2; break;
-            case Page::Algorithms:rows = IsPvBot() ? 2 : 3; break;                 
+            case Page::Algorithms:
+                if (m_i_AIType == 1) { // ML Mode (Grid 4+4)
+                    rows = IsPvBot() ? 3 : 5;
+                }
+                else {
+                    // Heuristic Mode
+                    rows = IsPvBot() ? 2 : 3;
+                }
+                break;
             default:              rows = 2; break;
             }
 
@@ -51,57 +76,119 @@ namespace ScotlandYard {
             const float blockH = rows * lineH;
             const float topY = (H + blockH) * 0.5f;
 
+            
             auto rowYTopDown = [&](int idxFromTop) {
                 return topY - (idxFromTop + 1) * lineH + (lineH - btnH);
                 };
 
+            
+
+            // 3 buttons row
             auto placeRow3 = [&](Row row, int idxFromTop, const char* t0, const char* t1, const char* t2) {
                 float y = rowYTopDown(idxFromTop);
-                float totalW = 3.0f * btnW + 2.0f * btnGap;
+
+                float maxTextW = std::max({ GetTextW(t0), GetTextW(t1), GetTextW(t2) });
+                float actualBtnW = std::max(defaultBtnW, maxTextW + 60.0f);
+
+                float availableW = (float)W - 40.0f;
+                float requiredW = 3.0f * actualBtnW + 2.0f * btnGap;
+
+                if (requiredW > availableW) {
+                    // safety check to fit buttons
+                    actualBtnW = (availableW - 2.0f * btnGap) / 3.0f;
+                }
+
+                // centering
+                float totalW = 3.0f * actualBtnW + 2.0f * btnGap;
                 float x0 = (W - totalW) * 0.5f;
-                m_vec_Buttons.push_back({ row, 0, x0 + 0.0f * (btnW + btnGap), y, btnW, btnH, t0 });
-                m_vec_Buttons.push_back({ row, 1, x0 + 1.0f * (btnW + btnGap), y, btnW, btnH, t1 });
-                m_vec_Buttons.push_back({ row, 2, x0 + 2.0f * (btnW + btnGap), y, btnW, btnH, t2 });
+
+                m_vec_Buttons.push_back({ row, 0, x0 + 0.0f * (actualBtnW + btnGap), y, actualBtnW, btnH, t0 });
+                m_vec_Buttons.push_back({ row, 1, x0 + 1.0f * (actualBtnW + btnGap), y, actualBtnW, btnH, t1 });
+                m_vec_Buttons.push_back({ row, 2, x0 + 2.0f * (actualBtnW + btnGap), y, actualBtnW, btnH, t2 });
                 };
 
+            // 2 buttons row
             auto placeRow2 = [&](Row row, int idxFromTop, const char* t0, const char* t1) {
                 float y = rowYTopDown(idxFromTop);
-                float totalW = 2.0f * btnW + 1.0f * btnGap;
+
+                float maxTextW = std::max({ GetTextW(t0), GetTextW(t1) });
+                float actualBtnW = std::max(defaultBtnW, maxTextW + 60.0f);
+
+                float availableW = (float)W - 40.0f;
+                float requiredW = 2.0f * actualBtnW + 1.0f * btnGap;
+                if (requiredW > availableW) {
+                    actualBtnW = (availableW - 1.0f * btnGap) / 2.0f;
+                }
+
+                float totalW = 2.0f * actualBtnW + 1.0f * btnGap;
                 float x0 = (W - totalW) * 0.5f;
-                m_vec_Buttons.push_back({ row, 0, x0 + 0.0f * (btnW + btnGap), y, btnW, btnH, t0 });
-                m_vec_Buttons.push_back({ row, 1, x0 + 1.0f * (btnW + btnGap), y, btnW, btnH, t1 });
+
+                m_vec_Buttons.push_back({ row, 0, x0 + 0.0f * (actualBtnW + btnGap), y, actualBtnW, btnH, t0 });
+                m_vec_Buttons.push_back({ row, 1, x0 + 1.0f * (actualBtnW + btnGap), y, actualBtnW, btnH, t1 });
                 };
 
+            // 5 buttons row
             auto placeRow5 = [&](Row row, int idxFromTop,
                 const char* t0, const char* t1, const char* t2, const char* t3, const char* t4) {
 
                     float y = rowYTopDown(idxFromTop);
-                    const float smallW = 240.0f;
+                    const float baseSmallW = 240.0f;
                     const float gap = 18.0f;
-                    float totalW = 5.0f * smallW + 4.0f * gap;
+
+                    float maxTextW = std::max({ GetTextW(t0), GetTextW(t1), GetTextW(t2), GetTextW(t3), GetTextW(t4) });
+                    float actualBtnW = std::max(baseSmallW, maxTextW + 40.0f);
+
+                    float totalReq = 5.0f * actualBtnW + 4.0f * gap;
+                    if (totalReq > W - 40.0f) {
+                        actualBtnW = (W - 40.0f - 4.0f * gap) / 5.0f;
+                    }
+
+                    float totalW = 5.0f * actualBtnW + 4.0f * gap;
                     float x0 = (W - totalW) * 0.5f;
 
                     const char* T[5] = { t0,t1,t2,t3,t4 };
                     for (int i = 0; i < 5; ++i) {
-                        m_vec_Buttons.push_back({ row, i, x0 + i * (smallW + gap), y, smallW, btnH, T[i] });
+                        m_vec_Buttons.push_back({ row, i, x0 + i * (actualBtnW + gap), y, actualBtnW, btnH, T[i] });
                     }
                 };
 
-            // Row with 8 buttons (5 heuristic + 3 ML)
-            auto placeRow8 = [&](Row row, int idxFromTop,
+            auto placeGrid8 = [&](Row row, int startIdxFromTop,
                 const char* t0, const char* t1, const char* t2, const char* t3, const char* t4,
-                const char* t5, const char* t6, const char* t7) {
+                const char* t5, const char* t6, const char* t7) -> int {
 
-                    float y = rowYTopDown(idxFromTop);
-                    const float smallW = 145.0f;
-                    const float gap = 10.0f;
-                    float totalW = 8.0f * smallW + 7.0f * gap;
+                    const char* Row1[4] = { t0, t1, t2, t3 };
+                    const char* Row2[4] = { t4, t5, t6, t7 };
+
+                    const float baseSmallW = 220.0f;
+                    const float gap = 20.0f;
+
+                    float maxW1 = 0.0f;
+                    for (auto t : Row1) maxW1 = std::max(maxW1, GetTextW(t));
+
+                    float maxW2 = 0.0f;
+                    for (auto t : Row2) maxW2 = std::max(maxW2, GetTextW(t));
+
+                    float actualBtnW = std::max({ baseSmallW, maxW1 + 40.0f, maxW2 + 40.0f });
+
+                    float totalReq = 4.0f * actualBtnW + 3.0f * gap;
+                    if (totalReq > W - 40.0f) {
+                        actualBtnW = (W - 40.0f - 3.0f * gap) / 4.0f;
+                    }
+
+                    float totalW = 4.0f * actualBtnW + 3.0f * gap;
                     float x0 = (W - totalW) * 0.5f;
 
-                    const char* T[8] = { t0,t1,t2,t3,t4,t5,t6,t7 };
-                    for (int i = 0; i < 8; ++i) {
-                        m_vec_Buttons.push_back({ row, i, x0 + i * (smallW + gap), y, smallW, btnH, T[i] });
+                    float y1 = rowYTopDown(startIdxFromTop);
+                    for (int i = 0; i < 4; ++i) {
+                        m_vec_Buttons.push_back({ row, i, x0 + i * (actualBtnW + gap), y1, actualBtnW, btnH, Row1[i] });
                     }
+
+                    float y2 = rowYTopDown(startIdxFromTop + 1);
+                    for (int i = 0; i < 4; ++i) {
+                        m_vec_Buttons.push_back({ row, 4 + i, x0 + i * (actualBtnW + gap), y2, actualBtnW, btnH, Row2[i] });
+                    }
+
+                    return 2;
                 };
 
 
@@ -133,35 +220,36 @@ namespace ScotlandYard {
             }
 
             if (m_Page == Page::Algorithms) {
-                // m_i_AIType: 0 = Heuristic (5 options), 1 = ML (all 8 options: 5 heuristic + 3 ML)
+                // m_i_AIType: 0 = Heuristic (5 options), 1 = ML (all 8 options)
                 if (m_i_AIType == 1) {
-                    // ML mode - show ALL options (heuristic + ML)
+                    // ML mode - show ALL options (heuristic + ML) split into 4+4 grids
                     if (IsPvBot()) {
                         if (m_i_Human == 0) {
-                            // Human = MrX, Bot = Detectives - show 8 detective algorithms
-                            placeRow8(Row::Detectives, idx++, 
-                                "D: Random", "D: MC", "D: Minimax", "D: GSP", "D: FSE",
-                                "D: PPO", "D: MAPPO", "D: SAC");
+                            // Human = MrX, Bot = Detectives
+                            idx += placeGrid8(Row::Detectives, idx,
+                                "D: Random", "D: MC", "D: Minimax", "D: GSP",
+                                "D: FSE", "D: PPO", "D: MAPPO", "D: SAC");
                         }
                         else {
-                            // Human = Detectives, Bot = MrX - show 8 MrX algorithms
-                            placeRow8(Row::MrX, idx++, 
-                                "X: Random", "X: DistMax", "X: Decoy", "X: MC", "X: DFS",
-                                "X: PPO", "X: MAPPO", "X: SAC");
+                            // Human = Detectives, Bot = MrX
+                            idx += placeGrid8(Row::MrX, idx,
+                                "X: Random", "X: DistMax", "X: Decoy", "X: MC",
+                                "X: DFS", "X: PPO", "X: MAPPO", "X: SAC");
                         }
                     }
                     else {
                         // BotvBot - show all 8 options for both
-                        placeRow8(Row::MrX, idx++, 
-                            "X: Random", "X: DistMax", "X: Decoy", "X: MC", "X: DFS",
-                            "X: PPO", "X: MAPPO", "X: SAC");
-                        placeRow8(Row::Detectives, idx++, 
-                            "D: Random", "D: MC", "D: Minimax", "D: GSP", "D: FSE",
-                            "D: PPO", "D: MAPPO", "D: SAC");
+                        idx += placeGrid8(Row::MrX, idx,
+                            "X: Random", "X: DistMax", "X: Decoy", "X: MC",
+                            "X: DFS", "X: PPO", "X: MAPPO", "X: SAC");
+
+                        idx += placeGrid8(Row::Detectives, idx,
+                            "D: Random", "D: MC", "D: Minimax", "D: GSP",
+                            "D: FSE", "D: PPO", "D: MAPPO", "D: SAC");
                     }
                 }
                 else {
-                    // Heuristic mode - show only 5 heuristic algorithm choices
+                    // Heuristic mode - show only 5 heuristic algorithm choices (single row)
                     if (IsPvBot()) {
                         if (m_i_Human == 0) {
                             placeRow5(Row::Detectives, idx++, "D: Random", "D: Monte Carlo", "D: Minimax", "D: GSP", "D: FSE");
@@ -302,7 +390,7 @@ namespace ScotlandYard {
                         if (b.e_Row == Row::Detectives) { m_i_AIDet = b.i_Col; return; }
 
                         if (b.e_Row == Row::Footer) {
-                            if (b.i_Col == 0) { 
+                            if (b.i_Col == 0) {
                                 if (m_Page == Page::Main) {
                                     app->GetStateManager()->ChangeState("menu", app);
                                     return;
@@ -313,7 +401,7 @@ namespace ScotlandYard {
                                 if (m_Page == Page::Algorithms) { m_Page = Page::AIType; return; }
                                 return;
                             }
-                            else { 
+                            else {
                                 if (m_Page == Page::Main) {
                                     if (m_i_Map == 2) {
                                         app->GetStateManager()->ChangeState("emptyenv", app);
@@ -395,7 +483,7 @@ namespace ScotlandYard {
                     else if (b.e_Row == Row::Detectives) { hasDet = true; detUpper = std::max(detUpper, b.f_Y + b.f_H); }
                 }
 
-                if (hasMrX && hasDet && detUpper < mrxLower) 
+                if (hasMrX && hasDet && detUpper < mrxLower)
                 {
                     const float padY = 8.0f;
                     const float minH = 34.0f; // minimal height
@@ -477,7 +565,7 @@ namespace ScotlandYard {
 
 
             auto& S = Settings();
-            
+
             switch (m_i_Mode) {
             case 0: S.e_Mode = GameMode::PvP;     break;
             case 1: S.e_Mode = GameMode::PvBot;   break;
@@ -497,8 +585,8 @@ namespace ScotlandYard {
                 case 7: return AIAlgorithm::DiscreteSACMrX;
                 default: return AIAlgorithm::Random;
                 }
-            };
-            
+                };
+
             // mapping for Detectives (8 options: 0-4 heuristic, 5-7 ML)
             auto mapAI_Detectives = [](int idx) {
                 switch (idx) {
@@ -512,8 +600,8 @@ namespace ScotlandYard {
                 case 7: return AIAlgorithm::DiscreteSACPolice;
                 default: return AIAlgorithm::Random;
                 }
-            };
-            
+                };
+
             if (S.e_Mode == GameMode::PvP) {
                 // AI ignored
             }
@@ -540,3 +628,4 @@ namespace ScotlandYard {
 
     }
 } // namespaces
+
