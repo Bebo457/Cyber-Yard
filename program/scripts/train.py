@@ -669,7 +669,7 @@ class TrainingSession:
             train_detective_worker_impl(det_pm)
         
         def train_mrx_worker_impl(pm):
-            """Worker thread for MrX training"""
+            """Worker thread for MrX training - runs continuously until interrupted"""
             try:
                 # Start MrX AI server
                 pm.start_process(
@@ -679,74 +679,79 @@ class TrainingSession:
                 )
                 time.sleep(self.config.process_startup_delay)
                 
-                for opponent in self.config.mrx_curriculum:
-                    if self._interrupted:
-                        break
-                    self.logger.info(f"\n[MrX] Training vs {opponent} ({self.config.games_per_opponent} games)")
-                    set_current_opponent("mrx", opponent)
+                cycle = 0
+                while True:  # Continuous training loop
+                    cycle += 1
+                    self.logger.info(f"\n[MrX] Starting curriculum cycle {cycle}")
                     
-                    opponent_start = time.time()
-                    games_played = 0
-                    games_remaining = self.config.games_per_opponent
-                    
-                    while games_remaining > 0 and not self._interrupted:
-                        batch = min(self.config.games_per_batch, games_remaining)
+                    for opponent in self.config.mrx_curriculum:
+                        if self._interrupted:
+                            return  # Exit both loops cleanly
+                        self.logger.info(f"\n[MrX] Training vs {opponent} ({self.config.games_per_opponent} games)")
+                        set_current_opponent("mrx", opponent)
                         
-                        cmd = [
-                            str(self.config.exe_path),
-                            "--server", "--port", "12345",
-                            "--training", "--mode", "botvbot",
-                            "--ai-mrx", "ppo", "--ai-detectives", opponent,
-                            "--games", str(batch),
-                        ]
+                        opponent_start = time.time()
+                        games_played = 0
+                        games_remaining = self.config.games_per_opponent
                         
-                        if pm.start_process("mrx_game", cmd, cwd=self.config.exe_path.parent):
-                            # Monitor with timeout detection
-                            metrics_file = self.config.data_dir / "training_metrics_mrx.json"
-                            last_size = metrics_file.stat().st_size if metrics_file.exists() else 0
-                            last_activity = time.time()
+                        while games_remaining > 0 and not self._interrupted:
+                            batch = min(self.config.games_per_batch, games_remaining)
                             
-                            while pm.is_running("mrx_game") and not self._interrupted:
-                                time.sleep(2.0)
+                            cmd = [
+                                str(self.config.exe_path),
+                                "--server", "--port", "12345",
+                                "--training", "--mode", "botvbot",
+                                "--ai-mrx", "ppo", "--ai-detectives", opponent,
+                                "--games", str(batch),
+                            ]
+                            
+                            if pm.start_process("mrx_game", cmd, cwd=self.config.exe_path.parent):
+                                # Monitor with timeout detection
+                                metrics_file = self.config.data_dir / "training_metrics_mrx.json"
+                                last_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                                last_activity = time.time()
                                 
-                                # Check for progress
-                                current_size = metrics_file.stat().st_size if metrics_file.exists() else 0
-                                if current_size != last_size:
-                                    last_size = current_size
-                                    last_activity = time.time()
-                                elif time.time() - last_activity > self.config.game_timeout_seconds:
-                                    self.logger.warning(f"[MrX] Game hung (no progress for {self.config.game_timeout_seconds}s), restarting...")
-                                    pm.stop_process("mrx_game")
-                                    break
-                            
-                            games_played += batch
-                            games_remaining -= batch
-                    
+                                while pm.is_running("mrx_game") and not self._interrupted:
+                                    time.sleep(2.0)
+                                    
+                                    # Check for progress
+                                    current_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                                    if current_size != last_size:
+                                        last_size = current_size
+                                        last_activity = time.time()
+                                    elif time.time() - last_activity > self.config.game_timeout_seconds:
+                                        self.logger.warning(f"[MrX] Game hung (no progress for {self.config.game_timeout_seconds}s), restarting...")
+                                        pm.stop_process("mrx_game")
+                                        break
+                                
+                                games_played += batch
+                                games_remaining -= batch
+                        
 
-                    # Log summary for this opponent - read wins from metrics file
-                    try:
-                        import json
-                        metrics_file = self.config.data_dir / "training_metrics_mrx.json"
-                        if metrics_file.exists():
-                            with open(metrics_file, 'r') as f:
-                                data = json.load(f)
-                            # Count recent wins
-                            games_list = data.get('games', [])
-                            # Simple logic: assume games_played is roughly accurate for tail
-                            # Better: use delta if we tracked it, but simple approach is robust enough if consistent
-                            recent = games_list[-games_played:] if games_played > 0 else []
-                            if recent:
-                                wins = sum(1 for g in recent if g.get('winner') == 'MrX')
-                                duration = time.time() - opponent_start
-                                self.log_opponent_summary("MrX", opponent, len(recent), wins, duration)
-                    except Exception as e:
-                        self.logger.warning(f"Could not log MrX summary: {e}")
+                        # Log summary for this opponent - read wins from metrics file
+                        try:
+                            import json
+                            metrics_file = self.config.data_dir / "training_metrics_mrx.json"
+                            if metrics_file.exists():
+                                with open(metrics_file, 'r') as f:
+                                    data = json.load(f)
+                                # Count recent wins
+                                games_list = data.get('games', [])
+                                # Simple logic: assume games_played is roughly accurate for tail
+                                # Better: use delta if we tracked it, but simple approach is robust enough if consistent
+                                recent = games_list[-games_played:] if games_played > 0 else []
+                                if recent:
+                                    wins = sum(1 for g in recent if g.get('winner') == 'MrX')
+                                    duration = time.time() - opponent_start
+                                    self.log_opponent_summary("MrX", opponent, len(recent), wins, duration)
+                        except Exception as e:
+                            self.logger.warning(f"Could not log MrX summary: {e}")
             finally:
                 pm.stop_all()
                 self.logger.info("[MrX] Training thread finished")
         
         def train_detective_worker_impl(pm):
-            """Worker thread for Detective training"""
+            """Worker thread for Detective training - runs continuously until interrupted"""
             try:
                 # Start Detective AI server
                 pm.start_process(
@@ -756,65 +761,70 @@ class TrainingSession:
                 )
                 time.sleep(self.config.process_startup_delay + 1)  # Slight offset
                 
-                for opponent in self.config.detective_curriculum:
-                    if self._interrupted:
-                        break
-                    self.logger.info(f"\n[Detective] Training vs {opponent} ({self.config.games_per_opponent} games)")
-                    set_current_opponent("detective", opponent)
+                cycle = 0
+                while True:  # Continuous training loop
+                    cycle += 1
+                    self.logger.info(f"\n[Detective] Starting curriculum cycle {cycle}")
                     
-                    opponent_start = time.time()
-                    games_played = 0
-                    games_remaining = self.config.games_per_opponent
-                    
-                    while games_remaining > 0 and not self._interrupted:
-                        batch = min(self.config.games_per_batch, games_remaining)
+                    for opponent in self.config.detective_curriculum:
+                        if self._interrupted:
+                            return  # Exit both loops cleanly
+                        self.logger.info(f"\n[Detective] Training vs {opponent} ({self.config.games_per_opponent} games)")
+                        set_current_opponent("detective", opponent)
                         
-                        cmd = [
-                            str(self.config.exe_path),
-                            "--server", "--port", "12346",
-                            "--training", "--mode", "botvbot",
-                            "--ai-mrx", opponent, "--ai-detectives", "ppo",
-                            "--games", str(batch),
-                        ]
+                        opponent_start = time.time()
+                        games_played = 0
+                        games_remaining = self.config.games_per_opponent
                         
-                        if pm.start_process("det_game", cmd, cwd=self.config.exe_path.parent):
-                            # Monitor with timeout detection
-                            metrics_file = self.config.data_dir / "training_metrics_det.json"
-                            last_size = metrics_file.stat().st_size if metrics_file.exists() else 0
-                            last_activity = time.time()
+                        while games_remaining > 0 and not self._interrupted:
+                            batch = min(self.config.games_per_batch, games_remaining)
                             
-                            while pm.is_running("det_game") and not self._interrupted:
-                                time.sleep(2.0)
+                            cmd = [
+                                str(self.config.exe_path),
+                                "--server", "--port", "12346",
+                                "--training", "--mode", "botvbot",
+                                "--ai-mrx", opponent, "--ai-detectives", "ppo",
+                                "--games", str(batch),
+                            ]
+                            
+                            if pm.start_process("det_game", cmd, cwd=self.config.exe_path.parent):
+                                # Monitor with timeout detection
+                                metrics_file = self.config.data_dir / "training_metrics_det.json"
+                                last_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                                last_activity = time.time()
                                 
-                                # Check for progress
-                                current_size = metrics_file.stat().st_size if metrics_file.exists() else 0
-                                if current_size != last_size:
-                                    last_size = current_size
-                                    last_activity = time.time()
-                                elif time.time() - last_activity > self.config.game_timeout_seconds:
-                                    self.logger.warning(f"[Detective] Game hung (no progress for {self.config.game_timeout_seconds}s), restarting...")
-                                    pm.stop_process("det_game")
-                                    break
-                            
-                            games_played += batch
-                            games_remaining -= batch
-                    
+                                while pm.is_running("det_game") and not self._interrupted:
+                                    time.sleep(2.0)
+                                    
+                                    # Check for progress
+                                    current_size = metrics_file.stat().st_size if metrics_file.exists() else 0
+                                    if current_size != last_size:
+                                        last_size = current_size
+                                        last_activity = time.time()
+                                    elif time.time() - last_activity > self.config.game_timeout_seconds:
+                                        self.logger.warning(f"[Detective] Game hung (no progress for {self.config.game_timeout_seconds}s), restarting...")
+                                        pm.stop_process("det_game")
+                                        break
+                                
+                                games_played += batch
+                                games_remaining -= batch
+                        
 
-                    # Log summary for this opponent
-                    try:
-                        import json
-                        metrics_file = self.config.data_dir / "training_metrics_det.json"
-                        if metrics_file.exists():
-                            with open(metrics_file, 'r') as f:
-                                data = json.load(f)
-                            games_list = data.get('games', [])
-                            recent = games_list[-games_played:] if games_played > 0 else []
-                            if recent:
-                                wins = sum(1 for g in recent if g.get('winner') == 'Detectives')
-                                duration = time.time() - opponent_start
-                                self.log_opponent_summary("Detective", opponent, len(recent), wins, duration)
-                    except Exception as e:
-                        self.logger.warning(f"Could not log Detective summary: {e}")
+                        # Log summary for this opponent
+                        try:
+                            import json
+                            metrics_file = self.config.data_dir / "training_metrics_det.json"
+                            if metrics_file.exists():
+                                with open(metrics_file, 'r') as f:
+                                    data = json.load(f)
+                                games_list = data.get('games', [])
+                                recent = games_list[-games_played:] if games_played > 0 else []
+                                if recent:
+                                    wins = sum(1 for g in recent if g.get('winner') == 'Detectives')
+                                    duration = time.time() - opponent_start
+                                    self.log_opponent_summary("Detective", opponent, len(recent), wins, duration)
+                        except Exception as e:
+                            self.logger.warning(f"Could not log Detective summary: {e}")
             finally:
                 pm.stop_all()
                 self.logger.info("[Detective] Training thread finished")
@@ -1050,10 +1060,10 @@ def main():
             
             if dashboard_script.exists():
                 dashboard_proc = subprocess.Popen(
-                    [config.python_exe, str(dashboard_script)],
+                    [config.python_exe, str(dashboard_script), "--algorithm", args.algorithm],
                     cwd=str(config.script_dir)
                 )
-                logger.info(f"Training dashboard launched: {dashboard_script.name}")
+                logger.info(f"Training dashboard launched: {dashboard_script.name} --algorithm {args.algorithm}")
         except Exception as e:
             logger.warning(f"Could not launch dashboard: {e}")
     

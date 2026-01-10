@@ -1,13 +1,15 @@
 """
-Dual Training Dashboard for Parallel PPO Training
+Dual Training Dashboard for Parallel RL Training
 ==================================================
 Shows TWO separate windows:
-- Window 1: MrX PPO training progress
-- Window 2: Detective PPO training progress
+- Window 1: MrX training progress
+- Window 2: Detective training progress
 
-Used with --parallel mode in train_ppo.py
+Used with --parallel mode in train.py
+Supports: PPO, MAPPO, SAC algorithms via --algorithm flag
 """
 
+import argparse
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.patches import Patch
@@ -19,10 +21,26 @@ from threading import Thread
 import sys
 
 SCRIPT_DIR = Path(__file__).parent
-DATA_DIR = SCRIPT_DIR / "training_data"
-METRICS_FILE_MRX = DATA_DIR / "training_metrics_mrx.json"
-METRICS_FILE_DET = DATA_DIR / "training_metrics_det.json"
-LOG_DIR = DATA_DIR / "logs"
+BASE_DATA_DIR = SCRIPT_DIR / "training_data"
+
+# Will be set by command line argument
+ALGORITHM = "PPO"
+DATA_DIR = None
+METRICS_FILE_MRX = None
+METRICS_FILE_DET = None
+LOG_DIR = None
+
+def set_algorithm(algo: str):
+    """Set paths based on algorithm"""
+    global ALGORITHM, DATA_DIR, METRICS_FILE_MRX, METRICS_FILE_DET, LOG_DIR
+    ALGORITHM = algo.upper()
+    DATA_DIR = BASE_DATA_DIR / ALGORITHM
+    METRICS_FILE_MRX = DATA_DIR / "training_metrics_mrx.json"
+    METRICS_FILE_DET = DATA_DIR / "training_metrics_det.json"
+    LOG_DIR = DATA_DIR / "logs"
+
+# Default to PPO
+set_algorithm("ppo")
 
 MAX_POINTS = 1000
 
@@ -101,10 +119,55 @@ class RoleDashboard:
             bbox=dict(boxstyle='round,pad=1', facecolor='#1f2937', edgecolor='#374151')
         )
         
-        # 5. Right Side Bottom: Pie Chart
-        self.ax_pie = self.fig.add_subplot(gs[2, 1])
-        self.ax_pie.set_title('Win Distribution', fontweight='bold', fontsize=10)
-        self.ax_pie.set_facecolor('#1a1a2e')
+        # 5. Right Side Bottom: Cycle Comparison (replaces pie chart)
+        self.ax_compare = self.fig.add_subplot(gs[2, 1])
+        self.ax_compare.set_title('Cycle Comparison', fontweight='bold', fontsize=10)
+        self.ax_compare.set_facecolor('#1a1a2e')
+        self.ax_compare.axis('off')
+        self.compare_text = self.ax_compare.text(
+            0.5, 0.5, 'No previous data',
+            transform=self.ax_compare.transAxes,
+            fontsize=11, family='monospace',
+            verticalalignment='center', horizontalalignment='center',
+            bbox=dict(boxstyle='round,pad=0.8', facecolor='#1f2937', edgecolor='#374151')
+        )
+    
+    def get_cycle_comparison(self, current_opponent: str) -> float:
+        """Read training_summary.csv and find the LAST win rate for this role+opponent.
+        Returns the previous win rate (from CSV) or None if no history exists."""
+        import csv
+        summary_file = DATA_DIR / "training_summary.csv"
+        
+        try:
+            if not summary_file.exists():
+                return None
+            
+            # Read all entries for this role + opponent
+            entries = []
+            with open(summary_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    role = row.get('role', '')
+                    opp = row.get('opponent', '').lower()
+                    
+                    # Match role (MrX or Detective)
+                    role_match = (self.role == "MrX" and role == "MrX") or \
+                                 (self.role == "Detective" and role == "Detective")
+                    
+                    if role_match and opp == current_opponent.lower():
+                        try:
+                            win_rate = float(row.get('win_rate', 0))
+                            entries.append(win_rate)
+                        except ValueError:
+                            pass
+            
+            # Return the LAST entry as 'previous' (for comparison with current live data)
+            if entries:
+                return entries[-1]
+            return None
+                
+        except Exception as e:
+            return None
     
     def load_data(self):
         """Load metrics from file"""
@@ -257,19 +320,30 @@ class RoleDashboard:
         )
         self.stats_text.set_text(stats)
         
-        # 5. Pie chart
-        self.ax_pie.clear()
-        self.ax_pie.set_title('Win Distribution', fontweight='bold', fontsize=10)
-        self.ax_pie.set_facecolor('#1a1a2e')
-        if self.wins + self.losses > 0:
-            sizes = [self.wins, self.losses]
-            labels = [f'{self.wins}', f'{self.losses}']
-            colors = [self.color, '#444444']
-            self.ax_pie.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%',
-                           textprops={'fontsize': 9, 'color': 'white'}, startangle=90)
+        # 5. Cycle comparison - compare previous (from CSV) vs current (live)
+        prev_wr = self.get_cycle_comparison(self.current_opponent)
+        curr_wr = win_pct  # Use live win rate
+        
+        if prev_wr is not None:
+            diff = curr_wr - prev_wr
+            sign = "+" if diff >= 0 else ""
+            
+            compare_str = (
+                f"vs {self.current_opponent.upper()}\n\n"
+                f"{prev_wr:.1f}% → {curr_wr:.1f}%\n"
+                f"({sign}{diff:.1f}%)"
+            )
+        else:
+            compare_str = (
+                f"vs {self.current_opponent.upper()}\n\n"
+                f"Current: {curr_wr:.1f}%\n"
+                f"(No history)"
+            )
+        
+        self.compare_text.set_text(compare_str)
         
         # Update title
-        self.fig.suptitle(f"PPO {self.role} vs {opponent}", 
+        self.fig.suptitle(f"{ALGORITHM} {self.role} vs {opponent}", 
                          fontsize=16, fontweight='bold', color=self.color)
         
         return []
@@ -278,8 +352,10 @@ class RoleDashboard:
 def run_dual_dashboard():
     """Run both dashboards side by side"""
     print("="*50)
-    print("  Dual Training Dashboard")
+    print(f"  {ALGORITHM} Dual Training Dashboard")
     print("="*50)
+    print(f"  Algorithm: {ALGORITHM}")
+    print(f"  Data dir: {DATA_DIR}")
     print(f"  MrX metrics: {METRICS_FILE_MRX}")
     print(f"  Detective metrics: {METRICS_FILE_DET}")
     print("="*50)
@@ -309,4 +385,11 @@ def run_dual_dashboard():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Dual Training Dashboard")
+    parser.add_argument("--algorithm", type=str, default="ppo", choices=["ppo", "mappo", "sac"],
+                        help="Training algorithm to monitor (default: ppo)")
+    args = parser.parse_args()
+    
+    set_algorithm(args.algorithm)
     run_dual_dashboard()
+
