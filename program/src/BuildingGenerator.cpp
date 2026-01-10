@@ -4,6 +4,58 @@
 #include <cmath>
 #include <stdexcept>
 
+namespace {
+constexpr float k_WindowWidth = 4.8f;
+constexpr float k_WindowHeight = 4.4f;
+constexpr float k_DoorWidth = 3.7f;
+constexpr float k_DoorHeight = 5.0f;
+
+struct FrontDoorLayout {
+    bool b_HasDoor = false;
+    float f_CenterParam = 0.0f;
+};
+
+FrontDoorLayout ComputeFrontDoorLayout(float f_WallLength, float f_BuildingHeight) {
+    FrontDoorLayout doorLayout;
+
+    if (f_WallLength < k_DoorWidth * 1.5f) {
+        return doorLayout;
+    }
+
+    const float f_EdgeMargin = 0.6f;
+    const float f_MinSpacingFront = 1.8f;
+    float f_AvailableFront = f_WallLength - 2.0f * f_EdgeMargin;
+    int i_MaxFitFront = 1;
+    if (f_AvailableFront >= 0.0f) {
+        i_MaxFitFront = static_cast<int>(std::floor((f_AvailableFront + f_MinSpacingFront) / (k_WindowWidth + f_MinSpacingFront)));
+        i_MaxFitFront = std::max(1, std::min(4, i_MaxFitFront));
+    }
+
+    bool b_SingleColumnLowHouse = (i_MaxFitFront == 1 && f_BuildingHeight <= 7.0f);
+
+    if (b_SingleColumnLowHouse) {
+        float f_DoorCenter = f_WallLength - f_EdgeMargin - (k_DoorWidth * 0.5f);
+        float f_WindowHalf = k_WindowWidth * 0.5f;
+        float f_WindowCenter = f_EdgeMargin + f_WindowHalf;
+        float f_WindowRight = f_WindowCenter + f_WindowHalf;
+        float f_DoorLeft = f_WallLength - f_EdgeMargin - k_DoorWidth;
+        float f_Gap = 0.15f;
+        float f_Overlap = (f_WindowRight + f_Gap) - f_DoorLeft;
+        if (f_Overlap > 0.0f) {
+            f_DoorCenter -= f_Overlap;
+            float f_MinDoorCenter = f_EdgeMargin + (k_DoorWidth * 0.5f);
+            f_DoorCenter = std::max(f_MinDoorCenter, f_DoorCenter);
+        }
+        doorLayout.f_CenterParam = f_DoorCenter;
+    } else {
+        doorLayout.f_CenterParam = f_WallLength * 0.5f;
+    }
+
+    doorLayout.b_HasDoor = true;
+    return doorLayout;
+}
+}
+
 namespace ScotlandYard {
 namespace Core {
 
@@ -252,9 +304,9 @@ void BuildingGenerator::GenerateTexCoords(BuildingMesh& mesh) {
 }
 
 void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<glm::vec2>& vec_BasePoints, float f_Height) {
-    float f_WindowWidth = 3.3f;
-    float f_WindowHeight = 2.2f;
-    float f_WindowOffset = 0.05f; 
+    const float f_WindowWidth = k_WindowWidth;
+    const float f_WindowHeight = k_WindowHeight;
+    constexpr float f_WindowOffset = 0.05f; 
     
     std::vector<glm::vec3> vec_Base3D;
     for (const auto& point : vec_BasePoints) {
@@ -295,33 +347,221 @@ void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<gl
         int i_MaxFit = static_cast<int>(std::floor((f_Available + f_MinSpacing) / (f_WindowWidth + f_MinSpacing)));
         i_MaxFit = std::max(1, std::min(4, i_MaxFit));
         int i_NumWindows = i_MaxFit;
-        
+
         BuildingMesh::WindowWall windowWall;
         windowWall.wallNormal = vec_WallNormal;
         windowWall.wallCenter = vec_WallCenter;
+
+        auto computeRowCenters = [&](int i_RowCount, float f_EffectiveHeight, float f_BaseOffset) {
+            std::vector<float> vec_Centers;
+            if (i_RowCount <= 0 || f_EffectiveHeight <= 0.1f) {
+                return vec_Centers;
+            }
+
+            float f_MinGap = 0.35f;
+            float f_Usable = std::max(0.0f, f_EffectiveHeight - i_RowCount * f_WindowHeight);
+            float f_Gap = f_Usable / static_cast<float>(i_RowCount + 1);
+            if (f_Gap < f_MinGap) {
+                f_Gap = f_MinGap;
+                float f_Required = i_RowCount * f_WindowHeight + (i_RowCount + 1) * f_Gap;
+                if (f_Required > f_EffectiveHeight) {
+                    f_Gap = std::max(0.05f, (f_EffectiveHeight - i_RowCount * f_WindowHeight) / static_cast<float>(i_RowCount + 1));
+                }
+            }
+
+            float f_FirstCenter = f_BaseOffset + f_Gap + f_WindowHeight * 0.5f;
+            for (int i_Row = 0; i_Row < i_RowCount; ++i_Row) {
+                vec_Centers.push_back(f_FirstCenter + i_Row * (f_WindowHeight + f_Gap));
+            }
+            return vec_Centers;
+        };
         
-        float f_BaseHeight = 3.0f; 
-        float f_Spacing = 0.0f;
-        if (i_NumWindows > 1) {
-            float f_Free = f_Available - f_WindowWidth * i_NumWindows;
-            f_Spacing = std::max(f_MinSpacing, f_Free / float(i_NumWindows - 1));
+        std::vector<float> vec_WindowOffsets;
+        bool b_UsingDoorAwareSpacing = false;
+        FrontDoorLayout frontDoorInfo;
+        if (i == 0) {
+            frontDoorInfo = ComputeFrontDoorLayout(f_WallLength, f_Height);
         }
 
-        std::vector<float> vec_WindowOffsets;
-        if (i_NumWindows == 1) {
-            float f_Default = f_WallLength * 0.5f;
-            if (i == 0) {
-                float f_LowerBound = f_EdgeMargin + f_WindowWidth * 0.5f;
-                float f_UpperBound = f_WallLength - f_EdgeMargin - f_WindowWidth * 0.5f;
-                f_Default = std::clamp(f_Default, f_LowerBound, f_UpperBound);
-            }
-            vec_WindowOffsets.push_back(f_Default);
-        } else {
-            float f_Start = f_EdgeMargin + f_WindowWidth * 0.5f;
-            for (int i_Window = 0; i_Window < i_NumWindows; ++i_Window) {
-                vec_WindowOffsets.push_back(f_Start + i_Window * (f_WindowWidth + f_Spacing));
+        if (i == 0 && frontDoorInfo.b_HasDoor) {
+            b_UsingDoorAwareSpacing = true;
+            auto generateDoorAwareOffsets = [&](int i_DesiredColumns) {
+                std::vector<float> vec_Offsets;
+                if (i_DesiredColumns <= 0) {
+                    return vec_Offsets;
+                }
+
+                float f_CenterMin = f_EdgeMargin + f_WindowWidth * 0.5f;
+                float f_CenterMax = f_WallLength - f_EdgeMargin - f_WindowWidth * 0.5f;
+                if (f_CenterMax <= f_CenterMin) {
+                    return vec_Offsets;
+                }
+
+                float f_DoorHalf = k_DoorWidth * 0.5f;
+                float f_DoorClearance = 0.45f;
+                float f_ForbiddenStart = frontDoorInfo.f_CenterParam - (f_DoorHalf + f_WindowWidth * 0.5f + f_DoorClearance);
+                float f_ForbiddenEnd = frontDoorInfo.f_CenterParam + (f_DoorHalf + f_WindowWidth * 0.5f + f_DoorClearance);
+
+                struct Interval {
+                    float f_Start;
+                    float f_End;
+                    float f_Span;
+                };
+
+                std::vector<Interval> vec_Intervals;
+
+                float f_LeftStart = f_CenterMin;
+                float f_LeftEnd = std::min(f_CenterMax, f_ForbiddenStart);
+                if (f_LeftEnd - f_LeftStart > 0.15f) {
+                    vec_Intervals.push_back({f_LeftStart, f_LeftEnd, f_LeftEnd - f_LeftStart});
+                }
+
+                float f_RightStart = std::max(f_CenterMin, f_ForbiddenEnd);
+                float f_RightEnd = f_CenterMax;
+                if (f_RightEnd - f_RightStart > 0.15f) {
+                    vec_Intervals.push_back({f_RightStart, f_RightEnd, f_RightEnd - f_RightStart});
+                }
+
+                if (vec_Intervals.empty()) {
+                    return vec_Offsets;
+                }
+
+                auto capacityForSpan = [&](float f_Span) {
+                    float f_MinGapLocal = f_WindowWidth + f_MinSpacing;
+                    int i_Neighbors = static_cast<int>(std::floor(f_Span / f_MinGapLocal));
+                    i_Neighbors = std::max(0, i_Neighbors);
+                    return std::min(4, i_Neighbors + 1);
+                };
+
+                std::vector<int> vec_Capacities;
+                float f_TotalSpan = 0.0f;
+                for (const auto& interval : vec_Intervals) {
+                    vec_Capacities.push_back(capacityForSpan(interval.f_Span));
+                    f_TotalSpan += interval.f_Span;
+                }
+
+                int i_MaxAvailable = 0;
+                for (int i_Capacity : vec_Capacities) {
+                    i_MaxAvailable += i_Capacity;
+                }
+
+                int i_TargetColumns = std::min(i_DesiredColumns, i_MaxAvailable);
+                if (i_TargetColumns <= 0) {
+                    return vec_Offsets;
+                }
+
+                std::vector<int> vec_Planned(vec_Intervals.size(), 0);
+                int i_Remaining = i_TargetColumns;
+                float f_SpanRemaining = f_TotalSpan;
+
+                auto capacityAhead = [&](size_t idxInterval) {
+                    int i_Future = 0;
+                    for (size_t idxNext = idxInterval + 1; idxNext < vec_Capacities.size(); ++idxNext) {
+                        i_Future += vec_Capacities[idxNext];
+                    }
+                    return i_Future;
+                };
+
+                for (size_t idxInterval = 0; idxInterval < vec_Intervals.size() && i_Remaining > 0; ++idxInterval) {
+                    int i_Capacity = vec_Capacities[idxInterval];
+                    int i_FutureCapacity = capacityAhead(idxInterval);
+                    int i_MinForThis = std::max(0, i_Remaining - i_FutureCapacity);
+                    int i_MaxForThis = std::min(i_Capacity, i_Remaining);
+                    int i_Share = i_MaxForThis;
+                    if (f_SpanRemaining > 0.0f) {
+                        i_Share = static_cast<int>(std::round((vec_Intervals[idxInterval].f_Span / f_SpanRemaining) * i_Remaining));
+                    }
+                    i_Share = std::clamp(i_Share, i_MinForThis, i_MaxForThis);
+                    vec_Planned[idxInterval] = i_Share;
+                    i_Remaining -= i_Share;
+                    f_SpanRemaining -= vec_Intervals[idxInterval].f_Span;
+                }
+
+                for (size_t idxInterval = 0; i_Remaining > 0 && idxInterval < vec_Intervals.size(); ++idxInterval) {
+                    if (vec_Planned[idxInterval] < vec_Capacities[idxInterval]) {
+                        ++vec_Planned[idxInterval];
+                        --i_Remaining;
+                    }
+                }
+
+                auto emitCenters = [&](const Interval& interval, int i_Count) {
+                    if (i_Count <= 0) {
+                        return;
+                    }
+
+                    float f_Span = interval.f_End - interval.f_Start;
+                    f_Span = std::max(0.0f, f_Span);
+                    if (i_Count == 1) {
+                        vec_Offsets.push_back(interval.f_Start + f_Span * 0.5f);
+                        return;
+                    }
+
+                    float f_MinGapLocal = f_WindowWidth + f_MinSpacing;
+                    float f_MinSpan = (i_Count - 1) * f_MinGapLocal;
+                    float f_Extra = f_Span - f_MinSpan;
+                    if (f_Extra < 0.0f) {
+                        f_Extra = 0.0f;
+                    }
+                    float f_SpacingLocal = f_MinGapLocal + (f_Extra / static_cast<float>(i_Count - 1));
+                    float f_FirstCenter = interval.f_Start + (f_Extra * 0.5f);
+                    for (int idx = 0; idx < i_Count; ++idx) {
+                        vec_Offsets.push_back(f_FirstCenter + f_SpacingLocal * idx);
+                    }
+                };
+
+                for (size_t idxInterval = 0; idxInterval < vec_Intervals.size(); ++idxInterval) {
+                    emitCenters(vec_Intervals[idxInterval], vec_Planned[idxInterval]);
+                }
+
+                return vec_Offsets;
+            };
+
+            vec_WindowOffsets = generateDoorAwareOffsets(i_NumWindows);
+            i_NumWindows = static_cast<int>(vec_WindowOffsets.size());
+        }
+
+        if (i == 0 && b_UsingDoorAwareSpacing && vec_WindowOffsets.empty() && frontDoorInfo.b_HasDoor) {
+            float f_VerticalRoom = f_Height - k_DoorHeight;
+            float f_MinRequiredHeight = k_WindowHeight + 0.6f;
+            if (f_VerticalRoom >= f_MinRequiredHeight) {
+                float f_CenterMin = f_EdgeMargin + f_WindowWidth * 0.5f;
+                float f_CenterMax = f_WallLength - f_EdgeMargin - f_WindowWidth * 0.5f;
+                if (f_CenterMax > f_CenterMin) {
+                    float f_Clamped = std::clamp(frontDoorInfo.f_CenterParam, f_CenterMin, f_CenterMax);
+                    vec_WindowOffsets.push_back(f_Clamped);
+                    i_NumWindows = 1;
+                }
             }
         }
+
+        if (!b_UsingDoorAwareSpacing) {
+            float f_Spacing = 0.0f;
+            if (i_NumWindows > 1) {
+                float f_Free = f_Available - f_WindowWidth * i_NumWindows;
+                f_Spacing = std::max(f_MinSpacing, f_Free / float(i_NumWindows - 1));
+            }
+
+            if (i_NumWindows == 1) {
+                float f_Default = f_WallLength * 0.5f;
+                if (i == 0) {
+                    float f_LowerBound = f_EdgeMargin + f_WindowWidth * 0.5f;
+                    float f_UpperBound = f_WallLength - f_EdgeMargin - f_WindowWidth * 0.5f;
+                    f_Default = std::clamp(f_Default, f_LowerBound, f_UpperBound);
+                }
+                vec_WindowOffsets.push_back(f_Default);
+            } else {
+                float f_Start = f_EdgeMargin + f_WindowWidth * 0.5f;
+                for (int i_Window = 0; i_Window < i_NumWindows; ++i_Window) {
+                    vec_WindowOffsets.push_back(f_Start + i_Window * (f_WindowWidth + f_Spacing));
+                }
+            }
+        }
+
+        if (vec_WindowOffsets.empty()) {
+            continue;
+        }
+
+        i_NumWindows = static_cast<int>(vec_WindowOffsets.size());
 
         bool b_SpecialFrontSingleColumnOneFloor = (i == 0 && i_NumWindows == 1 && f_Height <= 7.0f);
         if (b_SpecialFrontSingleColumnOneFloor && !vec_WindowOffsets.empty()) {
@@ -329,8 +569,8 @@ void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<gl
             vec_WindowOffsets[0] = f_LeftCenter;
         }
 
-        if (i == 0 && vec_WindowOffsets.size() > 1) {
-            float f_DoorWidth = 2.2f;
+        if (i == 0 && !b_UsingDoorAwareSpacing && vec_WindowOffsets.size() > 1) {
+            float f_DoorWidth = k_DoorWidth;
             float f_Buffer = 0.6f;
             float f_MinCenterDistance = (f_DoorWidth * 0.5f) + (f_WindowWidth * 0.5f) + f_Buffer;
             float f_DoorCenter = f_WallLength * 0.5f;
@@ -363,136 +603,113 @@ void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<gl
             bool b_SpecialFrontSingleColumnOneFloor_local = (i == 0 && i_NumWindows == 1 && f_Height <= 7.0f);
             bool b_SkipLower = (i == 0 && i_NumWindows == 1 && !b_SpecialFrontSingleColumnOneFloor_local);
 
-            if (f_Height > 3.0f && !b_SkipLower) {
-                glm::vec3 vec_CenterLower = vec_WallPos + vec_Up * f_BaseHeight;
+            auto emitWindowRow = [&](float f_CenterHeight) {
+                if (f_CenterHeight <= 0.0f) {
+                    return;
+                }
+                glm::vec3 vec_Center = vec_WallPos + vec_Up * f_CenterHeight;
                 unsigned int i_BaseIdx = windowWall.vertices.size();
-                
+
                 glm::vec3 vec_HalfRight = vec_WallDir * (f_WindowWidth * 0.5f);
                 glm::vec3 vec_HalfUp = vec_Up * (f_WindowHeight * 0.5f);
                 glm::vec3 vec_Offset = vec_WallNormal * f_WindowOffset;
-                
-                windowWall.vertices.push_back(vec_CenterLower - vec_HalfRight - vec_HalfUp + vec_Offset);
-                windowWall.vertices.push_back(vec_CenterLower + vec_HalfRight - vec_HalfUp + vec_Offset);
-                windowWall.vertices.push_back(vec_CenterLower + vec_HalfRight + vec_HalfUp + vec_Offset);
-                windowWall.vertices.push_back(vec_CenterLower - vec_HalfRight + vec_HalfUp + vec_Offset);
-                
+
+                windowWall.vertices.push_back(vec_Center - vec_HalfRight - vec_HalfUp + vec_Offset);
+                windowWall.vertices.push_back(vec_Center + vec_HalfRight - vec_HalfUp + vec_Offset);
+                windowWall.vertices.push_back(vec_Center + vec_HalfRight + vec_HalfUp + vec_Offset);
+                windowWall.vertices.push_back(vec_Center - vec_HalfRight + vec_HalfUp + vec_Offset);
+
                 for (int j = 0; j < 4; ++j) {
                     windowWall.normals.push_back(vec_WallNormal);
                 }
-                
+
                 windowWall.texCoords.push_back(glm::vec2(0.0f, 0.0f));
                 windowWall.texCoords.push_back(glm::vec2(1.0f, 0.0f));
                 windowWall.texCoords.push_back(glm::vec2(1.0f, 1.0f));
                 windowWall.texCoords.push_back(glm::vec2(0.0f, 1.0f));
-                
+
                 windowWall.indices.push_back(i_BaseIdx + 0);
                 windowWall.indices.push_back(i_BaseIdx + 1);
                 windowWall.indices.push_back(i_BaseIdx + 2);
                 windowWall.indices.push_back(i_BaseIdx + 0);
                 windowWall.indices.push_back(i_BaseIdx + 2);
                 windowWall.indices.push_back(i_BaseIdx + 3);
+            };
+
+            int activeRows = 0;
+            if (f_Height > 8.0f) ++activeRows;
+            if (f_Height > 14.0f) ++activeRows;
+            if (f_Height > 22.0f) ++activeRows;
+            if (b_SkipLower && activeRows > 0) {
+                --activeRows;
             }
-            
-            if (f_Height > 7.0f) {
-                if (f_Height > 12.0f) {
 
-                    float f_Delta = (f_Height - f_BaseHeight) / 3.0f;
-                    float f_MidHeight = f_BaseHeight + f_Delta;
-                    float f_TopHeight = f_BaseHeight + 2.0f * f_Delta;
+            if (activeRows <= 0) {
+                continue;
+            }
 
-                    {
-                        glm::vec3 vec_CenterMid = vec_WallPos + vec_Up * f_MidHeight;
-                        unsigned int i_BaseIdx = windowWall.vertices.size();
+            float f_BaseOffset = 0.0f;
+            float f_EffectiveHeight = f_Height;
+            if (i == 0 && frontDoorInfo.b_HasDoor) {
+                f_BaseOffset = k_DoorHeight;
+                f_EffectiveHeight = std::max(0.0f, f_Height - f_BaseOffset);
+            }
 
-                        glm::vec3 vec_HalfRight = vec_WallDir * (f_WindowWidth * 0.5f);
-                        glm::vec3 vec_HalfUp = vec_Up * (f_WindowHeight * 0.5f);
-                        glm::vec3 vec_Offset = vec_WallNormal * f_WindowOffset;
+            auto rowCenters = computeRowCenters(activeRows, f_EffectiveHeight, f_BaseOffset);
 
-                        windowWall.vertices.push_back(vec_CenterMid - vec_HalfRight - vec_HalfUp + vec_Offset);
-                        windowWall.vertices.push_back(vec_CenterMid + vec_HalfRight - vec_HalfUp + vec_Offset);
-                        windowWall.vertices.push_back(vec_CenterMid + vec_HalfRight + vec_HalfUp + vec_Offset);
-                        windowWall.vertices.push_back(vec_CenterMid - vec_HalfRight + vec_HalfUp + vec_Offset);
-
-                        for (int j = 0; j < 4; ++j) {
-                            windowWall.normals.push_back(vec_WallNormal);
-                        }
-
-                        windowWall.texCoords.push_back(glm::vec2(0.0f, 0.0f));
-                        windowWall.texCoords.push_back(glm::vec2(1.0f, 0.0f));
-                        windowWall.texCoords.push_back(glm::vec2(1.0f, 1.0f));
-                        windowWall.texCoords.push_back(glm::vec2(0.0f, 1.0f));
-
-                        windowWall.indices.push_back(i_BaseIdx + 0);
-                        windowWall.indices.push_back(i_BaseIdx + 1);
-                        windowWall.indices.push_back(i_BaseIdx + 2);
-                        windowWall.indices.push_back(i_BaseIdx + 0);
-                        windowWall.indices.push_back(i_BaseIdx + 2);
-                        windowWall.indices.push_back(i_BaseIdx + 3);
-                    }
-
-                    // Upper band
-                    {
-                        glm::vec3 vec_CenterTop = vec_WallPos + vec_Up * f_TopHeight;
-                        unsigned int i_BaseIdx = windowWall.vertices.size();
-
-                        glm::vec3 vec_HalfRight = vec_WallDir * (f_WindowWidth * 0.5f);
-                        glm::vec3 vec_HalfUp = vec_Up * (f_WindowHeight * 0.5f);
-                        glm::vec3 vec_Offset = vec_WallNormal * f_WindowOffset;
-
-                        windowWall.vertices.push_back(vec_CenterTop - vec_HalfRight - vec_HalfUp + vec_Offset);
-                        windowWall.vertices.push_back(vec_CenterTop + vec_HalfRight - vec_HalfUp + vec_Offset);
-                        windowWall.vertices.push_back(vec_CenterTop + vec_HalfRight + vec_HalfUp + vec_Offset);
-                        windowWall.vertices.push_back(vec_CenterTop - vec_HalfRight + vec_HalfUp + vec_Offset);
-
-                        for (int j = 0; j < 4; ++j) {
-                            windowWall.normals.push_back(vec_WallNormal);
-                        }
-
-                        windowWall.texCoords.push_back(glm::vec2(0.0f, 0.0f));
-                        windowWall.texCoords.push_back(glm::vec2(1.0f, 0.0f));
-                        windowWall.texCoords.push_back(glm::vec2(1.0f, 1.0f));
-                        windowWall.texCoords.push_back(glm::vec2(0.0f, 1.0f));
-
-                        windowWall.indices.push_back(i_BaseIdx + 0);
-                        windowWall.indices.push_back(i_BaseIdx + 1);
-                        windowWall.indices.push_back(i_BaseIdx + 2);
-                        windowWall.indices.push_back(i_BaseIdx + 0);
-                        windowWall.indices.push_back(i_BaseIdx + 2);
-                        windowWall.indices.push_back(i_BaseIdx + 3);
-                    }
-                } else {
-                    float f_UpperHeight = f_BaseHeight + (f_Height - f_BaseHeight) * 0.6f;
-                    glm::vec3 vec_CenterUpper = vec_WallPos + vec_Up * f_UpperHeight;
-                    unsigned int i_BaseIdx = windowWall.vertices.size();
-
-                    glm::vec3 vec_HalfRight = vec_WallDir * (f_WindowWidth * 0.5f);
-                    glm::vec3 vec_HalfUp = vec_Up * (f_WindowHeight * 0.5f);
-                    glm::vec3 vec_Offset = vec_WallNormal * f_WindowOffset;
-
-                    windowWall.vertices.push_back(vec_CenterUpper - vec_HalfRight - vec_HalfUp + vec_Offset);
-                    windowWall.vertices.push_back(vec_CenterUpper + vec_HalfRight - vec_HalfUp + vec_Offset);
-                    windowWall.vertices.push_back(vec_CenterUpper + vec_HalfRight + vec_HalfUp + vec_Offset);
-                    windowWall.vertices.push_back(vec_CenterUpper - vec_HalfRight + vec_HalfUp + vec_Offset);
-
-                    for (int j = 0; j < 4; ++j) {
-                        windowWall.normals.push_back(vec_WallNormal);
-                    }
-
-                    windowWall.texCoords.push_back(glm::vec2(0.0f, 0.0f));
-                    windowWall.texCoords.push_back(glm::vec2(1.0f, 0.0f));
-                    windowWall.texCoords.push_back(glm::vec2(1.0f, 1.0f));
-                    windowWall.texCoords.push_back(glm::vec2(0.0f, 1.0f));
-
-                    windowWall.indices.push_back(i_BaseIdx + 0);
-                    windowWall.indices.push_back(i_BaseIdx + 1);
-                    windowWall.indices.push_back(i_BaseIdx + 2);
-                    windowWall.indices.push_back(i_BaseIdx + 0);
-                    windowWall.indices.push_back(i_BaseIdx + 2);
-                    windowWall.indices.push_back(i_BaseIdx + 3);
-                }
+            for (float centerHeight : rowCenters) {
+                emitWindowRow(centerHeight);
             }
         }
         
+        bool b_HasDoorOnThisWall = (i == 0 && frontDoorInfo.b_HasDoor);
+
+        if (windowWall.vertices.empty() && !b_HasDoorOnThisWall) {
+            float f_FallbackWidth = f_WindowWidth * 0.55f;
+            float f_FallbackHeight = f_WindowHeight * 0.6f;
+            float f_HalfFallbackWidth = f_FallbackWidth * 0.5f;
+            float f_Margin = 0.4f;
+            float f_TMin = f_Margin + f_HalfFallbackWidth;
+            float f_TMax = f_WallLength - f_Margin - f_HalfFallbackWidth;
+            if (f_TMax < f_TMin) {
+                f_TMin = f_TMax = f_WallLength * 0.5f;
+            }
+
+            float f_T = std::clamp(f_WallLength * 0.5f, f_TMin, f_TMax);
+            glm::vec3 vec_WallPos = vec_P0 + vec_WallDir * f_T;
+
+            float f_MinCenter = 1.0f + f_FallbackHeight * 0.5f;
+            float f_MaxCenter = std::max(f_MinCenter, f_Height - (f_FallbackHeight * 0.5f) - 0.5f);
+            float f_CenterHeight = std::clamp(f_Height * 0.35f, f_MinCenter, f_MaxCenter);
+
+            glm::vec3 vec_Center = vec_WallPos + vec_Up * f_CenterHeight;
+            glm::vec3 vec_HalfRight = vec_WallDir * f_HalfFallbackWidth;
+            glm::vec3 vec_HalfUp = vec_Up * (f_FallbackHeight * 0.5f);
+            glm::vec3 vec_Offset = vec_WallNormal * f_WindowOffset;
+
+            unsigned int i_BaseIdx = windowWall.vertices.size();
+            windowWall.vertices.push_back(vec_Center - vec_HalfRight - vec_HalfUp + vec_Offset);
+            windowWall.vertices.push_back(vec_Center + vec_HalfRight - vec_HalfUp + vec_Offset);
+            windowWall.vertices.push_back(vec_Center + vec_HalfRight + vec_HalfUp + vec_Offset);
+            windowWall.vertices.push_back(vec_Center - vec_HalfRight + vec_HalfUp + vec_Offset);
+
+            for (int j = 0; j < 4; ++j) {
+                windowWall.normals.push_back(vec_WallNormal);
+            }
+
+            windowWall.texCoords.push_back(glm::vec2(0.0f, 0.0f));
+            windowWall.texCoords.push_back(glm::vec2(1.0f, 0.0f));
+            windowWall.texCoords.push_back(glm::vec2(1.0f, 1.0f));
+            windowWall.texCoords.push_back(glm::vec2(0.0f, 1.0f));
+
+            windowWall.indices.push_back(i_BaseIdx + 0);
+            windowWall.indices.push_back(i_BaseIdx + 1);
+            windowWall.indices.push_back(i_BaseIdx + 2);
+            windowWall.indices.push_back(i_BaseIdx + 0);
+            windowWall.indices.push_back(i_BaseIdx + 2);
+            windowWall.indices.push_back(i_BaseIdx + 3);
+        }
+
         if (!windowWall.vertices.empty()) {
             mesh.windowWalls.push_back(windowWall);
         }
@@ -500,9 +717,9 @@ void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<gl
 }
 
 void BuildingGenerator::GenerateDoors(BuildingMesh& mesh, const std::vector<glm::vec2>& vec_BasePoints, float f_Height) {
-    float f_DoorWidth = 2.2f;
-    float f_DoorHeight = 3.4f;
-    float f_DoorOffset = 0.05f;
+    const float f_DoorWidth = k_DoorWidth;
+    const float f_DoorHeight = k_DoorHeight;
+    constexpr float f_DoorOffset = 0.05f;
 
     std::vector<glm::vec3> vec_Base3D;
     for (const auto& point : vec_BasePoints) {
@@ -534,38 +751,12 @@ void BuildingGenerator::GenerateDoors(BuildingMesh& mesh, const std::vector<glm:
     door.wallNormal = vec_WallNormal;
     door.wallCenter = vec_WallCenter;
 
-    float f_EdgeMarginFront = 0.6f;
-    float f_MinSpacingFront = 1.8f;
-    float f_AvailableFront = f_WallLength - 2.0f * f_EdgeMarginFront;
-    int i_MaxFitFront = 1;
-    if (f_AvailableFront >= 0.0f) {
-        i_MaxFitFront = static_cast<int>(std::floor((f_AvailableFront + f_MinSpacingFront) / (3.3f + f_MinSpacingFront)));
-        i_MaxFitFront = std::max(1, std::min(4, i_MaxFitFront));
+    FrontDoorLayout frontDoorInfo = ComputeFrontDoorLayout(f_WallLength, f_Height);
+    if (!frontDoorInfo.b_HasDoor) {
+        return;
     }
 
-    bool b_SpecialFrontSingleColumnOneFloor = (i_MaxFitFront == 1 && f_Height <= 7.0f);
-
-    glm::vec3 vec_Center;
-    if (b_SpecialFrontSingleColumnOneFloor) {
-        float f_DoorCenterPos = f_WallLength - f_EdgeMarginFront - (f_DoorWidth * 0.5f);
-
-        float f_WindowWidthLocal = 3.3f;
-        float f_WindowHalf = f_WindowWidthLocal * 0.5f;
-        float f_WindowCenter = f_EdgeMarginFront + f_WindowHalf; 
-        float f_WindowRight = f_WindowCenter + f_WindowHalf;
-        float f_DoorLeft = f_WallLength - f_EdgeMarginFront - f_DoorWidth; 
-        float f_Gap = 0.15f;
-        float f_Overlap = (f_WindowRight + f_Gap) - f_DoorLeft;
-        if (f_Overlap > 0.0f) {
-            f_DoorCenterPos -= f_Overlap;
-            float f_MinDoorCenter = f_EdgeMarginFront + f_DoorWidth * 0.5f;
-            f_DoorCenterPos = std::max(f_MinDoorCenter, f_DoorCenterPos);
-        }
-
-        vec_Center = vec_P0 + vec_WallDir * f_DoorCenterPos + vec_Up * (f_DoorHeight * 0.5f);
-    } else {
-        vec_Center = (vec_P0 + vec_P1) * 0.5f + vec_Up * (f_DoorHeight * 0.5f);
-    }
+    glm::vec3 vec_Center = vec_P0 + vec_WallDir * frontDoorInfo.f_CenterParam + vec_Up * (f_DoorHeight * 0.5f);
     glm::vec3 vec_HalfRight = vec_WallDir * (f_DoorWidth * 0.5f);
     glm::vec3 vec_HalfUp = vec_Up * (f_DoorHeight * 0.5f);
     glm::vec3 vec_Offset = vec_WallNormal * f_DoorOffset;

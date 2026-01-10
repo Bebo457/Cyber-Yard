@@ -232,7 +232,113 @@ void GameState::PollNetworkMessages() {
                 DeserializePlayerStates(data, m_vec_Players);
             }
            else{
-            
+                size_t pos = 0;
+                size_t next = 0;
+                int fields[6]; // six pieces of info
+
+                for (int i = 0; i < 6; ++i) {
+                    next = msg.content.find('_', pos);
+                    if (next == std::string::npos) next = msg.content.size();
+                    fields[i] = std::stoi(msg.content.substr(pos, next - pos));
+                    pos = next + 1;
+                }
+
+                int playerIndex = fields[0];
+                int fromNode = fields[1];
+                int toNode = fields[2];
+                int transportType = fields[3];
+                bool usedBlackTicket = (fields[4] != 0);
+                bool doubleMovePending = (fields[5] != 0);
+
+                int i_PlayerIndex = playerIndex;
+                int i_TransportType = transportType;
+                bool b_MrXUsedBlack = usedBlackTicket;
+                bool b_MrXSecondMoveWasPending = doubleMovePending;
+                
+                // Apply move
+                m_vec_Players[playerIndex].MoveTo(toNode);
+
+                m_i_SelectedPlayerIndex = -1;
+                UI::ShowDetectivePopup(false);
+                    m_vec_CurrentArrows.clear();
+
+                bool b_Captured = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_mtx_Players);
+                    b_Captured = CheckCapture();
+                }
+                if (b_Captured) {
+                    CheckEndOfGame(Winner::Detectives);
+                    return;
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(m_mtx_Players);
+                    auto& ref_Player = m_vec_Players[i_PlayerIndex];
+                    if (ref_Player.GetType() == Core::PlayerType::MisterX) {
+                        using UI::TicketMark;
+                        TicketMark mark = TicketMark::None;
+                        if (b_MrXUsedBlack) mark = TicketMark::Black;
+                        else if (i_TransportType == Core::k_TransportTypeTaxi) mark = TicketMark::Taxi;
+                        else if (i_TransportType == Core::k_TransportTypeBus) mark = TicketMark::Bus;
+                        else if (i_TransportType == Core::k_TransportTypeMetro) mark = TicketMark::Metro;
+
+                        int i_TurnIdx = m_i_MrXTurn.load() + 1;
+                        UI::SetSlotMark(i_TurnIdx, mark, true);
+                        m_i_MrXTurn.store(i_TurnIdx);
+
+                        bool b_UIDouble = UI::IsMrXDoubleSelected();
+                        if (!b_MrXSecondMoveWasPending && !m_b_MrXSecondMovePending.load() && b_UIDouble && ref_Player.GetDoubleMoveTickets() > 0) {
+                            if (ref_Player.SpendDoubleMoveTicket()) {
+                                m_b_MrXSecondMovePending.store(true);
+                                ref_Player.SetActive(true);
+                            }
+                        }
+
+                        if (b_MrXSecondMoveWasPending) {
+                            m_b_MrXSecondMovePending.store(false);
+                            ref_Player.SetActive(false);
+                        } else if (!m_b_MrXSecondMovePending.load()) {
+                            ref_Player.SetActive(false);
+                        }
+
+                        // If Mr X turn ended now, activate detectives
+                        if (!ref_Player.IsActive()) {
+                            for (auto& p : m_vec_Players) {
+                                if (p.GetType() == Core::PlayerType::Detective) p.SetActive(true);
+                            }
+                        }
+                    } else {
+                        // Detective moved - deactivate them
+                        ref_Player.SetActive(false);
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(m_mtx_GameState);
+                    if (!m_vec_MovedThisRound[i_PlayerIndex]) {
+                        // If Mr X has a second move pending, don't mark as moved yet
+                        bool b_IsMrX = false;
+                        {
+                            std::lock_guard<std::mutex> lockPlayers(m_mtx_Players);
+                            b_IsMrX = (m_vec_Players[i_PlayerIndex].GetType() == Core::PlayerType::MisterX);
+                        }
+                        if (b_IsMrX && m_b_MrXSecondMovePending.load()) {
+                            // allow second move within the same round
+                        } else {
+                            m_vec_MovedThisRound[i_PlayerIndex] = true;
+                            int i_Remaining = m_i_PlayersRemainingThisRound.load();
+                            if (i_Remaining > 0) {
+                                m_i_PlayersRemainingThisRound.store(i_Remaining - 1);
+                            }
+                        }
+                    }
+                }
+
+                AdvanceRoundIfComplete();
+
+                // Clear UI selections after applying the move
+                UI::ClearMrXSelections();
             }
         }
     }

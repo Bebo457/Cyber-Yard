@@ -3,19 +3,39 @@
 #include <cmath>
 #include <random>
 #include <cstdint>
+#include <string>
 
 namespace CityGen {
 
     // Definicje typów - muszą być widoczne dla kompilatora przed użyciem w klasie
     enum class RoadType {
         HIGHWAY,
-        STREET
+        STREET,
+        PARK_PATH  // Nowy typ dla ścieżek w parkach
     };
 
     enum class PatternType {
         ORGANIC,    // Naturalny/Losowy (np. stare miasta)
         RASTER,     // Siatka (np. New York)
         RADIAL      // Promienisty (np. Paryż)
+    };
+
+    // Typy transportu dla sieci gry Scotland Yard
+    enum class TransportType {
+        TAXI,   // Najkrótsze połączenia - najczęstsze
+        BUS,    // Średnie połączenia - rzadsze
+        METRO,  // Długie połączenia - najrzadsze
+        WATER   // Połączenia przez rzekę (promy)
+    };
+
+    // Połączenie w sieci gry
+    struct GameConnection {
+        int sourceNode;      // Indeks węzła źródłowego (1-199)
+        int destNode;        // Indeks węzła docelowego (1-199)
+        TransportType type;  // Typ transportu
+
+        GameConnection(int src, int dst, TransportType t)
+            : sourceNode(src), destNode(dst), type(t) {}
     };
 
     struct Point {
@@ -38,9 +58,10 @@ namespace CityGen {
         bool isDeleted;
         RoadType type; // Typ drogi (Autostrada vs Ulica)
         bool isPartOfBridge; // Protection: bridge roads should not be split
+        bool isBFSConnection; // Droga utworzona przez BFS do łączenia odizolowanych komponentów
 
         Road(int s, int e, RoadType t = RoadType::HIGHWAY)
-            : startNodeIdx(s), endNodeIdx(e), isDeleted(false), type(t), isPartOfBridge(false) {
+            : startNodeIdx(s), endNodeIdx(e), isDeleted(false), type(t), isPartOfBridge(false), isBFSConnection(false) {
         }
     };
 
@@ -120,6 +141,13 @@ struct HighwayEnd {
         const std::vector<Road>& GetRoads() const { return m_Roads; }
         const std::vector<Highway>& GetHighways() const { return m_Highways; }
         const std::vector<Point>& GetRoadNodes() const { return m_RoadNodes; }
+        const std::vector<int>& GetStreetBranchNodes() const { return m_StreetBranchNodes; }
+        const std::vector<int>& GetHighwayEndpointNodes() const { return m_HighwayEndpointNodes; }
+        const std::vector<GameConnection>& GetGameConnections() const { return m_GameConnections; }
+
+        // Generowanie sieci połączeń gry
+        void GenerateGameConnections();
+        void SaveGameConnectionsToCSV(const std::string& filename) const;
 
         // Getters
         float GetDensityAt(int x, int y) const;
@@ -127,6 +155,9 @@ struct HighwayEnd {
         int GetHeight() const { return m_Height; }
         const std::vector<std::vector<float>>& GetPopulationDensity() const { return m_PopulationDensity; }
 
+        void SetParkPolygons(const std::vector<std::vector<Point>>& parkPolygons) { 
+            m_ParkPolygons = parkPolygons; 
+        }
 
     private:
         // Zone type constants
@@ -235,12 +266,18 @@ struct HighwayEnd {
 
         std::vector<Road> m_Roads;
         std::vector<Point> m_RoadNodes;
+        std::vector<int> m_StreetBranchNodes; // Indeksy węzłów rozgałęzień Streets (3+ połączenia)
+        std::vector<int> m_HighwayEndpointNodes; // Indeksy węzłów końców Highways (zielone)
         std::vector<std::vector<float>> m_PopulationDensity;
+        std::vector<GameConnection> m_GameConnections; // Połączenia sieci gry (taxi, bus, metro, water)
 
         // Kolejki agentów
         std::vector<HighwayEnd> m_ActiveEnds;
         std::vector<Branch> m_SleepingBranches;
 
+        // Park polygon storage (real park boundaries)
+        std::vector<std::vector<Point>> m_ParkPolygons;
+        
         // Główne metody
         void GeneratePopulationDensity();
         void GenerateHighways(); // Faza 1
@@ -332,6 +369,16 @@ struct HighwayEnd {
         void ConsumePopulationDensity(const Point& pos, float radius, float intensity);
 
         void RemoveShortHighways();
+
+        // Park helpers
+        bool HasParks() const;
+        float DistanceToPark(int x, int y) const;
+        bool IsPointInPark(const Point& p) const;
+        bool IsPointInAnyParkPolygon(const Point& p) const;  // Dokładne sprawdzanie przez wielokąty
+        bool IsSegmentIntersectingPark(const Point& a, const Point& b) const;
+        
+        // Park path generation
+        void GenerateParkPaths();
     
     };
 

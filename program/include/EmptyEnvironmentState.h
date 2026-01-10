@@ -4,9 +4,9 @@
 #include "WaterRenderer.h"
 #include "PolygonRenderer.h"
 #include "GeneratedMapData.h"
-// Dodajemy nag��wki potrzebne do typ�w danych z generatora
 #include "HighwayGenerator.h"
 #include "MapGenerator.h"
+#include "BuildingGenerator.h"
 
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
@@ -14,6 +14,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <random>
 
 namespace ScotlandYard { namespace Core { class Application; } }
 
@@ -31,7 +32,7 @@ namespace ScotlandYard {
                 const std::vector<CityGen::Road>& vec_Roads,
                 const std::vector<MapGen::Park>& vec_Parks,
                 const std::vector<MapGen::Point>& vec_RiverPath,
-                const std::vector<CityGen::Highway>& vec_Highways
+                const std::vector<MapGen::BuildingData>& vec_Buildings = std::vector<MapGen::BuildingData>()
             );
             // -----------------------------------------------------
 
@@ -57,6 +58,7 @@ namespace ScotlandYard {
             GLuint m_TexGrass = 0;
             GLuint m_TexMask = 0;
             bool   m_b_UseMask = false;
+            bool   m_b_RenderTestRoad = false;
 
             // Road mesh
             GLuint m_VAO_Road = 0;
@@ -64,14 +66,7 @@ namespace ScotlandYard {
             GLuint m_EBO_Road = 0;
             GLuint m_ShaderRoad = 0;
             int    m_RoadIndexCount = 0;
-            struct RoadMesh {
-                GLuint VAO;
-                GLuint VBO;
-                GLuint EBO;
-                int indexCount;
-            };
-            std::vector<RoadMesh> m_RoadMeshes;
-            
+
             // Road material/texture
             GLuint m_TexRoad = 0;
 
@@ -83,9 +78,10 @@ namespace ScotlandYard {
             glm::vec3 m_vec3_BridgePosition{ 11.0f, 0.0f, 8.0f };
             glm::vec3 m_vec3_BridgeBaseScale{ 0.165f, 0.165f, 0.165f };
             glm::vec3 m_vec3_BridgeScale{ 0.165f, 0.165f, 0.165f };
-            float m_f_BridgeModelLength = 1.0f; // original length of bridge model along X (GLB space)
+            float m_f_BridgeModelLength = 1.0f; 
             GLuint m_TexBridge = 0;
             bool   m_b_BridgeHasTexture = false;
+            bool   m_b_DrawBridge = false;
 
             // Water renderer
             std::unique_ptr<Rendering::WaterRenderer> m_p_WaterRenderer;
@@ -115,8 +111,8 @@ namespace ScotlandYard {
             static constexpr float k_CameraScrollAcceleration = 0.003f;
             static constexpr float k_CameraScrollFriction = 0.90f;
             static constexpr float k_CameraScrollToForwardRatio = 8.0f;
-            static constexpr float k_CameraAcceleration = 40.0f;
-            static constexpr float k_MaxCameraSpeed = 80.0f;
+            static constexpr float k_CameraAcceleration = 47.0f;
+            static constexpr float k_MaxCameraSpeed = 800.0f;
             static constexpr float k_CameraFriction = 0.90f;
             static constexpr float k_MinCameraAngle = -1.55f;
             static constexpr float k_MaxCameraAngle = -0.2915f;
@@ -125,10 +121,37 @@ namespace ScotlandYard {
             MapGen::GeneratedMapData m_MapData;
             bool m_b_MapDataLoaded = false;
             bool m_b_RiverStripLoaded = false;
-            
-            std::vector<CityGen::Point> m_vec_HighwayNodes;
-            std::vector<CityGen::Road>  m_vec_HighwayRoads;
-            std::vector<CityGen::Highway> m_vec_Highways;
+
+            struct SurfaceBuffers {
+                GLuint vao = 0;
+                GLuint vboPos = 0;
+                GLuint vboNormal = 0;
+                GLuint vboUV = 0;
+                GLuint ebo = 0;
+            };
+
+            struct BuildingRenderInstance {
+                Core::BuildingMesh mesh;
+                SurfaceBuffers meshBuffers;
+                std::vector<SurfaceBuffers> windowSurfaces;
+                std::vector<SurfaceBuffers> doorSurfaces;
+                glm::vec3 position{ 11.0f, 0.0f, 8.0f };
+                float unitScale = 1.0f;
+                bool ready = false;
+                GLuint facadeTexture = 0;
+                GLuint windowTexture = 0;
+                GLuint doorTexture = 0;
+            };
+
+            BuildingRenderInstance m_ShowcaseBuilding;
+            bool m_b_ShowcaseBuildingVisible = false;
+            std::vector<BuildingRenderInstance> m_GeneratedBuildings;
+            GLuint m_ShaderBuilding = 0;
+            std::vector<GLuint> m_vecFacadeTextures;
+            std::vector<GLuint> m_vecWindowTextures;
+            std::vector<GLuint> m_vecDoorTextures;
+            GLuint m_TexBuildingRoof = 0;
+            std::mt19937 m_Rng;
 
             // Private methods
             void CreatePlane();
@@ -143,6 +166,39 @@ namespace ScotlandYard {
             void LoadBridgeModel(Core::Application* p_App);
             void RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale,
                 float f_R, float f_G, float f_B, Core::Application* p_App);
+            void InitializeShowcaseBuilding(Core::Application* p_App);
+            void DestroyShowcaseBuilding(Core::Application* p_App);
+            void DestroyGeneratedBuildings();
+            void RenderShowcaseBuilding(const glm::mat4& mat4_View,
+                const glm::mat4& mat4_Projection, const glm::vec3& vec3_CameraPos);
+            void RenderGeneratedBuildings(const glm::mat4& mat4_View,
+                const glm::mat4& mat4_Projection, const glm::vec3& vec3_CameraPos);
+            bool UploadBuildingInstance(BuildingRenderInstance& instance);
+            void DestroyBuildingInstance(BuildingRenderInstance& instance);
+            void ConvertBuildingMeshForEnvironment(Core::BuildingMesh& mesh);
+            void ScaleBuildingMesh(Core::BuildingMesh& mesh, float f_Scale);
+            void BuildBuildingsFromMapData();
+            void RenderBuildingInstance(const BuildingRenderInstance& instance,
+                const glm::mat4& mat4_View, const glm::mat4& mat4_Projection,
+                const glm::vec3& vec3_CameraPos) const;
+            void ReleaseSurfaceBuffers(SurfaceBuffers& buffers);
+            bool UploadSurfaceBuffersFromData(const std::vector<glm::vec3>& positions,
+                const std::vector<glm::vec3>& normals,
+                const std::vector<glm::vec2>& uvs,
+                const std::vector<unsigned int>& indices,
+                SurfaceBuffers& outBuffers);
+            void UploadWindowSurfaces(const std::vector<Core::BuildingMesh::WindowWall>& walls,
+                std::vector<SurfaceBuffers>& outBuffers);
+            void UploadDoorSurfaces(const std::vector<Core::BuildingMesh::Door>& doors,
+                std::vector<SurfaceBuffers>& outBuffers);
+            void ReleaseInstanceBuffers(BuildingRenderInstance& instance);
+            GLuint LoadShowcaseTexture(Core::Application* p_App, const std::string& s_RelativePath);
+            void LoadBuildingTextures(Core::Application* p_App);
+            void LoadTextureSetFromDirectory(Core::Application* p_App,
+                const std::string& s_RelativeDir, std::vector<GLuint>& vec_Target);
+            GLuint PickRandomTexture(const std::vector<GLuint>& vec_Textures);
+            void AssignRandomTextures(BuildingRenderInstance& instance);
+            void DestroyBuildingTextures(Core::Application* p_App);
 
             void AccelerateCameraForward(float f_DeltaTime);
             void AccelerateCameraBackward(float f_DeltaTime);
@@ -150,9 +206,6 @@ namespace ScotlandYard {
             void AccelerateCameraRight(float f_DeltaTime);
             void UpdateCameraPhysics(float f_DeltaTime);
             void CreateTestRoad(Core::Application* p_App);
-
-            void BuildHighwaysFromMapData(Core::Application* p_App);
-            void BuildLocalRoadsFromMapData(Core::Application* p_App);
         };
 
     } // namespace States
