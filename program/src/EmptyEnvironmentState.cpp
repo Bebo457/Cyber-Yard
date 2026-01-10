@@ -15,6 +15,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <cctype>
 #include <algorithm>
 #include <limits>
 #include <type_traits>
@@ -54,6 +55,19 @@ int ComponentCount(const std::string& type) {
     if (type == "VEC3") return 3;
     if (type == "VEC4") return 4;
     return 0;
+}
+
+bool HasSupportedTextureExtension(const std::filesystem::path& path) {
+    std::string ext = path.extension().string();
+    if (ext.empty()) {
+        return false;
+    }
+
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga";
 }
 
 bool ParseGlbFile(const std::string& path, nlohmann::json& outJson, std::vector<uint8_t>& outBin) {
@@ -348,7 +362,9 @@ GLuint CreateBuildingShaderProgram() {
 namespace ScotlandYard {
 namespace States {
 
-    EmptyEnvironmentState::EmptyEnvironmentState() = default;
+    EmptyEnvironmentState::EmptyEnvironmentState()
+        : m_Rng(std::random_device{}()) {
+    }
 
     EmptyEnvironmentState::~EmptyEnvironmentState() = default;
 
@@ -669,6 +685,7 @@ namespace States {
                 TryLoadGeneratedMap(p_App);
                 LoadBridgeModel(p_App);
                 SetBridgeLength(4.0f);
+                LoadBuildingTextures(p_App);
 
                 m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
                 m_p_WaterRenderer->Initialize();
@@ -733,30 +750,13 @@ namespace States {
         }
 
         void EmptyEnvironmentState::DestroyShowcaseBuilding(Core::Application* p_App) {
+            (void)p_App;
             DestroyBuildingInstance(m_ShowcaseBuilding);
 
             if (m_ShaderBuilding) {
                 glDeleteProgram(m_ShaderBuilding);
                 m_ShaderBuilding = 0;
             }
-
-            auto unloadTexture = [p_App](GLuint& tex) {
-                if (!tex) {
-                    return;
-                }
-                if (p_App) {
-                    p_App->UnloadTexture(tex);
-                }
-                else {
-                    glDeleteTextures(1, &tex);
-                }
-                tex = 0;
-            };
-
-            unloadTexture(m_TexBuildingFacade);
-            unloadTexture(m_TexBuildingRoof);
-            unloadTexture(m_TexBuildingWindows);
-            unloadTexture(m_TexBuildingDoors);
 
             m_ShowcaseBuilding.ready = false;
         }
@@ -796,6 +796,7 @@ namespace States {
 
             DestroyGeneratedBuildings();
             DestroyShowcaseBuilding(p_App);
+            DestroyBuildingTextures(p_App);
 
         }
 
@@ -1151,6 +1152,122 @@ namespace States {
             return p_App->LoadTexture(p_App->GetAssetPath(s_RelativePath));
         }
 
+        void EmptyEnvironmentState::LoadTextureSetFromDirectory(Core::Application* p_App,
+            const std::string& s_RelativeDir, std::vector<GLuint>& vec_Target) {
+            if (!p_App) {
+                return;
+            }
+            if (!vec_Target.empty()) {
+                return;
+            }
+
+            const std::string s_AbsoluteDir = p_App->GetAssetPath(s_RelativeDir);
+            if (!std::filesystem::exists(s_AbsoluteDir)) {
+                std::cerr << "[Building] Texture directory missing: " << s_AbsoluteDir << std::endl;
+                return;
+            }
+
+            try {
+                for (const auto& entry : std::filesystem::directory_iterator(s_AbsoluteDir)) {
+                    if (!entry.is_regular_file()) {
+                        continue;
+                    }
+                    if (!HasSupportedTextureExtension(entry.path())) {
+                        continue;
+                    }
+
+                    GLuint texture = p_App->LoadTexture(entry.path().string());
+                    if (texture != 0) {
+                        vec_Target.push_back(texture);
+                    }
+                    else {
+                        std::cerr << "[Building] Failed to load texture: " << entry.path() << std::endl;
+                    }
+                }
+            }
+            catch (const std::exception& e) {
+                std::cerr << "[Building] Directory iteration failed for " << s_AbsoluteDir << ": " << e.what() << std::endl;
+            }
+        }
+
+        void EmptyEnvironmentState::LoadBuildingTextures(Core::Application* p_App) {
+            if (!p_App) {
+                return;
+            }
+
+            LoadTextureSetFromDirectory(p_App, "textures/facade", m_vecFacadeTextures);
+            LoadTextureSetFromDirectory(p_App, "textures/windows", m_vecWindowTextures);
+            LoadTextureSetFromDirectory(p_App, "textures/door", m_vecDoorTextures);
+
+            auto ensureFallback = [this, p_App](std::vector<GLuint>& vec_Target, const std::string& s_Fallback) {
+                if (!vec_Target.empty()) {
+                    return;
+                }
+                GLuint fallback = LoadShowcaseTexture(p_App, s_Fallback);
+                if (fallback != 0) {
+                    vec_Target.push_back(fallback);
+                }
+                else {
+                    std::cerr << "[Building] Failed to load fallback texture: " << s_Fallback << std::endl;
+                }
+            };
+
+            ensureFallback(m_vecFacadeTextures, "textures/facade/white.jpg");
+            ensureFallback(m_vecWindowTextures, "textures/windows/window1.png");
+            ensureFallback(m_vecDoorTextures, "textures/door/door1.jpg");
+
+            if (m_TexBuildingRoof == 0) {
+                m_TexBuildingRoof = LoadShowcaseTexture(p_App, "textures/210_clay roof texture seamless.jpg");
+            }
+        }
+
+        GLuint EmptyEnvironmentState::PickRandomTexture(const std::vector<GLuint>& vec_Textures) {
+            if (vec_Textures.empty()) {
+                return 0;
+            }
+
+            std::uniform_int_distribution<size_t> dist(0, vec_Textures.size() - 1);
+            return vec_Textures[dist(m_Rng)];
+        }
+
+        void EmptyEnvironmentState::AssignRandomTextures(BuildingRenderInstance& instance) {
+            instance.facadeTexture = PickRandomTexture(m_vecFacadeTextures);
+            instance.windowTexture = PickRandomTexture(m_vecWindowTextures);
+            instance.doorTexture = PickRandomTexture(m_vecDoorTextures);
+        }
+
+        void EmptyEnvironmentState::DestroyBuildingTextures(Core::Application* p_App) {
+            auto unloadSet = [p_App](std::vector<GLuint>& vec_Textures) {
+                for (auto& tex : vec_Textures) {
+                    if (!tex) {
+                        continue;
+                    }
+                    if (p_App) {
+                        p_App->UnloadTexture(tex);
+                    }
+                    else {
+                        glDeleteTextures(1, &tex);
+                    }
+                    tex = 0;
+                }
+                vec_Textures.clear();
+            };
+
+            unloadSet(m_vecFacadeTextures);
+            unloadSet(m_vecWindowTextures);
+            unloadSet(m_vecDoorTextures);
+
+            if (m_TexBuildingRoof) {
+                if (p_App) {
+                    p_App->UnloadTexture(m_TexBuildingRoof);
+                }
+                else {
+                    glDeleteTextures(1, &m_TexBuildingRoof);
+                }
+                m_TexBuildingRoof = 0;
+            }
+        }
+
         void EmptyEnvironmentState::ConvertBuildingMeshForEnvironment(Core::BuildingMesh& mesh) {
             for (auto& vertex : mesh.vertices) {
                 vertex = ConvertBuildingVector(vertex);
@@ -1408,11 +1525,8 @@ namespace States {
                 m_ShowcaseBuilding.ready = false;
                 return;
             }
-
-            m_TexBuildingFacade = LoadShowcaseTexture(p_App, "textures/facade/white.jpg");
-            m_TexBuildingRoof = LoadShowcaseTexture(p_App, "textures/210_clay roof texture seamless.jpg");
-            m_TexBuildingWindows = LoadShowcaseTexture(p_App, "textures/windows/window1.png");
-            m_TexBuildingDoors = LoadShowcaseTexture(p_App, "textures/door/door1.jpg");
+            LoadBuildingTextures(p_App);
+            AssignRandomTextures(m_ShowcaseBuilding);
 
             m_ShowcaseBuilding.ready = (m_ShowcaseBuilding.meshBuffers.vao != 0 && m_ShaderBuilding != 0);
         }
@@ -1516,7 +1630,7 @@ namespace States {
             glBindVertexArray(instance.meshBuffers.vao);
             for (const auto& material : instance.mesh.materials) {
                 bool b_IsRoof = (material.name == "roof") && (m_TexBuildingRoof != 0);
-                GLuint texture = b_IsRoof ? m_TexBuildingRoof : m_TexBuildingFacade;
+                GLuint texture = b_IsRoof ? m_TexBuildingRoof : instance.facadeTexture;
                 bool b_UseTexture = (texture != 0);
 
                 if (b_UseTexture) {
@@ -1539,8 +1653,8 @@ namespace States {
                 glEnable(GL_CULL_FACE);
             }
 
-            bool b_HasWindows = (m_TexBuildingWindows != 0) && !instance.mesh.windowWalls.empty();
-            bool b_HasDoors = (m_TexBuildingDoors != 0) && !instance.mesh.doors.empty();
+            bool b_HasWindows = (instance.windowTexture != 0) && !instance.mesh.windowWalls.empty();
+            bool b_HasDoors = (instance.doorTexture != 0) && !instance.mesh.doors.empty();
 
             if (!(b_HasWindows || b_HasDoors)) {
                 return;
@@ -1577,7 +1691,7 @@ namespace States {
                     }
 
                     glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, m_TexBuildingWindows);
+                    glBindTexture(GL_TEXTURE_2D, instance.windowTexture);
                     glUniform1i(glGetUniformLocation(m_ShaderBuilding, "texture1"), 0);
                     glUniform1i(glGetUniformLocation(m_ShaderBuilding, "useTexture"), 1);
                     glUniform1i(glGetUniformLocation(m_ShaderBuilding, "isRoof"), 0);
@@ -1592,7 +1706,7 @@ namespace States {
             if (b_HasDoors) {
                 size_t doorCount = std::min(instance.mesh.doors.size(), instance.doorSurfaces.size());
                 glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, m_TexBuildingDoors);
+                glBindTexture(GL_TEXTURE_2D, instance.doorTexture);
                 glUniform1i(glGetUniformLocation(m_ShaderBuilding, "texture1"), 0);
                 glUniform1i(glGetUniformLocation(m_ShaderBuilding, "useTexture"), 1);
                 glUniform1i(glGetUniformLocation(m_ShaderBuilding, "isRoof"), 0);
@@ -1699,6 +1813,7 @@ namespace States {
                     continue;
                 }
 
+                AssignRandomTextures(instance);
                 m_GeneratedBuildings.push_back(std::move(instance));
                 ++builtCount;
             }

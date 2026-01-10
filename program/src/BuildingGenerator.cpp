@@ -662,6 +662,54 @@ void BuildingGenerator::GenerateWindows(BuildingMesh& mesh, const std::vector<gl
             }
         }
         
+        bool b_HasDoorOnThisWall = (i == 0 && frontDoorInfo.b_HasDoor);
+
+        if (windowWall.vertices.empty() && !b_HasDoorOnThisWall) {
+            float f_FallbackWidth = f_WindowWidth * 0.55f;
+            float f_FallbackHeight = f_WindowHeight * 0.6f;
+            float f_HalfFallbackWidth = f_FallbackWidth * 0.5f;
+            float f_Margin = 0.4f;
+            float f_TMin = f_Margin + f_HalfFallbackWidth;
+            float f_TMax = f_WallLength - f_Margin - f_HalfFallbackWidth;
+            if (f_TMax < f_TMin) {
+                f_TMin = f_TMax = f_WallLength * 0.5f;
+            }
+
+            float f_T = std::clamp(f_WallLength * 0.5f, f_TMin, f_TMax);
+            glm::vec3 vec_WallPos = vec_P0 + vec_WallDir * f_T;
+
+            float f_MinCenter = 1.0f + f_FallbackHeight * 0.5f;
+            float f_MaxCenter = std::max(f_MinCenter, f_Height - (f_FallbackHeight * 0.5f) - 0.5f);
+            float f_CenterHeight = std::clamp(f_Height * 0.35f, f_MinCenter, f_MaxCenter);
+
+            glm::vec3 vec_Center = vec_WallPos + vec_Up * f_CenterHeight;
+            glm::vec3 vec_HalfRight = vec_WallDir * f_HalfFallbackWidth;
+            glm::vec3 vec_HalfUp = vec_Up * (f_FallbackHeight * 0.5f);
+            glm::vec3 vec_Offset = vec_WallNormal * f_WindowOffset;
+
+            unsigned int i_BaseIdx = windowWall.vertices.size();
+            windowWall.vertices.push_back(vec_Center - vec_HalfRight - vec_HalfUp + vec_Offset);
+            windowWall.vertices.push_back(vec_Center + vec_HalfRight - vec_HalfUp + vec_Offset);
+            windowWall.vertices.push_back(vec_Center + vec_HalfRight + vec_HalfUp + vec_Offset);
+            windowWall.vertices.push_back(vec_Center - vec_HalfRight + vec_HalfUp + vec_Offset);
+
+            for (int j = 0; j < 4; ++j) {
+                windowWall.normals.push_back(vec_WallNormal);
+            }
+
+            windowWall.texCoords.push_back(glm::vec2(0.0f, 0.0f));
+            windowWall.texCoords.push_back(glm::vec2(1.0f, 0.0f));
+            windowWall.texCoords.push_back(glm::vec2(1.0f, 1.0f));
+            windowWall.texCoords.push_back(glm::vec2(0.0f, 1.0f));
+
+            windowWall.indices.push_back(i_BaseIdx + 0);
+            windowWall.indices.push_back(i_BaseIdx + 1);
+            windowWall.indices.push_back(i_BaseIdx + 2);
+            windowWall.indices.push_back(i_BaseIdx + 0);
+            windowWall.indices.push_back(i_BaseIdx + 2);
+            windowWall.indices.push_back(i_BaseIdx + 3);
+        }
+
         if (!windowWall.vertices.empty()) {
             mesh.windowWalls.push_back(windowWall);
         }

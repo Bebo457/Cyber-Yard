@@ -14,6 +14,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <random>
 
 namespace ScotlandYard { namespace Core { class Application; } }
 
@@ -137,16 +138,20 @@ namespace ScotlandYard {
                 glm::vec3 position{ 11.0f, 0.0f, 8.0f };
                 float unitScale = 1.0f;
                 bool ready = false;
+                GLuint facadeTexture = 0;
+                GLuint windowTexture = 0;
+                GLuint doorTexture = 0;
             };
 
             BuildingRenderInstance m_ShowcaseBuilding;
             bool m_b_ShowcaseBuildingVisible = false;
             std::vector<BuildingRenderInstance> m_GeneratedBuildings;
             GLuint m_ShaderBuilding = 0;
-            GLuint m_TexBuildingFacade = 0;
+            std::vector<GLuint> m_vecFacadeTextures;
+            std::vector<GLuint> m_vecWindowTextures;
+            std::vector<GLuint> m_vecDoorTextures;
             GLuint m_TexBuildingRoof = 0;
-            GLuint m_TexBuildingWindows = 0;
-            GLuint m_TexBuildingDoors = 0;
+            std::mt19937 m_Rng;
 
             // Private methods
             void CreatePlane();
@@ -188,6 +193,12 @@ namespace ScotlandYard {
                 std::vector<SurfaceBuffers>& outBuffers);
             void ReleaseInstanceBuffers(BuildingRenderInstance& instance);
             GLuint LoadShowcaseTexture(Core::Application* p_App, const std::string& s_RelativePath);
+            void LoadBuildingTextures(Core::Application* p_App);
+            void LoadTextureSetFromDirectory(Core::Application* p_App,
+                const std::string& s_RelativeDir, std::vector<GLuint>& vec_Target);
+            GLuint PickRandomTexture(const std::vector<GLuint>& vec_Textures);
+            void AssignRandomTextures(BuildingRenderInstance& instance);
+            void DestroyBuildingTextures(Core::Application* p_App);
 
             void AccelerateCameraForward(float f_DeltaTime);
             void AccelerateCameraBackward(float f_DeltaTime);
