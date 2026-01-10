@@ -15,8 +15,11 @@
 
 namespace ScotlandYard {
 namespace States {
+    auto& settings = Core::Settings();
+    std::string m_s_IPInput   = settings.onlineHost;
+    std::string m_s_PortInput = std::to_string(settings.onlinePort);
 
-    MenuState::MenuState()
+MenuState::MenuState()
         : m_i_SelectedOption(0)
         , m_i_HoverOption(-1)
         , m_WhiteTexture(0)
@@ -30,12 +33,12 @@ namespace States {
         BuildMainMenu();
     }
 
-    MenuState::~MenuState() = default;
+MenuState::~MenuState() = default;
 
-
-    void MenuState::BuildMainMenu() {
+void MenuState::BuildMainMenu() {
         m_b_NewGameSubmenu = false;
         m_b_OnlineGameSubmenu = false;
+        m_b_ConnectionSettings = false;
 
         m_Buttons[0].m_s_Text = "New Game";
         m_Buttons[1].m_s_Text = "Load Game";
@@ -47,8 +50,10 @@ namespace States {
         for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
     }
 
-    void MenuState::BuildNewGameMenu() {
+void MenuState::BuildNewGameMenu() {
         m_b_NewGameSubmenu = true;
+        m_b_OnlineGameSubmenu = false;
+        m_b_ConnectionSettings = false;
 
         m_Buttons[0].m_s_Text = "Local";
         m_Buttons[1].m_s_Text = "Online LAN";
@@ -60,8 +65,10 @@ namespace States {
         for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
     }
 
-    void MenuState::BuildOnlineMenu(){
+void MenuState::BuildOnlineMenu(){
         m_b_OnlineGameSubmenu = true;
+        m_b_NewGameSubmenu = false;
+        m_b_ConnectionSettings = false;
 
         m_Buttons[0].m_s_Text = "Host Game";
         m_Buttons[1].m_s_Text = "Join Game";
@@ -73,7 +80,22 @@ namespace States {
         for (int i = 0; i < BUTTON_COUNT; ++i) m_f_FrameAlpha[i] = 0.0f;
     }
 
+void MenuState::BuildConnectionSettingsMenu() {
+    m_b_ConnectionSettings = true;
+    m_b_NewGameSubmenu = false;
+    m_b_OnlineGameSubmenu = false;
+
+    m_Buttons[0].m_s_Text = "Connect";
+    m_Buttons[1].m_s_Text = ""; // IP field
+    m_Buttons[2].m_s_Text = ""; // Port field
+    m_Buttons[3].m_s_Text = "Back";
+
+    m_i_SelectedOption = 1; // start on IP
+    m_b_EditIP = true;
+}
+
 void MenuState::OnEnter(Core::Application* p_App) {
+    SDL_StartTextInput();
     m_i_SelectedOption = 0;
 
     if (!p_App || !p_App->IsTrainingMode()) {
@@ -93,6 +115,7 @@ void MenuState::OnEnter(Core::Application* p_App) {
 }
 
 void MenuState::OnExit(Core::Application* p_App) {
+    SDL_StopTextInput();
     if (!p_App || !p_App->IsTrainingMode()) {
         if (m_WhiteTexture) {
             glDeleteTextures(1, &m_WhiteTexture);
@@ -160,6 +183,32 @@ void MenuState::RenderText(const std::string& s_Text, float f_X, float f_Y, floa
     }
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void MenuState::RenderTextField(int index, const Button& b, Core::Application* app) {
+
+    bool active = (index == 1 && m_b_EditIP) || (index == 2 && !m_b_EditIP);
+    const std::string& text = (index == 1) ? m_s_IPInput : m_s_PortInput;
+
+    ScotlandYard::UI::Color bg = active
+        ? ScotlandYard::UI::Color{0.18f, 0.18f, 0.22f, 1.0f}
+        : ScotlandYard::UI::Color{0.14f, 0.14f, 0.16f, 1.0f};
+
+    ScotlandYard::UI::DrawRoundedRectScreen(
+        b.m_f_X, b.m_f_Y,
+        b.m_f_X + b.m_f_Width, b.m_f_Y + b.m_f_Height,
+        bg, 10, app
+    );
+
+    std::string label = (index == 1 ? "IP: " : "Port: ");
+    std::string caret = active ? "|" : "";
+
+    RenderText(
+        label + text + caret,
+        b.m_f_X + 16,
+        b.m_f_Y + b.m_f_Height / 2.0f + 8,
+        0.8f, 1, 1, 1, app
+    );
 }
 
 void MenuState::RenderTextBold(const std::string& s_Text, float f_X, float f_Y, float f_Scale, float f_R, float f_G, float f_B, Core::Application* p_App) {
@@ -251,6 +300,11 @@ void MenuState::RenderButton(const Button& button, int i_Index, bool b_Selected,
         float textCenterOffset = (maxTopOffset + minBottomOffset) * 0.5f;
         f_TextY = by0 + (by1 - by0) * 0.5f - textCenterOffset;
     }
+
+    if (m_b_ConnectionSettings && (i_Index == 1 || i_Index == 2)) {
+        RenderTextField(i_Index, button, p_App);
+        return;
+    }
     RenderText(button.m_s_Text, f_TextX, f_TextY, f_TextScale, 1.0f, 1.0f, 1.0f, p_App);
 }
 
@@ -337,11 +391,8 @@ void MenuState::Render(Core::Application* p_App) {
     SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 }
 
-
-
 void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
-    auto& settings = Core::Settings();
-    if (event.type == SDL_KEYDOWN) {
+    if (event.type == SDL_KEYDOWN && !m_b_ConnectionSettings) {
         switch (event.key.keysym.sym) {
         case SDLK_UP:
             m_i_SelectedOption = (m_i_SelectedOption - 1 + BUTTON_COUNT) % BUTTON_COUNT;
@@ -350,23 +401,21 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             m_i_SelectedOption = (m_i_SelectedOption + 1) % BUTTON_COUNT;
             break;
         case SDLK_RETURN:
-            if (m_b_NewGameSubmenu) {
-                switch (m_i_SelectedOption) {
-                case 0: // Local
-                    p_App->GetStateManager()->ChangeState("setup", p_App);
-                    break;
-                case 1: // Online LAN
-                    BuildOnlineMenu();
-                    break;
-                case 2: // Map Generator
-                    p_App->GetStateManager()->ChangeState("mapgen", p_App);
-                    break;
-                case 3: // Back
-                    BuildMainMenu();  // Back to main menu
-                    break;
-                }
+            if (!m_b_NewGameSubmenu && !m_b_OnlineGameSubmenu && !m_b_ConnectionSettings) {
+                    switch (m_i_SelectedOption) {
+                    case 0: // New Game
+                        BuildNewGameMenu();
+                        break;
+                    case 1: // Load Game
+                        break;
+                    case 2: // Settings
+                        break;
+                    case 3: // Exit
+                        p_App->RequestExit();
+                        break;
+                    }
             }
-            else if (m_b_NewGameSubmenu) {
+            else if (m_b_NewGameSubmenu && !m_b_OnlineGameSubmenu && !m_b_ConnectionSettings) {
                     switch (m_i_SelectedOption) {
                     case 0: // Local
                         p_App->GetStateManager()->ChangeState("setup", p_App);
@@ -382,9 +431,9 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                         BuildMainMenu();
                         break;
                     }
-                }
-            else if (m_b_OnlineGameSubmenu) {
-                switch (m_i_SelectedOption) {
+            }
+            else if (!m_b_NewGameSubmenu && m_b_OnlineGameSubmenu && !m_b_ConnectionSettings) {
+                    switch (m_i_SelectedOption) {
                     case 0: // Host Game
                         settings.onlineIsServer = true;
                         p_App->GetStateManager()->ChangeState("setup", p_App);
@@ -394,13 +443,40 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                         p_App->GetStateManager()->ChangeState("setup", p_App);
                         break;
                     case 2: // Settings
-                        
+                        BuildConnectionSettingsMenu();
                         break;
                     case 3: // Back
                         BuildMainMenu();
                         break;
                     }
+            }
+            else if (!m_b_NewGameSubmenu && !m_b_OnlineGameSubmenu && m_b_ConnectionSettings) {
+                    switch (m_i_SelectedOption) {
+                    case 0:
+                    {
+                        settings.onlineHost = m_s_IPInput;
+
+                        try {
+                            int port = std::stoi(m_s_PortInput);
+                            if (port > 0 && port <= 65535) {
+                                settings.onlinePort = static_cast<uint16_t>(port);
+                            }
+                            else {
+                                std::cerr << "Invalid port range\n";
+                                return;
+                            }
+                        }
+                        catch (...) {
+                            std::cerr << "Invalid port value\n";
+                            return;
+                        }
+
+                        p_App->GetStateManager()->ChangeState("setup", p_App);
+                        break;
+                    }
+                    break;
                 }
+            }
             break;
         case SDLK_ESCAPE:
             if (m_b_NewGameSubmenu) BuildMainMenu();
@@ -423,7 +499,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                 f_MouseY >= m_Buttons[i].m_f_Y && f_MouseY <= m_Buttons[i].m_f_Y + m_Buttons[i].m_f_Height) {
                 m_i_HoverOption = i;
                 m_i_SelectedOption = i;
-                if (!m_b_NewGameSubmenu) {
+                if (!m_b_NewGameSubmenu && !m_b_OnlineGameSubmenu && !m_b_ConnectionSettings) {
                     switch (i) {
                     case 0: // New Game
                         BuildNewGameMenu();
@@ -437,7 +513,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                         break;
                     }
                 }
-                else if (m_b_NewGameSubmenu and !m_b_OnlineGameSubmenu) {
+                else if (m_b_NewGameSubmenu && !m_b_OnlineGameSubmenu && !m_b_ConnectionSettings) {
                     switch (i) {
                     case 0: // Local
                         p_App->GetStateManager()->ChangeState("setup", p_App);
@@ -454,7 +530,7 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                         break;
                     }
                 }
-                else if (m_b_OnlineGameSubmenu) {
+                else if (!m_b_NewGameSubmenu && m_b_OnlineGameSubmenu && !m_b_ConnectionSettings) {
                     switch (i) {
                     case 0: // Host Game
                         settings.onlineIsServer = true;
@@ -465,10 +541,44 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
                         p_App->GetStateManager()->ChangeState("setup", p_App);
                         break;
                     case 2: // Settings
-                        
+                        BuildConnectionSettingsMenu();
                         break;
                     case 3: // Back
                         BuildMainMenu();
+                        break;
+                    }
+                }
+                else if (!m_b_NewGameSubmenu && !m_b_OnlineGameSubmenu && m_b_ConnectionSettings) {
+                    switch (i) {
+                        case 0:
+                       {
+                            settings.onlineHost = m_s_IPInput;
+
+                            try {
+                                int port = std::stoi(m_s_PortInput);
+                                if (port > 0 && port <= 65535) {
+                                    settings.onlinePort = static_cast<uint16_t>(port);
+                                }
+                                else {
+                                    std::cerr << "Invalid port range\n";
+                                    return;
+                                }
+                            }
+                            catch (...) {
+                                std::cerr << "Invalid port value\n";
+                                return;
+                            }
+
+                            break;
+                        }
+                        case 1:
+                            m_b_EditIP = true;
+                            break;
+                        case 2:
+                            m_b_EditIP = false;
+                            break;
+                        case 3: // Back
+                            BuildOnlineMenu();
                         break;
                     }
                 }
@@ -492,6 +602,22 @@ void MenuState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             }
         }
         m_i_HoverOption = i_HoverIndex;
+    }
+    else if (event.type == SDL_TEXTINPUT && m_b_ConnectionSettings) {
+        std::string& target = m_b_EditIP ? m_s_IPInput : m_s_PortInput;
+
+        if (target.size() < 21) {
+            target += event.text.text;
+        }
+    }
+    else if (event.type == SDL_KEYDOWN && m_b_ConnectionSettings) {
+        if (event.key.keysym.sym == SDLK_BACKSPACE) {
+            std::string& target = m_b_EditIP ? m_s_IPInput : m_s_PortInput;
+            if (!target.empty()) target.pop_back();
+        }
+        else if (event.key.keysym.sym == SDLK_TAB) {
+            m_b_EditIP = !m_b_EditIP; // switch field
+        }
     }
 }
 

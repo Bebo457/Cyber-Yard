@@ -2,6 +2,7 @@
 #define SCOTLANDYARD_STATES_MENUSTATE_H
 
 #include "IGameState.h"
+#include "GameSettings.h"
 #include <GL/glew.h>
 #include <string>
 
@@ -28,10 +29,13 @@ public:
 private:
     bool m_b_NewGameSubmenu = false;
     bool m_b_OnlineGameSubmenu = false;
+    bool m_b_ConnectionSettings = false;
+    bool m_b_EditIP = true;
 
     void BuildMainMenu();
     void BuildNewGameMenu();
     void BuildOnlineMenu();
+    void BuildConnectionSettingsMenu();
 
     int m_i_SelectedOption;
     int m_i_HoverOption;
@@ -49,6 +53,7 @@ private:
     void RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale, float f_R, float f_G, float f_B, Core::Application* p_App);
     void RenderTextBold(const std::string& s_Text, float f_X, float f_Y, float f_Scale, float f_R, float f_G, float f_B, Core::Application* p_App);
     void RenderButton(const Button& button, int i_Index, bool b_Selected, int i_WindowWidth, int i_WindowHeight, Core::Application* p_App);
+    void RenderTextField(int index, const Button& b, Core::Application* app);
 };
 
 } // namespace States
