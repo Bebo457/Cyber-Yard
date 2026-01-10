@@ -22,6 +22,8 @@
 #include <algorithm>
 #include <fstream>
 #include <set>
+#include <map>
+#include <tuple>
 #include <memory>
 #include <set>
 
@@ -549,7 +551,15 @@ namespace ScotlandYard
             m_vec_HighwayNodes = hg.GetRoadNodes();
             m_vec_HighwayRoads = hg.GetRoads();
             m_vec_Highways = hg.GetHighways();
+            m_vec_StreetBranchNodes = hg.GetStreetBranchNodes();
+            m_vec_HighwayEndpointNodes = hg.GetHighwayEndpointNodes();
             m_PopulationDensity = hg.GetPopulationDensity();
+            m_vec_GameConnections = hg.GetGameConnections();
+
+            // Zapisz sieć połączeń do pliku CSV (bezwzględna ścieżka)
+            std::string csvPath = "C:/Users/Mikolaj/Cyber-Yard/Cyber-Yard/program/build/polaczenia_generated.csv";
+            hg.SaveGameConnectionsToCSV(csvPath);
+            std::cout << "[MapGen] Game connections saved to: " << csvPath << std::endl;
 
             // Scale back
             float scaleUpFactor = 1.0f / streetGenScale;
@@ -1062,6 +1072,136 @@ namespace ScotlandYard
                     for (int dx = -rad; dx <= rad; ++dx)
                         if (dx * dx + dy * dy <= rad * rad)
                             SetPixel(cx + dx, cy + dy, nr, ng, nb);
+            }
+
+            // ============================================
+            // 6.5 RYSUJ POŁĄCZENIA GRY (TAXI, BUS, METRO, WATER)
+            // ============================================
+            if (m_bShowGameConnections) {
+            std::cout << "[PreviewTexture] Drawing " << m_vec_GameConnections.size() << " game connections..." << std::endl;
+            
+            // Mapowanie gameNumber -> nodeIdx
+            std::map<int, int> gameNumberToNodeIdx;
+            for (size_t i = 0; i < m_vec_StreetBranchNodes.size(); ++i) {
+                gameNumberToNodeIdx[static_cast<int>(i + 1)] = m_vec_StreetBranchNodes[i];
+            }
+            
+            // Grupuj połączenia między tymi samymi parami węzłów
+            std::map<std::pair<int,int>, std::vector<CityGen::TransportType>> connectionsByPair;
+            for (const auto& conn : m_vec_GameConnections) {
+                int minNode = std::min(conn.sourceNode, conn.destNode);
+                int maxNode = std::max(conn.sourceNode, conn.destNode);
+                connectionsByPair[{minNode, maxNode}].push_back(conn.type);
+            }
+            
+            // Lambda do rysowania linii przerywanej
+            auto DrawDashedLine = [&](int x1, int y1, int x2, int y2, int thickness, 
+                                      uint8_t r, uint8_t g, uint8_t b, int dashLen, int gapLen, int offset) {
+                float dx = static_cast<float>(x2 - x1);
+                float dy = static_cast<float>(y2 - y1);
+                float length = std::sqrt(dx * dx + dy * dy);
+                if (length < 1.0f) return;
+                
+                dx /= length;
+                dy /= length;
+                
+                int cycleLen = dashLen + gapLen;
+                float pos = static_cast<float>(offset % cycleLen);
+                
+                while (pos < length) {
+                    float dashStart = pos;
+                    float dashEnd = std::min(pos + dashLen, length);
+                    
+                    if (dashEnd > dashStart) {
+                        int sx = x1 + static_cast<int>(dx * dashStart);
+                        int sy = y1 + static_cast<int>(dy * dashStart);
+                        int ex = x1 + static_cast<int>(dx * dashEnd);
+                        int ey = y1 + static_cast<int>(dy * dashEnd);
+                        DrawThickLine(sx, sy, ex, ey, thickness, r, g, b);
+                    }
+                    pos += cycleLen;
+                }
+            };
+            
+            // Kolory dla typów transportu
+            auto GetTransportColor = [](CityGen::TransportType type) -> std::tuple<uint8_t, uint8_t, uint8_t> {
+                switch (type) {
+                    case CityGen::TransportType::TAXI:  return {255, 220, 0};    // Żółty
+                    case CityGen::TransportType::BUS:   return {0, 200, 0};      // Zielony
+                    case CityGen::TransportType::METRO: return {255, 0, 0};      // Czerwony
+                    case CityGen::TransportType::WATER: return {0, 0, 139};      // Ciemny niebieski
+                    default: return {128, 128, 128};
+                }
+            };
+            
+            int taxiDrawn = 0, busDrawn = 0, metroDrawn = 0, waterDrawn = 0;
+            
+            for (const auto& [nodePair, types] : connectionsByPair) {
+                int nodeAIdx = gameNumberToNodeIdx[nodePair.first];
+                int nodeBIdx = gameNumberToNodeIdx[nodePair.second];
+                
+                if (nodeAIdx < 0 || nodeAIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                if (nodeBIdx < 0 || nodeBIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                
+                const auto& posA = m_vec_HighwayNodes[nodeAIdx];
+                const auto& posB = m_vec_HighwayNodes[nodeBIdx];
+                
+                int x1 = static_cast<int>(posA.x);
+                int y1 = static_cast<int>(posA.y);
+                int x2 = static_cast<int>(posB.x);
+                int y2 = static_cast<int>(posB.y);
+                
+                if (types.size() == 1) {
+                    // Jedno połączenie - ciągła linia
+                    auto [r, g, b] = GetTransportColor(types[0]);
+                    DrawThickLine(x1, y1, x2, y2, 2, r, g, b);
+                    
+                    switch (types[0]) {
+                        case CityGen::TransportType::TAXI: taxiDrawn++; break;
+                        case CityGen::TransportType::BUS: busDrawn++; break;
+                        case CityGen::TransportType::METRO: metroDrawn++; break;
+                        case CityGen::TransportType::WATER: waterDrawn++; break;
+                    }
+                } else {
+                    // Wiele połączeń - linie przerywane z offsetem
+                    int dashLen = 10;
+                    int gapLen = dashLen * static_cast<int>(types.size());
+                    
+                    for (size_t i = 0; i < types.size(); ++i) {
+                        auto [r, g, b] = GetTransportColor(types[i]);
+                        int offset = static_cast<int>(i) * (dashLen + gapLen / static_cast<int>(types.size()));
+                        DrawDashedLine(x1, y1, x2, y2, 2, r, g, b, dashLen, gapLen, offset);
+                        
+                        switch (types[i]) {
+                            case CityGen::TransportType::TAXI: taxiDrawn++; break;
+                            case CityGen::TransportType::BUS: busDrawn++; break;
+                            case CityGen::TransportType::METRO: metroDrawn++; break;
+                            case CityGen::TransportType::WATER: waterDrawn++; break;
+                        }
+                    }
+                }
+            }
+            
+            std::cout << "[PreviewTexture] Game connections drawn - Taxi: " << taxiDrawn 
+                      << ", Bus: " << busDrawn << ", Metro: " << metroDrawn 
+                      << ", Water: " << waterDrawn << std::endl;
+            } // end if (m_bShowGameConnections)
+
+            // ============================================
+            // 6.6 RYSUJ ROZGAŁĘZIENIA STREETS (CZERWONE KROPKI)
+            // ============================================
+            std::cout << "[PreviewTexture] Drawing " << m_vec_StreetBranchNodes.size() << " street branch nodes (red)..." << std::endl;
+            for (int nodeIdx : m_vec_StreetBranchNodes) {
+                if (nodeIdx < 0 || nodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                const auto& n = m_vec_HighwayNodes[nodeIdx];
+                int cx = (int)n.x, cy = (int)n.y;
+                int rad = 5; // Większy promień dla widoczności
+                
+                // Czerwona kropka
+                for (int dy = -rad; dy <= rad; ++dy)
+                    for (int dx = -rad; dx <= rad; ++dx)
+                        if (dx * dx + dy * dy <= rad * rad)
+                            SetPixel(cx + dx, cy + dy, 255, 0, 0); // CZERWONY
             }
 
             // ============================================

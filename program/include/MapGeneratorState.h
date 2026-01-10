@@ -86,7 +86,11 @@ namespace ScotlandYard {
             std::vector<CityGen::Point> m_vec_HighwayNodes;
             std::vector<CityGen::Road>  m_vec_HighwayRoads;
             std::vector<CityGen::Highway> m_vec_Highways;
+            std::vector<int> m_vec_StreetBranchNodes; // Indeksy węzłów rozgałęzień Streets (czerwone)
+            std::vector<int> m_vec_HighwayEndpointNodes; // Indeksy węzłów końców Highways (zielone)
             std::vector<std::vector<float>> m_PopulationDensity;
+            std::vector<CityGen::GameConnection> m_vec_GameConnections; // Sieć połączeń gry
+            bool m_bShowGameConnections = false; // Czy wyświetlać połączenia gry
 
             std::vector<BuildingFootprint> m_vec_Buildings;
             std::vector<uint8_t> m_buildingMask;

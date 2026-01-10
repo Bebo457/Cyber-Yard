@@ -3,6 +3,7 @@
 #include <cmath>
 #include <random>
 #include <cstdint>
+#include <string>
 
 namespace CityGen {
 
@@ -16,6 +17,24 @@ namespace CityGen {
         ORGANIC,    // Naturalny/Losowy (np. stare miasta)
         RASTER,     // Siatka (np. New York)
         RADIAL      // Promienisty (np. Paryż)
+    };
+
+    // Typy transportu dla sieci gry Scotland Yard
+    enum class TransportType {
+        TAXI,   // Najkrótsze połączenia - najczęstsze
+        BUS,    // Średnie połączenia - rzadsze
+        METRO,  // Długie połączenia - najrzadsze
+        WATER   // Połączenia przez rzekę (promy)
+    };
+
+    // Połączenie w sieci gry
+    struct GameConnection {
+        int sourceNode;      // Indeks węzła źródłowego (1-199)
+        int destNode;        // Indeks węzła docelowego (1-199)
+        TransportType type;  // Typ transportu
+
+        GameConnection(int src, int dst, TransportType t)
+            : sourceNode(src), destNode(dst), type(t) {}
     };
 
     struct Point {
@@ -38,9 +57,10 @@ namespace CityGen {
         bool isDeleted;
         RoadType type; // Typ drogi (Autostrada vs Ulica)
         bool isPartOfBridge; // Protection: bridge roads should not be split
+        bool isBFSConnection; // Droga utworzona przez BFS do łączenia odizolowanych komponentów
 
         Road(int s, int e, RoadType t = RoadType::HIGHWAY)
-            : startNodeIdx(s), endNodeIdx(e), isDeleted(false), type(t), isPartOfBridge(false) {
+            : startNodeIdx(s), endNodeIdx(e), isDeleted(false), type(t), isPartOfBridge(false), isBFSConnection(false) {
         }
     };
 
@@ -120,6 +140,13 @@ struct HighwayEnd {
         const std::vector<Road>& GetRoads() const { return m_Roads; }
         const std::vector<Highway>& GetHighways() const { return m_Highways; }
         const std::vector<Point>& GetRoadNodes() const { return m_RoadNodes; }
+        const std::vector<int>& GetStreetBranchNodes() const { return m_StreetBranchNodes; }
+        const std::vector<int>& GetHighwayEndpointNodes() const { return m_HighwayEndpointNodes; }
+        const std::vector<GameConnection>& GetGameConnections() const { return m_GameConnections; }
+
+        // Generowanie sieci połączeń gry
+        void GenerateGameConnections();
+        void SaveGameConnectionsToCSV(const std::string& filename) const;
 
         // Getters
         float GetDensityAt(int x, int y) const;
@@ -235,7 +262,10 @@ struct HighwayEnd {
 
         std::vector<Road> m_Roads;
         std::vector<Point> m_RoadNodes;
+        std::vector<int> m_StreetBranchNodes; // Indeksy węzłów rozgałęzień Streets (3+ połączenia)
+        std::vector<int> m_HighwayEndpointNodes; // Indeksy węzłów końców Highways (zielone)
         std::vector<std::vector<float>> m_PopulationDensity;
+        std::vector<GameConnection> m_GameConnections; // Połączenia sieci gry (taxi, bus, metro, water)
 
         // Kolejki agentów
         std::vector<HighwayEnd> m_ActiveEnds;
