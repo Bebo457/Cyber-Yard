@@ -1,4 +1,5 @@
 #include "HighwayGenerator.h"
+#include "MapGenerator.h"
 #include <iostream>
 #include <algorithm>
 #include <random>
@@ -70,6 +71,10 @@ namespace CityGen {
         // Zgodnie z PDF: Wypełniają luki między autostradami, używając wzorców (Raster/Organic)
         std::cout << "[CityGen] Phase 2: Generating Streets..." << std::endl;
         GenerateStreets();
+
+        // KROK 4: Faza 3 - Ścieżki parkowe (Park Paths)
+        std::cout << "[CityGen] Phase 3: Generating Park Paths..." << std::endl;
+        GenerateParkPaths();
 
         std::cout << "[CityGen] Generation complete. Nodes: " << m_RoadNodes.size()
             << ", Roads: " << m_Roads.size()
@@ -1012,6 +1017,352 @@ namespace CityGen {
         }
     }
 
+    // Park helper methods implementation
+    
+    bool HighwayGenerator::IsPark(int x, int y) const {
+        return GetZoneAt(x, y) == ZONE_PARK;
+    }
+    
+    bool HighwayGenerator::HasParks() const {
+        if (m_ZoneMask.empty()) return false;
+
+        for (uint8_t zone : m_ZoneMask) {
+            if (zone == ZONE_PARK) return true;
+        }
+        return false;
+    }
+    
+    float HighwayGenerator::DistanceToPark(int x, int y) const {
+        if (!HasParks()) return 99999.0f;
+
+        const int SEARCH_RADIUS = 200;
+        float minDist = 99999.0f;
+
+        for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; ++dy) {
+            for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; ++dx) {
+                int nx = x + dx;
+                int ny = y + dy;
+
+                if (nx >= 0 && nx < m_Width && ny >= 0 && ny < m_Height) {
+                    if (IsPark(nx, ny)) {
+                        float dist = std::sqrt((float)(dx * dx + dy * dy));
+                        if (dist < minDist) {
+                            minDist = dist;
+                        }
+                    }
+                }
+            }
+        }
+
+        return minDist;
+    }
+    
+    bool HighwayGenerator::IsPointInPark(const Point& p) const {
+        int x = static_cast<int>(p.x);
+        int y = static_cast<int>(p.y);
+        
+        if (x < 0 || x >= m_Width || y < 0 || y >= m_Height) {
+            return false;
+        }
+        
+        return IsPark(x, y);
+    }
+    
+    bool HighwayGenerator::IsPointInAnyParkPolygon(const Point& p) const {
+        for (const auto& parkPoly : m_ParkPolygons) {
+            if (IsPointInPolygon(p, parkPoly)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    bool HighwayGenerator::IsSegmentIntersectingPark(const Point& a, const Point& b) const {
+        // Sprawdź czy segment przecina którykolwiek z parków
+        for (const auto& parkPoly : m_ParkPolygons) {
+            // Sprawdź czy którykolwiek koniec jest w parku
+            if (IsPointInPolygon(a, parkPoly) || IsPointInPolygon(b, parkPoly)) {
+                return true;
+            }
+            
+            // Sprawdź przecięcia z krawędziami parku
+            for (size_t i = 0; i < parkPoly.size(); ++i) {
+                Point p1 = parkPoly[i];
+                Point p2 = parkPoly[(i + 1) % parkPoly.size()];
+                Point dummy;
+                if (DoSegmentsIntersect(a, b, p1, p2, dummy)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    
+    void HighwayGenerator::GenerateParkPaths() {
+        std::cout << "[ParkPaths] Starting park path generation..." << std::endl;
+        
+        if (m_ParkPolygons.empty()) {
+            std::cout << "[ParkPaths] No parks found, skipping" << std::endl;
+            return;
+        }
+        
+        int pathsCreated = 0;
+        const float PATH_SEGMENT_LENGTH = 18.0f; // Średniej długości segmenty
+        const int PATH_MAX_ITERATIONS = 60; // Więcej iteracji = dłuższe ścieżki
+        const float CONNECTION_SEARCH_RADIUS = 80.0f;
+        
+        for (size_t parkIdx = 0; parkIdx < m_ParkPolygons.size(); ++parkIdx) {
+            const auto& parkPoly = m_ParkPolygons[parkIdx];
+            
+            if (parkPoly.empty()) continue;
+            
+            // Oblicz centrum parku
+            Point parkCenter(0.0f, 0.0f);
+            for (const auto& vertex : parkPoly) {
+                parkCenter.x += vertex.x;
+                parkCenter.y += vertex.y;
+            }
+            parkCenter.x /= parkPoly.size();
+            parkCenter.y /= parkPoly.size();
+            
+            // Oblicz promień parku
+            float avgRadius = 0.0f;
+            for (const auto& vertex : parkPoly) {
+                float dx = vertex.x - parkCenter.x;
+                float dy = vertex.y - parkCenter.y;
+                avgRadius += std::sqrt(dx * dx + dy * dy);
+            }
+            avgRadius /= parkPoly.size();
+            
+            std::cout << "[ParkPaths] Park " << parkIdx << " - center: (" 
+                      << parkCenter.x << "," << parkCenter.y << "), radius: " << avgRadius << std::endl;
+            
+            // KROK 1: Znajdź więcej punktów wejścia (co 3-4 krawędzie)
+            std::vector<Point> entryPoints;
+            const int EDGE_SKIP = std::max(1, (int)(parkPoly.size() / 6)); // Max ~6 wejść
+            
+            for (size_t i = 0; i < parkPoly.size(); i += EDGE_SKIP) {
+                Point edgeStart = parkPoly[i];
+                Point edgeEnd = parkPoly[(i + 1) % parkPoly.size()];
+                
+                // Punkt środkowy krawędzi parku
+                Point edgeMid((edgeStart.x + edgeEnd.x) * 0.5f, 
+                             (edgeStart.y + edgeEnd.y) * 0.5f);
+                
+                // Szukaj dróg w pobliżu tego punktu
+                std::vector<int> nearbyRoads = FindNearbyRoadIndices(edgeMid, CONNECTION_SEARCH_RADIUS);
+                
+                for (int roadIdx : nearbyRoads) {
+                    if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+                    
+                    const Road& road = m_Roads[roadIdx];
+                    if (road.isDeleted || road.type == RoadType::PARK_PATH) continue;
+                    
+                    const Point& roadStart = m_RoadNodes[road.startNodeIdx];
+                    const Point& roadEnd = m_RoadNodes[road.endNodeIdx];
+                    
+                    // Znajdź najbliższy punkt na drodze
+                    Point closestOnRoad;
+                    float distToRoad = DistancePointToSegmentClosest(edgeMid, roadStart, roadEnd, closestOnRoad);
+                    
+                    // Jeśli droga jest blisko krawędzi parku
+                    if (distToRoad < CONNECTION_SEARCH_RADIUS) {
+                        // Punkt wejścia to punkt na krawędzi parku najbliższy drodze
+                        Point entryPoint;
+                        DistancePointToSegmentClosest(closestOnRoad, edgeStart, edgeEnd, entryPoint);
+                        
+                        // Sprawdź czy punkt wejścia jest faktycznie w parku (lub na jego krawędzi)
+                        if (IsPointInPolygon(entryPoint, parkPoly) || 
+                            DistancePointToSegment(entryPoint, edgeStart, edgeEnd) < 2.0f) {
+                            
+                            // Sprawdź odległość od innych wejść (mniejszy wymóg)
+                            bool tooClose = false;
+                            for (const auto& existing : entryPoints) {
+                                float dx = existing.x - entryPoint.x;
+                                float dy = existing.y - entryPoint.y;
+                                if (std::sqrt(dx * dx + dy * dy) < 40.0f) { // Zmniejszone z 60px
+                                    tooClose = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!tooClose) {
+                                entryPoints.push_back(entryPoint);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            std::cout << "[ParkPaths] Park " << parkIdx << " has " << entryPoints.size() << " entry points" << std::endl;
+            
+            // KROK 2: Główne ścieżki - od każdego wejścia przez park
+            for (const auto& entryPoint : entryPoints) {
+                // Utwórz węzeł wejściowy (na krawędzi parku)
+                int entryNode = CreateOrGetNode(entryPoint, false);
+                
+                // Połącz z drogą
+                float minDistToRoad = 1e9f;
+                int closestRoadNode = -1;
+                
+                std::vector<int> nearbyRoads = FindNearbyRoadIndices(entryPoint, CONNECTION_SEARCH_RADIUS);
+                for (int roadIdx : nearbyRoads) {
+                    if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+                    const Road& road = m_Roads[roadIdx];
+                    if (road.isDeleted || road.type == RoadType::PARK_PATH) continue;
+                    
+                    // Sprawdź odległość do obu końców drogi
+                    float distToStart = std::sqrt(
+                        (m_RoadNodes[road.startNodeIdx].x - entryPoint.x) * 
+                        (m_RoadNodes[road.startNodeIdx].x - entryPoint.x) +
+                        (m_RoadNodes[road.startNodeIdx].y - entryPoint.y) * 
+                        (m_RoadNodes[road.startNodeIdx].y - entryPoint.y)
+                    );
+                    
+                    if (distToStart < minDistToRoad) {
+                        minDistToRoad = distToStart;
+                        closestRoadNode = road.startNodeIdx;
+                    }
+                    
+                    float distToEnd = std::sqrt(
+                        (m_RoadNodes[road.endNodeIdx].x - entryPoint.x) * 
+                        (m_RoadNodes[road.endNodeIdx].x - entryPoint.x) +
+                        (m_RoadNodes[road.endNodeIdx].y - entryPoint.y) * 
+                        (m_RoadNodes[road.endNodeIdx].y - entryPoint.y)
+                    );
+                    
+                    if (distToEnd < minDistToRoad) {
+                        minDistToRoad = distToEnd;
+                        closestRoadNode = road.endNodeIdx;
+                    }
+                }
+                
+                // Połącz punkt wejścia z drogą
+                if (closestRoadNode != -1 && minDistToRoad < CONNECTION_SEARCH_RADIUS) {
+                    m_Roads.push_back(Road(closestRoadNode, entryNode, RoadType::PARK_PATH));
+                    int roadIdx = m_Roads.size() - 1;
+                    
+                    m_RoadNodes[closestRoadNode].connectedRoadIndices.push_back(roadIdx);
+                    m_RoadNodes[entryNode].connectedRoadIndices.push_back(roadIdx);
+                    
+                    pathsCreated++;
+                }
+                
+                // Ścieżka przecinająca park - cel to przeciwległa strona (nie centrum!)
+                Point directionToCenter(
+                    parkCenter.x - entryPoint.x,
+                    parkCenter.y - entryPoint.y
+                );
+                float distToCenter = std::sqrt(
+                    directionToCenter.x * directionToCenter.x + 
+                    directionToCenter.y * directionToCenter.y
+                );
+                
+                if (distToCenter > 0.1f) {
+                    directionToCenter.x /= distToCenter;
+                    directionToCenter.y /= distToCenter;
+                }
+                
+                // Przedłuż kierunek aby ścieżka szła dalej przez park (nie tylko do centrum)
+                Point targetDirection = directionToCenter;
+                
+                int currentNode = entryNode;
+                Point currentDir = targetDirection;
+                int iterations = PATH_MAX_ITERATIONS;
+                
+                while (iterations-- > 0) {
+                    Point currentPos = m_RoadNodes[currentNode];
+                    
+                    // Delikatniejszy zakręt
+                    float angleNoise = ((rand() % 100) / 100.0f - 0.5f) * 0.15f; // Jeszcze mniej
+                    float currentAngle = std::atan2(currentDir.y, currentDir.x);
+                    float newAngle = currentAngle + angleNoise;
+                    Point newDir(std::cos(newAngle), std::sin(newAngle));
+                    
+                    Point newPos(
+                        currentPos.x + newDir.x * PATH_SEGMENT_LENGTH,
+                        currentPos.y + newDir.y * PATH_SEGMENT_LENGTH
+                    );
+                    
+                    // Jeśli wyszliśmy poza park - zakończ
+                    if (!IsPointInPolygon(newPos, parkPoly)) {
+                        break;
+                    }
+                    
+                    // Utwórz nowy węzeł
+                    int newNode = CreateOrGetNode(newPos, false);
+                    
+                    m_Roads.push_back(Road(currentNode, newNode, RoadType::PARK_PATH));
+                    int roadIdx = m_Roads.size() - 1;
+                    
+                    m_RoadNodes[currentNode].connectedRoadIndices.push_back(roadIdx);
+                    m_RoadNodes[newNode].connectedRoadIndices.push_back(roadIdx);
+                    
+                    currentNode = newNode;
+                    currentDir = newDir;
+                    pathsCreated++;
+                }
+            }
+            
+            // KROK 3: Dodatkowe ścieżki wewnętrzne (więcej niż wcześniej)
+            int additionalPaths = (avgRadius > 80.0f) ? 3 : 2; // 2-3 ścieżki dodatkowe
+            
+            for (int i = 0; i < additionalPaths; ++i) {
+                // Zacznij z losowego punktu w parku (nie tylko od centrum)
+                float angle = (rand() % 360) * 3.14159f / 180.0f;
+                float radius = (rand() % 50 + 30) / 100.0f; // 0.3-0.8 od centrum (szerszy zakres)
+                
+                Point startPos(
+                    parkCenter.x + std::cos(angle) * radius * avgRadius,
+                    parkCenter.y + std::sin(angle) * radius * avgRadius
+                );
+                
+                if (!IsPointInPolygon(startPos, parkPoly)) continue;
+                
+                // Kierunek: losowy (nie po okręgu)
+                float dirAngle = (rand() % 360) * 3.14159f / 180.0f;
+                Point direction(std::cos(dirAngle), std::sin(dirAngle));
+                
+                int startNode = CreateOrGetNode(startPos, false);
+                int currentNode = startNode;
+                Point currentDir = direction;
+                int iterations = 40; // Dłuższe ścieżki wewnętrzne
+                
+                while (iterations-- > 0) {
+                    Point currentPos = m_RoadNodes[currentNode];
+                    
+                    float angleNoise = ((rand() % 100) / 100.0f - 0.5f) * 0.25f;
+                    float currentAngle = std::atan2(currentDir.y, currentDir.x);
+                    float newAngle = currentAngle + angleNoise;
+                    Point newDir(std::cos(newAngle), std::sin(newAngle));
+                    
+                    Point newPos(
+                        currentPos.x + newDir.x * PATH_SEGMENT_LENGTH,
+                        currentPos.y + newDir.y * PATH_SEGMENT_LENGTH
+                    );
+                    
+                    if (!IsPointInPolygon(newPos, parkPoly)) {
+                        break;
+                    }
+                    
+                    int newNode = CreateOrGetNode(newPos, false);
+                    
+                    m_Roads.push_back(Road(currentNode, newNode, RoadType::PARK_PATH));
+                    int roadIdx = m_Roads.size() - 1;
+                    
+                    m_RoadNodes[currentNode].connectedRoadIndices.push_back(roadIdx);
+                    m_RoadNodes[newNode].connectedRoadIndices.push_back(roadIdx);
+                    
+                    currentNode = newNode;
+                    currentDir = newDir;
+                    pathsCreated++;
+                }
+            }
+        }
+        
+        std::cout << "[ParkPaths] Created " << pathsCreated << " park path segments" << std::endl;
+    }
+
     bool HighwayGenerator::GrowOneStep(HighwayEnd& agent) {
         bool isHighway = (agent.type == RoadType::HIGHWAY);
 
@@ -1022,7 +1373,7 @@ namespace CityGen {
         Point currentPos = m_RoadNodes[agent.currentNodeIdx];
 
         // 1. Wybierz kierunek
-        Point newDir;
+        Point newDir; // NAPRAWIONE: Dodana deklaracja
 
         // Jeśli jesteśmy na moście, używaj zablokowanego kierunku
         if (agent.isOnBridge) {
@@ -1489,12 +1840,13 @@ namespace CityGen {
                 float hitDist = RaycastToHighway(parentPos, scanDir, BRANCH_PARALLEL_SCAN_DISTANCE);
                 
                 if (hitDist > 0.0f) {
-                    // Trafiliśmy w highway - sprawdź jego kierunek
+                    // NAPRAWIONE: Dodana deklaracja hitPoint
                     Point hitPoint(
                         parentPos.x + scanDir.x * hitDist,
                         parentPos.y + scanDir.y * hitDist
                     );
                     
+                    // Trafiliśmy w highway - sprawdź jego kierunek
                     // Znajdź trafiony highway i jego kierunek
                     for (const Highway& hw : m_Highways) {
                         if (IsPointOnHighway(hitPoint, hw, 5.0f)) {
@@ -1556,12 +1908,24 @@ namespace CityGen {
             //         << " (" << start.x << "," << start.y << ") to (" << end.x << "," << end.y << ")" << std::endl;
         }
         
-        // 1. Sprawdź maskę terenu (woda/parki) - blokada budowy TYLKO dla STREET
+        // 1. Sprawdź maskę terenu (woda/parki) - blokada budowy dla HIGHWAY i STREET
         int ix = (int)end.x;
         int iy = (int)end.y;
-        if (type == RoadType::STREET && !m_ZoneMask.empty() && (ix >= 0 && ix < m_Width && iy >= 0 && iy < m_Height)) {
+        
+        // HIGHWAYS i STREETS nie mogą wchodzić w parki
+        if (type != RoadType::PARK_PATH && !m_ZoneMask.empty() && (ix >= 0 && ix < m_Width && iy >= 0 && iy < m_Height)) {
             if (m_ZoneMask[iy * m_Width + ix] != 0) {
-                // std::cout << "    [LocalConstraints] STREET BLOCKED by zone mask at (" << ix << "," << iy << ")" << std::endl;
+                return false;
+            }
+        }
+        
+        // Dodatkowa precyzyjna weryfikacja dla parków (sprawdź wielokąty)
+        if (type == RoadType::HIGHWAY || type == RoadType::STREET) {
+            if (IsPointInAnyParkPolygon(end)) {
+                return false;
+            }
+            // Sprawdź czy segment przecina park
+            if (IsSegmentIntersectingPark(start, end)) {
                 return false;
             }
         }
@@ -1685,7 +2049,7 @@ namespace CityGen {
             const Point& segB = m_RoadNodes[otherRoad.endNodeIdx];
             
             Point closest;
-            float dist = DistancePointToSegment(end, segA, segB);
+            float dist = DistancePointToSegmentClosest(end, segA, segB, closest);
             
             if (isHighway && dist < HIT_DISTANCE * 2.0f) {  // Log jeśli blisko
                 // std::cout << "    [LocalConstraints] Road " << roadIdx << " distance: " << dist 
@@ -1834,6 +2198,11 @@ namespace CityGen {
                 // Rzeka blokuje dalsze próbkowanie - zwróć zero score
                 return 0.0f;
             }
+            
+            // PARK AVOIDANCE: Sprawdź zarówno maskę jak i dokładne wielokąty parków
+            if (IsPark(sx, sy) || IsPointInAnyParkPolygon(samplePos)) {
+                return 0.0f;
+            }
 
             // Pobierz gęstość (GetDensityAt sprawdza granice)
             float density = GetDensityAt(sx, sy);
@@ -1890,6 +2259,9 @@ namespace CityGen {
         
         return Point(std::cos(bestAngle), std::sin(bestAngle));
     }
+
+
+
 
 
 
@@ -2306,22 +2678,23 @@ namespace CityGen {
                     // Znajdź pozycję węzła w sekwencji roads
                     std::vector<int> firstPart;
                     std::vector<int> secondPart;
-                    bool foundSplit = false;
-                    
+                    bool passedSplit = false;
+
                     for (int roadIdx : highway.roadIndices) {
                         if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
                         
                         const Road& road = m_Roads[roadIdx];
                         
-                        if (!foundSplit) {
+                        // Dodaj punkt startowy (jeśli jeszcze nie mamy)
+                        if (firstPart.empty() || 
+                            !(m_RoadNodes[road.startNodeIdx].x == intersection.x && 
+                            m_RoadNodes[road.startNodeIdx].y == intersection.y)) {
                             firstPart.push_back(roadIdx);
-                            
-                            // Jeśli koniec tego road to nasz węzeł, przełącz na drugą część
-                            if (road.endNodeIdx == (int)nodeIdx) {
-                                foundSplit = true;
-                            }
-                        } else {
-                            secondPart.push_back(roadIdx);
+                        }
+                        
+                        // Jeśli koniec tego road to nasz węzeł, przełącz na drugą część
+                        if (road.endNodeIdx == (int)nodeIdx) {
+                            passedSplit = true;
                         }
                     }
                     
@@ -2401,10 +2774,6 @@ namespace CityGen {
 
     bool HighwayGenerator::IsRiver(int x, int y) const {
         return GetZoneAt(x, y) == ZONE_RIVER;
-    }
-
-    bool HighwayGenerator::IsPark(int x, int y) const {
-        return GetZoneAt(x, y) == ZONE_PARK;
     }
 
     bool HighwayGenerator::IsAnyZone(int x, int y) const {
@@ -2508,7 +2877,7 @@ namespace CityGen {
         return MAX_BRIDGE_LENGTH;
     }
 
-    // Znajduje najlepszy kierunek przekroczenia rzeki (możliwie prostopadły do rzeki)
+    // Znajduje najlepszy kierunek przekrocenia rzeki (możliwie prostopadły do rzeki)
     Point HighwayGenerator::FindRiverCrossingDirection(const Point& pos, const Point& currentDir) const {
         // Estymuj kierunek rzeki
         Point riverDir = EstimateRiverDirection(pos);
@@ -2533,9 +2902,9 @@ namespace CityGen {
 
         for (int i = 0; i < NUM_RAYS; ++i) {
             float angleOffset = ((float)i / (NUM_RAYS - 1) - 0.5f) * 2.0f * ANGLE_SPREAD;
-            float testAngle = baseAngle + angleOffset;
+            float angle = baseAngle + angleOffset;
 
-            Point testDir(std::cos(testAngle), std::sin(testAngle));
+            Point testDir(std::cos(angle), std::sin(angle));
             float crossingDist = CalculateRiverCrossingDistance(pos, testDir);
 
             if (crossingDist < minDistance) {
@@ -3127,7 +3496,7 @@ namespace CityGen {
             
             for (size_t j = i + 1; j < trendLines.size(); ++j) {
                 if (toRemove[j]) continue;
-                
+
                 if (AreTrendLinesParallel(trendLines[i], trendLines[j],
                                         TREND_PARALLEL_ANGLE_THRESHOLD,
                                         TREND_PARALLEL_DISTANCE_THRESHOLD)) {
@@ -3271,6 +3640,7 @@ namespace CityGen {
         
         std::cout << "[SeedCenters] Found " << centers.size() << " population centers" << std::endl;
         
+               
         // Sprawdź które centra nie mają połączenia z highway
         int seededCount = 0;
         for (const auto& center : centers) {

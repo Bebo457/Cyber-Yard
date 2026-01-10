@@ -509,7 +509,7 @@ namespace ScotlandYard
             // INTEGRACJA Z NOWYM HIGHWAY GENERATOR (CityGen)
             // ----------------------------------------------------
 
-                const float streetGenScale = 0.5f;  // 0.5 = half size = streets 2x less dense
+            const float streetGenScale = 0.5f;
             int streetMapW = static_cast<int>(mapW * streetGenScale);
             int streetMapH = static_cast<int>(mapH * streetGenScale);
 
@@ -537,9 +537,23 @@ namespace ScotlandYard
                     park.f_BaseRadius * streetGenScale, 2);
             }
 
+            // Przygotuj wielokąty parków (scaled) dla precyzyjnego sprawdzania
+            std::vector<std::vector<CityGen::Point>> parkPolygons;
+            for (const auto& park : m_vec_Parks) {
+                std::vector<CityGen::Point> polygon;
+                for (const auto& vertex : park.vec_Vertices) {
+                    polygon.push_back(CityGen::Point(
+                        vertex.x * streetGenScale,
+                        vertex.y * streetGenScale
+                    ));
+                }
+                parkPolygons.push_back(polygon);
+            }
+
             // Uruchomienie HighwayGenerator
             CityGen::HighwayGenerator hg(streetMapW, streetMapH);
             hg.SetZoneMask(std::move(zoneMask));
+            hg.SetParkPolygons(parkPolygons);  // NOWE: Przekaż wielokąty parków
 
             // Ustaw limit mostów z GUI (slider indeks 3: "Num Bridges")
             int maxBridges = static_cast<int>(m_vec_Sliders[3].f_Value);
@@ -1159,6 +1173,7 @@ namespace ScotlandYard
             }
 
             int streetsDrawn = 0;
+            int parkPathsDrawn = 0;
             for (int i = 0; i < (int)m_vec_HighwayRoads.size(); ++i) {
                 const auto& road = m_vec_HighwayRoads[i];
                 // if (road.isDeleted) continue;
@@ -1170,11 +1185,19 @@ namespace ScotlandYard
                 const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
                 const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
 
-                DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
-                streetsDrawn++;
+                if (road.type == CityGen::RoadType::PARK_PATH) {
+                    // Ścieżki parkowe - zielone, cienkie
+                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 100, 200, 100);
+                    parkPathsDrawn++;
+                } else {
+                    // Zwykłe ulice - szare
+                    DrawThickLine((int)a.x, (int)a.y, (int)b.x, (int)b.y, 1, 200, 200, 200);
+                    streetsDrawn++;
+                }
             }
 
             std::cout << "[PreviewTexture] Streets drawn: " << streetsDrawn << std::endl;
+            std::cout << "[PreviewTexture] Park paths drawn: " << parkPathsDrawn << std::endl;
 
             // ============================================
             // 6. Rysuj węzły

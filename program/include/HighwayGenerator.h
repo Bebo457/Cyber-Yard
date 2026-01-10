@@ -10,7 +10,8 @@ namespace CityGen {
     // Definicje typów - muszą być widoczne dla kompilatora przed użyciem w klasie
     enum class RoadType {
         HIGHWAY,
-        STREET
+        STREET,
+        PARK_PATH  // Nowy typ dla ścieżek w parkach
     };
 
     enum class PatternType {
@@ -154,6 +155,9 @@ struct HighwayEnd {
         int GetHeight() const { return m_Height; }
         const std::vector<std::vector<float>>& GetPopulationDensity() const { return m_PopulationDensity; }
 
+        void SetParkPolygons(const std::vector<std::vector<Point>>& parkPolygons) { 
+            m_ParkPolygons = parkPolygons; 
+        }
 
     private:
         // Zone type constants
@@ -271,6 +275,9 @@ struct HighwayEnd {
         std::vector<HighwayEnd> m_ActiveEnds;
         std::vector<Branch> m_SleepingBranches;
 
+        // Park polygon storage (real park boundaries)
+        std::vector<std::vector<Point>> m_ParkPolygons;
+        
         // Główne metody
         void GeneratePopulationDensity();
         void GenerateHighways(); // Faza 1
@@ -362,6 +369,16 @@ struct HighwayEnd {
         void ConsumePopulationDensity(const Point& pos, float radius, float intensity);
 
         void RemoveShortHighways();
+
+        // Park helpers
+        bool HasParks() const;
+        float DistanceToPark(int x, int y) const;
+        bool IsPointInPark(const Point& p) const;
+        bool IsPointInAnyParkPolygon(const Point& p) const;  // Dokładne sprawdzanie przez wielokąty
+        bool IsSegmentIntersectingPark(const Point& a, const Point& b) const;
+        
+        // Park path generation
+        void GenerateParkPaths();
     
     };
 
