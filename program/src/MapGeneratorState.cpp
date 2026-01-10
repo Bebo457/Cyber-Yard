@@ -507,47 +507,41 @@ namespace ScotlandYard
             // INTEGRACJA Z NOWYM HIGHWAY GENERATOR (CityGen)
             // ----------------------------------------------------
 
-            // Przygotowanie maski stref (Rzeka i Parki) dla CityGen
-            // Wartości strefy: 0 = normalny teren, 1 = rzeka, 2 = park
-            std::vector<uint8_t> zoneMask((size_t)mapW * (size_t)mapH, 0);
+                const float streetGenScale = 0.5f;  // 0.5 = half size = streets 2x less dense
+            int streetMapW = static_cast<int>(mapW * streetGenScale);
+            int streetMapH = static_cast<int>(mapH * streetGenScale);
+
+            // Przygotowanie maski stref (Rzeka i Parki) dla CityGen - scaled down
+            std::vector<uint8_t> zoneMask((size_t)streetMapW * (size_t)streetMapH, 0);
 
             // Rzeka jako gruba linia w masce (wartość 1)
-            const float riverHalfWidthPx = 15.0f;
+            const float riverHalfWidthPx = 15.0f * streetGenScale;
             if (m_vec_RiverPath.size() >= 2) {
                 for (size_t i = 1; i < m_vec_RiverPath.size(); ++i) {
                     const auto& a = m_vec_RiverPath[i - 1];
                     const auto& b = m_vec_RiverPath[i];
-                    RasterizeThickSegment(zoneMask, mapW, mapH, a.x, a.y, b.x, b.y, riverHalfWidthPx, 1);
+                    RasterizeThickSegment(zoneMask, streetMapW, streetMapH,
+                        a.x * streetGenScale, a.y * streetGenScale,
+                        b.x * streetGenScale, b.y * streetGenScale,
+                        riverHalfWidthPx, 1);
                 }
             }
 
-            // Parki (zakładamy okrągłe dla uproszczenia maski, wartość 2)
+            // Parki
             for (const auto& park : m_vec_Parks) {
-                RasterizeCircle(zoneMask, mapW, mapH, park.center.x, park.center.y, park.f_BaseRadius, 2);
-            }
-
-            for (const auto& road : m_vec_HighwayRoads)
-            {
-                if (road.isDeleted) continue;
-                if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-                if (road.endNodeIdx < 0 || road.endNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
-
-                const auto& a = m_vec_HighwayNodes[road.startNodeIdx];
-                const auto& b = m_vec_HighwayNodes[road.endNodeIdx];
-
-                // Szersze dla autostrad, węższe dla zwykłych ulic
-                float roadRadius = (road.type == CityGen::RoadType::HIGHWAY) ? 10.0f : 7.0f;
-                RasterizeThickSegment(zoneMask, mapW, mapH, a.x, a.y, b.x, b.y, roadRadius, 3);
+                RasterizeCircle(zoneMask, streetMapW, streetMapH,
+                    park.center.x * streetGenScale,
+                    park.center.y * streetGenScale,
+                    park.f_BaseRadius * streetGenScale, 2);
             }
 
             // Uruchomienie HighwayGenerator
-            CityGen::HighwayGenerator hg(mapW, mapH);
+            CityGen::HighwayGenerator hg(streetMapW, streetMapH);
             hg.SetZoneMask(std::move(zoneMask));
 
             // Ustaw limit mostów z GUI (slider indeks 3: "Num Bridges")
             int maxBridges = static_cast<int>(m_vec_Sliders[3].f_Value);
             hg.SetMaxBridges(maxBridges);
-            std::cout << "[MapGen] Setting max bridges to: " << maxBridges << std::endl;
 
             hg.Generate();
 
@@ -556,6 +550,13 @@ namespace ScotlandYard
             m_vec_HighwayRoads = hg.GetRoads();
             m_vec_Highways = hg.GetHighways();
             m_PopulationDensity = hg.GetPopulationDensity();
+
+            // Scale back
+            float scaleUpFactor = 1.0f / streetGenScale;
+            for (auto& node : m_vec_HighwayNodes) {
+                node.x *= scaleUpFactor;
+                node.y *= scaleUpFactor;
+            }
 
             GenerateBuildingFootprints(mapW, mapH);
 
@@ -831,10 +832,21 @@ namespace ScotlandYard
                     }
                 };
 
-            if (!m_PopulationDensity.empty()) {
-                for (int y = 0; y < H && y < (int)m_PopulationDensity.size(); ++y) {
-                    for (int x = 0; x < W && x < (int)m_PopulationDensity[y].size(); ++x) {
-                        float density = m_PopulationDensity[y][x];
+            if (!m_PopulationDensity.empty() && !m_PopulationDensity[0].empty()) {
+                int densityH = (int)m_PopulationDensity.size();
+                int densityW = (int)m_PopulationDensity[0].size();
+
+                // Scale factors to map preview coordinates to density array
+                float scaleX = (float)densityW / (float)W;
+                float scaleY = (float)densityH / (float)H;
+
+                for (int y = 0; y < H; ++y) {
+                    for (int x = 0; x < W; ++x) {
+                        // Sample from density array with scaled coordinates
+                        int densityX = std::min((int)(x * scaleX), densityW - 1);
+                        int densityY = std::min((int)(y * scaleY), densityH - 1);
+
+                        float density = m_PopulationDensity[densityY][densityX];
                         Uint8 r = (Uint8)(density * 180.0f + 20.0f);
                         Uint8 g = (Uint8)(density * 80.0f + 10.0f);
                         Uint8 b = (Uint8)(30.0f - density * 20.0f);
