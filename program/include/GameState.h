@@ -121,7 +121,7 @@ private:
     static constexpr float k_CameraScrollAcceleration = 0.003f;
     static constexpr float k_CameraScrollFriction = 0.92f;
     static constexpr float k_CameraScrollToForwardRatio = 12.0f;
-    static constexpr float k_CameraAcceleration = 12.0f;
+    static constexpr float k_CameraAcceleration = 36.0f;
     static constexpr float k_MaxCameraSpeed = 150.0f;
     static constexpr float k_CameraFriction = 0.96f;
     static constexpr float k_MinCameraAngle = -1.55f;  // -90 degrees

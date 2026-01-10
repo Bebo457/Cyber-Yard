@@ -6,6 +6,7 @@
 #include "HighwayGenerator.h" 
 #include "MapPreviewState.h" 
 #include "EmptyEnvironmentState.h"
+#include "GeneratedMapData.h"
 
 #include <iostream>
 #include <glm/glm.hpp>
@@ -1654,12 +1655,52 @@ namespace ScotlandYard
                         // 3. Utwórz nowy stan środowiska
                         auto pGameEnv = std::make_unique<ScotlandYard::States::EmptyEnvironmentState>();
 
+                        auto convertBuildings = [this]() {
+                            std::vector<MapGen::BuildingData> result;
+                            result.reserve(m_vec_Buildings.size());
+                            for (const auto& footprint : m_vec_Buildings) {
+                                if (footprint.basePoints.size() != 4) {
+                                    continue;
+                                }
+
+                                MapGen::BuildingData data;
+                                data.vec_BaseFootprint.clear();
+                                data.vec_BaseFootprint.reserve(footprint.basePoints.size());
+
+                                glm::vec2 centroid(0.0f);
+                                for (const auto& pt : footprint.basePoints) {
+                                    centroid.x += pt.x;
+                                    centroid.y += pt.y;
+                                }
+                                centroid /= static_cast<float>(footprint.basePoints.size());
+
+                                for (const auto& pt : footprint.basePoints) {
+                                    data.vec_BaseFootprint.emplace_back(pt.x - centroid.x, pt.y - centroid.y);
+                                }
+
+                                data.vec3_Position = glm::vec3(centroid.x, centroid.y, 0.0f);
+
+                                data.f_Height = footprint.height > 0.0f ? footprint.height : 10.0f;
+                                data.b_HasRoof = footprint.hasGableRoof;
+                                data.f_RoofHeight = footprint.hasGableRoof ? std::max(2.0f, footprint.height * 0.25f) : 0.0f;
+                                data.vec3_WallColor = glm::vec3(0.85f, 0.82f, 0.78f);
+                                data.vec3_RoofColor = glm::vec3(0.35f, 0.15f, 0.10f);
+                                data.i_BuildingType = 0;
+
+                                result.push_back(std::move(data));
+                            }
+                            return result;
+                        };
+
+                        auto buildingData = convertBuildings();
+
                         // 4. Wstrzyknij dane bezpośrednio do obiektu
                         pGameEnv->InjectMapData(
                             m_vec_HighwayNodes,
                             m_vec_HighwayRoads,
                             m_vec_Parks,
-                            m_vec_RiverPath
+                            m_vec_RiverPath,
+                            buildingData
                         );
 
                         // 5. Zarejestruj stan i przełącz

@@ -200,80 +200,235 @@ constexpr float k_PlaneWidth = 24.0f;
 constexpr float k_PlaneDepth = 18.0f;
 constexpr float k_MapOffsetX = -1.0f;
 constexpr float k_MapOffsetZ = -1.0f;
+constexpr float k_ShowcaseBuildingScale = 1.0f / 20.0f;
+constexpr float k_RoofBaseUVScale = 3.0f;
+
+const char* k_BuildingVertexShaderSrc = R"(#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+layout (location = 2) in vec2 aTexCoord;
+
+out vec3 FragPos;
+out vec3 Normal;
+out vec2 TexCoord;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+void main()
+{
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = normalize(mat3(transpose(inverse(model))) * aNormal);
+    TexCoord = aTexCoord;
+    gl_Position = projection * view * vec4(FragPos, 1.0);
+}
+)";
+
+const char* k_BuildingFragmentShaderSrc = R"(#version 330 core
+out vec4 FragColor;
+
+in vec3 FragPos;
+in vec3 Normal;
+in vec2 TexCoord;
+
+uniform sampler2D texture1;
+uniform vec3 objColor;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform vec3 lightColor;
+uniform bool useTexture;
+uniform bool isRoof;
+uniform float roofUVScale;
+uniform float textureExposure;
+
+vec3 srgbToLinear(vec3 c) {
+    return pow(c, vec3(2.2));
+}
+
+vec3 linearToSrgb(vec3 c) {
+    return pow(max(c, vec3(0.0)), vec3(1.0 / 2.2));
+}
+
+void main()
+{
+    float ambientStrength = 0.3;
+    vec3 ambient = ambientStrength * lightColor;
+
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * lightColor;
+
+    float specularStrength = 0.5;
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+    vec3 specular = specularStrength * spec * lightColor;
+
+    vec2 sampleUV = TexCoord;
+    if (isRoof) {
+        sampleUV *= roofUVScale;
+    }
+    vec4 texSample = texture(texture1, sampleUV);
+    vec3 texLinear = srgbToLinear(texSample.rgb) * textureExposure;
+    vec3 baseColor = useTexture ? texLinear : objColor;
+    float alpha = useTexture ? texSample.a : 1.0;
+    if (alpha < 0.05)
+        discard;
+    vec3 resultLinear = (ambient + diffuse + specular) * baseColor;
+    vec3 result = useTexture ? linearToSrgb(resultLinear) : resultLinear;
+    FragColor = vec4(result, alpha);
+}
+)";
+
+glm::vec3 ConvertBuildingVector(const glm::vec3& vec) {
+    return glm::vec3(vec.x, vec.z, vec.y);
+}
+
+glm::vec3 ConvertBuildingNormal(const glm::vec3& normal) {
+    glm::vec3 converted = ConvertBuildingVector(normal);
+    float len = glm::length(converted);
+    if (len > 1e-4f) {
+        converted /= len;
+    }
+    else {
+        converted = glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    return converted;
+}
+
+GLuint CompileBuildingShader(GLenum shaderType, const char* source) {
+    GLuint shader = glCreateShader(shaderType);
+    glShaderSource(shader, 1, &source, nullptr);
+    glCompileShader(shader);
+    GLint success = 0;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        std::cerr << "[Building] Shader compilation failed: " << infoLog << std::endl;
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+GLuint CreateBuildingShaderProgram() {
+    GLuint vs = CompileBuildingShader(GL_VERTEX_SHADER, k_BuildingVertexShaderSrc);
+    GLuint fs = CompileBuildingShader(GL_FRAGMENT_SHADER, k_BuildingFragmentShaderSrc);
+    if (!vs || !fs) {
+        if (vs) glDeleteShader(vs);
+        if (fs) glDeleteShader(fs);
+        return 0;
+    }
+
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vs);
+    glAttachShader(program, fs);
+    glLinkProgram(program);
+
+    GLint success = 0;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(program, 512, nullptr, infoLog);
+        std::cerr << "[Building] Shader program link failed: " << infoLog << std::endl;
+        glDeleteProgram(program);
+        program = 0;
+    }
+
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return program;
+}
 
 } // namespace
 
 namespace ScotlandYard {
-    namespace States {
+namespace States {
 
-        EmptyEnvironmentState::EmptyEnvironmentState() {}
-        EmptyEnvironmentState::~EmptyEnvironmentState() = default;
+    EmptyEnvironmentState::EmptyEnvironmentState() = default;
 
-        // --- IMPLEMENTACJA InjectMapData ---
+    EmptyEnvironmentState::~EmptyEnvironmentState() = default;
+
         void EmptyEnvironmentState::InjectMapData(
             const std::vector<CityGen::Point>& vec_Nodes,
             const std::vector<CityGen::Road>& vec_Roads,
             const std::vector<MapGen::Park>& vec_Parks,
-            const std::vector<MapGen::Point>& vec_RiverPath)
-        {
-            std::cout << "[EmptyEnvironmentState] Injecting map data from Generator..." << std::endl;
+            const std::vector<MapGen::Point>& vec_RiverPath,
+            const std::vector<MapGen::BuildingData>& vec_Buildings) {
 
-            // 1. Reset danych
-            m_MapData = MapGen::GeneratedMapData();
+            m_MapData.Clear();
+            m_MapData.i_Width = static_cast<int>(k_MapWidth);
+            m_MapData.i_Height = static_cast<int>(k_MapHeight);
 
-            m_MapData.vec_RiverPath = vec_RiverPath;
             m_MapData.vec_Parks = vec_Parks;
+            m_MapData.vec_RiverPath = vec_RiverPath;
+            m_MapData.vec_Buildings = vec_Buildings;
+            std::cout << "[EmptyEnvironmentState] Injected map data: "
+                << vec_Nodes.size() << " nodes, "
+                << vec_Roads.size() << " roads, "
+                << vec_Buildings.size() << " buildings." << std::endl;
+            m_b_RenderTestRoad = false;
 
             m_MapData.vec_GraphNodes.clear();
-            // Uzywamy decltype zeby uniknac bledu "niezadeklarowany identyfikator", 
-            using GraphNodeType = typename std::remove_reference<decltype(m_MapData.vec_GraphNodes)>::type::value_type;
-
+            m_MapData.vec_GraphNodes.reserve(vec_Nodes.size());
             for (size_t i = 0; i < vec_Nodes.size(); ++i) {
-                GraphNodeType node;
-                node.i_ID = (int)i;
-                node.position = MapGen::Point{ vec_Nodes[i].x, vec_Nodes[i].y };
-
-
-                m_MapData.vec_GraphNodes.push_back(node);
+                MapGen::GraphNodeData node;
+                node.i_ID = static_cast<int>(i);
+                node.position = MapGen::Point(vec_Nodes[i].x, vec_Nodes[i].y);
+                node.b_IsInPark = false;
+                node.b_IsNearRiver = false;
+                m_MapData.vec_GraphNodes.push_back(std::move(node));
             }
 
-            // 4. Konwersja Ulic (CityGen::Road -> MapGen::Street)
+            auto appendConnection = [&](int from, int to, CityGen::RoadType type) {
+                if (from < 0 || to < 0) {
+                    return;
+                }
+                if (from >= static_cast<int>(m_MapData.vec_GraphNodes.size()) ||
+                    to >= static_cast<int>(m_MapData.vec_GraphNodes.size())) {
+                    return;
+                }
+                auto& src = m_MapData.vec_GraphNodes[static_cast<size_t>(from)];
+                src.vec_TaxiConnections.push_back(to);
+                if (type == CityGen::RoadType::HIGHWAY) {
+                    src.vec_BusConnections.push_back(to);
+                }
+            };
+
             m_MapData.vec_Streets.clear();
-            // Podobnie dla Street/Edge
-            using StreetType = typename std::remove_reference<decltype(m_MapData.vec_Streets)>::type::value_type;
-
-            for (const auto& r : vec_Roads) {
-                if (r.isDeleted) continue;
-
-                StreetType street;
-                street.i_Node1 = r.startNodeIdx;
-                street.i_Node2 = r.endNodeIdx;
-
-                // Mapowanie typu drogi na Tier (do wizualizacji)
-                if (r.type == CityGen::RoadType::HIGHWAY) {
-                    street.i_Tier = 0;
-                    street.f_Width = 4.0f;
+            m_MapData.vec_Streets.reserve(vec_Roads.size());
+            for (const auto& road : vec_Roads) {
+                if (road.startNodeIdx < 0 || road.endNodeIdx < 0) {
+                    continue;
                 }
-                else {
-                    street.i_Tier = 2; // Lokalna
-                    street.f_Width = 2.0f;
+                if (road.startNodeIdx >= static_cast<int>(vec_Nodes.size()) ||
+                    road.endNodeIdx >= static_cast<int>(vec_Nodes.size())) {
+                    continue;
                 }
 
-                street.b_IsInPark = false;
+                appendConnection(road.startNodeIdx, road.endNodeIdx, road.type);
+                appendConnection(road.endNodeIdx, road.startNodeIdx, road.type);
 
-                m_MapData.vec_Streets.push_back(street);
+                int tier = (road.type == CityGen::RoadType::HIGHWAY) ? 0 : 2;
+                MapGen::StreetSegment segment(road.startNodeIdx, road.endNodeIdx, tier);
+                segment.b_IsInPark = false;
+                segment.vec_Geometry.push_back(MapGen::Point(vec_Nodes[static_cast<size_t>(road.startNodeIdx)].x,
+                    vec_Nodes[static_cast<size_t>(road.startNodeIdx)].y));
+                segment.vec_Geometry.push_back(MapGen::Point(vec_Nodes[static_cast<size_t>(road.endNodeIdx)].x,
+                    vec_Nodes[static_cast<size_t>(road.endNodeIdx)].y));
+                segment.f_Width = MapGen::StreetSegment::GetWidthForTier(tier);
+                m_MapData.vec_Streets.push_back(std::move(segment));
             }
 
+            m_MapData.i_NumGraphNodes = static_cast<int>(m_MapData.vec_GraphNodes.size());
             m_b_MapDataLoaded = true;
-            std::cout << "[EmptyEnvironmentState] Injection complete. Nodes: " << m_MapData.vec_GraphNodes.size()
-                << ", Streets: " << m_MapData.vec_Streets.size()
-                << ", Parks: " << m_MapData.vec_Parks.size()
-                << ", River points: " << m_MapData.vec_RiverPath.size() << std::endl;
+            m_b_RiverStripLoaded = false;
         }
-        // -----------------------------------
 
         void EmptyEnvironmentState::CreateShaders() {
-            // --- OLD SHADER (keep as is) ---
             const char* vsSrc = R"(#version 330 core
         layout(location=0) in vec3 aPos;
         layout(location=1) in vec3 aNormal;
@@ -282,9 +437,9 @@ namespace ScotlandYard {
         uniform mat4 uMVP;
         out vec2 vUV;
 
-        void main(){
+        void main() {
             vUV = aUV;
-            gl_Position = uMVP * vec4(aPos,1.0);
+            gl_Position = uMVP * vec4(aPos, 1.0);
         }
     )";
 
@@ -293,24 +448,20 @@ namespace ScotlandYard {
 
         uniform sampler2D uSidewalk;
         uniform sampler2D uGrass;
-        uniform sampler2D uMask;      
-        uniform int uUseMask;         
-        uniform vec2 uTileUV;         
+        uniform sampler2D uMask;
+        uniform vec2 uTileUV;
+        uniform int uUseMask;
 
         out vec4 FragColor;
 
-        void main(){
+        void main() {
             vec2 tiledUV = vUV * uTileUV;
-
             vec4 sidewalk = texture(uSidewalk, tiledUV);
-            vec4 grass    = texture(uGrass, tiledUV);
+            vec4 grass = texture(uGrass, tiledUV);
 
-            if(uUseMask == 1){
+            if (uUseMask == 1) {
                 vec3 m = texture(uMask, vUV).rgb;
-
-                // parks = green = grass
                 float park = step(0.35, m.g);
-
                 FragColor = mix(sidewalk, grass, park);
             } else {
                 FragColor = sidewalk;
@@ -433,6 +584,7 @@ namespace ScotlandYard {
             glDeleteShader(modelFs);
         }
 
+
         void EmptyEnvironmentState::CreatePlane() {
             float f_PlaneVertices[] = {
                 // pos                 // normal       // uv
@@ -459,11 +611,54 @@ namespace ScotlandYard {
             glBindVertexArray(0);
         }
 
-        void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
-            bool b_EnableTestEnvironment = true;
-            CreateTestRoad(p_App);
+        void EmptyEnvironmentState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
+            (void)p_App;
 
-            if (p_App && !p_App->IsTrainingMode() && b_EnableTestEnvironment) {
+            switch (event.type) {
+            case SDL_MOUSEBUTTONDOWN: {
+                float f_VirtualX = static_cast<float>(event.button.x);
+                float f_VirtualY = static_cast<float>(event.button.y);
+                if (p_App) {
+                    p_App->TransformMouseToVirtual(event.button.x, event.button.y, f_VirtualX, f_VirtualY);
+                }
+                UI::HandleMouseClick(static_cast<int>(f_VirtualX), static_cast<int>(f_VirtualY));
+                break;
+            }
+            case SDL_MOUSEMOTION:
+                UI::HandleMouseMotion(event.motion.x, event.motion.y);
+                break;
+            case SDL_MOUSEWHEEL:
+                if (m_b_Camera3D) {
+                    m_f_CameraAngleVelocity += static_cast<float>(event.wheel.y) * k_CameraScrollAcceleration;
+                }
+                break;
+            case SDL_KEYDOWN:
+                if (event.key.keysym.sym == SDLK_SPACE) {
+                    m_b_Camera3D = !m_b_Camera3D;
+                    if (m_b_Camera3D) {
+                        m_vec3_CameraPosition = m_vec3_Saved3DCameraPosition;
+                    }
+                }
+                break;
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                    m_b_GameActive = false;
+                }
+                else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+                    m_b_GameActive = true;
+                }
+                break;
+            default:
+                break;
+            }
+        }
+
+        void EmptyEnvironmentState::OnEnter(Core::Application* p_App) {
+            if (m_b_RenderTestRoad) {
+                CreateTestRoad(p_App);
+            }
+
+            if (p_App && !p_App->IsTrainingMode()) {
                 const_cast<Core::Application*>(p_App)->UpdateUIScaling();
 
                 glEnable(GL_DEPTH_TEST);
@@ -475,7 +670,6 @@ namespace ScotlandYard {
                 LoadBridgeModel(p_App);
                 SetBridgeLength(4.0f);
 
-                // water renderer
                 m_p_WaterRenderer = std::make_unique<Rendering::WaterRenderer>();
                 m_p_WaterRenderer->Initialize();
                 m_p_WaterRenderer->SetWaterHeight(0.002f);
@@ -491,52 +685,80 @@ namespace ScotlandYard {
                 else {
                     std::cout << "[EmptyEnvironmentState] Skipping sample data load (Map injected)." << std::endl;
                     BuildRiverFromMapData();
+                    BuildBuildingsFromMapData();
                 }
 
-                // HUD setup: load camera icon and hook toggle
                 std::string s_IconPath = p_App->GetAssetPath("icons/camera_icon.png");
                 UI::LoadCameraIconPNG(s_IconPath.c_str(), p_App);
                 UI::SetCameraToggleCallback([this]() { this->m_b_Camera3D = !this->m_b_Camera3D; });
 
-                // Initialize top bar with labels and hide all counts (no players here)
                 std::vector<std::string> vec_Labels = { "Runda ...", "Black", "2x", "TAXI", "Metro", "Bus" };
                 std::vector<UI::Color> vec_Colors = {
-                    {0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 1.0f},      // Black
-                    {0xE2 / 255.0f, 0x70 / 255.0f, 0x3F / 255.0f, 1.0f},      // Taxi (orange)
-                    {0xED / 255.0f, 0xD1 / 255.0f, 0x00 / 255.0f, 1.0f},      // Double (yellow)
-                    {0xF5 / 255.0f, 0x51 / 255.0f, 0xAE / 255.0f, 1.0f},      // Metro (pink/magenta)
-                    {0x41 / 255.0f, 0x84 / 255.0f, 0x3D / 255.0f, 1.0f},      // Bus (green)
+                    {0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 1.0f},
+                    {0xE2 / 255.0f, 0x70 / 255.0f, 0x3F / 255.0f, 1.0f},
+                    {0xED / 255.0f, 0xD1 / 255.0f, 0x00 / 255.0f, 1.0f},
+                    {0xF5 / 255.0f, 0x51 / 255.0f, 0xAE / 255.0f, 1.0f},
+                    {0x41 / 255.0f, 0x84 / 255.0f, 0x3D / 255.0f, 1.0f},
                 };
                 std::vector<int> vec_Counts = { -1, -1, -1, -1, -1, -1 };
                 UI::SetTopBar(vec_Labels, vec_Colors, vec_Counts);
                 UI::SetMrXButtonsVisible(false);
                 UI::SetMrXButtonsEnabled(false, false);
 
-                // Initialize default ticket slots and round for full HUD visuals
                 std::vector<UI::TicketSlot> vec_Slots(UI::k_TicketSlotCount);
                 UI::SetTicketStates(vec_Slots);
                 UI::SetRound(1);
 
+                InitializeShowcaseBuilding(p_App);
             }
 
             UI::SetPauseCallback([this]() {
                 UI::ShowPausedModal(true);
-                });
+            });
 
             UI::SetPausedResumeCallback([this]() {
                 UI::ShowPausedModal(false);
                 this->m_b_GameActive = true;
-                });
+            });
 
             UI::SetPausedDebugCallback([this]() {
-                });
+            });
 
             UI::SetPausedMenuCallback([this, p_App]() {
                 UI::ShowPausedModal(false);
                 if (p_App && p_App->GetStateManager()) {
                     p_App->GetStateManager()->ChangeState("menu", p_App);
                 }
-                });
+            });
+        }
+
+        void EmptyEnvironmentState::DestroyShowcaseBuilding(Core::Application* p_App) {
+            DestroyBuildingInstance(m_ShowcaseBuilding);
+
+            if (m_ShaderBuilding) {
+                glDeleteProgram(m_ShaderBuilding);
+                m_ShaderBuilding = 0;
+            }
+
+            auto unloadTexture = [p_App](GLuint& tex) {
+                if (!tex) {
+                    return;
+                }
+                if (p_App) {
+                    p_App->UnloadTexture(tex);
+                }
+                else {
+                    glDeleteTextures(1, &tex);
+                }
+                tex = 0;
+            };
+
+            unloadTexture(m_TexBuildingFacade);
+            unloadTexture(m_TexBuildingRoof);
+            unloadTexture(m_TexBuildingWindows);
+            unloadTexture(m_TexBuildingDoors);
+
+            m_ShowcaseBuilding.ready = false;
         }
 
         void EmptyEnvironmentState::OnExit(Core::Application* p_App) {
@@ -571,6 +793,9 @@ namespace ScotlandYard {
             if (m_VAO_Bridge) { glDeleteVertexArrays(1, &m_VAO_Bridge); m_VAO_Bridge = 0; }
             if (m_ShaderBridge) { glDeleteProgram(m_ShaderBridge); m_ShaderBridge = 0; }
             if (m_TexBridge) { p_App->UnloadTexture(m_TexBridge); m_TexBridge = 0; m_b_BridgeHasTexture = false; }
+
+            DestroyGeneratedBuildings();
+            DestroyShowcaseBuilding(p_App);
 
         }
 
@@ -741,12 +966,14 @@ namespace ScotlandYard {
             int i_H = p_App->GetVirtualHeight();
 
             glm::mat4 mat4_View, mat4_Projection;
+            glm::vec3 vec3_ViewPosition(0.0f);
 
             if (m_b_Camera3D) {
                 m_vec3_CameraPosition = m_vec3_Saved3DCameraPosition;
                 glm::vec3 vec3_Target = m_vec3_CameraPosition + m_vec3_CameraFront;
                 mat4_View = glm::lookAt(m_vec3_CameraPosition, vec3_Target, m_vec3_CameraUp);
                 mat4_Projection = glm::perspective(glm::radians(45.0f), (float)i_W / (float)i_H, 0.1f, 100.0f);
+                vec3_ViewPosition = m_vec3_CameraPosition;
             }
             else {
                 // Simple top-down ortho similar to GameState 2D mode
@@ -759,6 +986,7 @@ namespace ScotlandYard {
                 float f_HalfHeight = 10.0f;
                 float f_HalfWidth = f_HalfHeight * f_Aspect;
                 mat4_Projection = glm::ortho(-f_HalfWidth, f_HalfWidth, -f_HalfHeight, f_HalfHeight, 0.1f, 10.0f);
+                vec3_ViewPosition = vec3_CamPos;
             }
 
             if (m_p_WaterRenderer) {
@@ -800,7 +1028,7 @@ namespace ScotlandYard {
             glBindVertexArray(0);
 
             // --- Render road ---
-            if (m_VAO_Road && m_TexRoad) {
+            if (m_b_RenderTestRoad && m_VAO_Road && m_TexRoad) {
                 glUseProgram(m_ShaderRoad);
 
                 // MVP matrix
@@ -823,7 +1051,7 @@ namespace ScotlandYard {
             }
 
             // Bridge model
-            if (m_VAO_Bridge && m_ShaderBridge && m_BridgeIndexCount > 0) {
+            if (m_b_DrawBridge && m_VAO_Bridge && m_ShaderBridge && m_BridgeIndexCount > 0) {
                 glm::mat4 mat4_BridgeModel = glm::translate(glm::mat4(1.0f), m_vec3_BridgePosition);
                 mat4_BridgeModel = glm::scale(mat4_BridgeModel, m_vec3_BridgeScale);
                 glm::mat4 mat4_BridgeMVP = mat4_Projection * mat4_View * mat4_BridgeModel;
@@ -843,6 +1071,11 @@ namespace ScotlandYard {
                 glDrawElements(GL_TRIANGLES, m_BridgeIndexCount, GL_UNSIGNED_INT, 0);
                 glBindVertexArray(0);
             }
+
+            if (m_b_ShowcaseBuildingVisible) {
+                RenderShowcaseBuilding(mat4_View, mat4_Projection, vec3_ViewPosition);
+            }
+            RenderGeneratedBuildings(mat4_View, mat4_Projection, vec3_ViewPosition);
 
             if (!m_vec_ParkRenderers.empty() && m_TexGrass) {
                 glEnable(GL_POLYGON_OFFSET_FILL);
@@ -911,6 +1144,279 @@ namespace ScotlandYard {
             glBindTexture(GL_TEXTURE_2D, 0);
         }
 
+        GLuint EmptyEnvironmentState::LoadShowcaseTexture(Core::Application* p_App, const std::string& s_RelativePath) {
+            if (!p_App) {
+                return 0;
+            }
+            return p_App->LoadTexture(p_App->GetAssetPath(s_RelativePath));
+        }
+
+        void EmptyEnvironmentState::ConvertBuildingMeshForEnvironment(Core::BuildingMesh& mesh) {
+            for (auto& vertex : mesh.vertices) {
+                vertex = ConvertBuildingVector(vertex);
+            }
+            for (auto& normal : mesh.normals) {
+                normal = ConvertBuildingNormal(normal);
+            }
+            for (auto& wall : mesh.windowWalls) {
+                for (auto& vertex : wall.vertices) {
+                    vertex = ConvertBuildingVector(vertex);
+                }
+                for (auto& normal : wall.normals) {
+                    normal = ConvertBuildingNormal(normal);
+                }
+                wall.wallCenter = ConvertBuildingVector(wall.wallCenter);
+                wall.wallNormal = ConvertBuildingNormal(wall.wallNormal);
+            }
+            for (auto& door : mesh.doors) {
+                for (auto& vertex : door.vertices) {
+                    vertex = ConvertBuildingVector(vertex);
+                }
+                for (auto& normal : door.normals) {
+                    normal = ConvertBuildingNormal(normal);
+                }
+                door.wallCenter = ConvertBuildingVector(door.wallCenter);
+                door.wallNormal = ConvertBuildingNormal(door.wallNormal);
+            }
+        }
+
+        void EmptyEnvironmentState::ScaleBuildingMesh(Core::BuildingMesh& mesh, float f_Scale) {
+            if (f_Scale <= 0.0f) {
+                return;
+            }
+
+            auto scaleVec3 = [f_Scale](glm::vec3& vec) {
+                vec *= f_Scale;
+            };
+
+            for (auto& vertex : mesh.vertices) {
+                scaleVec3(vertex);
+            }
+            for (auto& tex : mesh.texCoords) {
+                tex *= f_Scale;
+            }
+
+            for (auto& wall : mesh.windowWalls) {
+                for (auto& vertex : wall.vertices) {
+                    scaleVec3(vertex);
+                }
+                wall.wallCenter *= f_Scale;
+            }
+
+            for (auto& door : mesh.doors) {
+                for (auto& vertex : door.vertices) {
+                    scaleVec3(vertex);
+                }
+                door.wallCenter *= f_Scale;
+            }
+        }
+
+        void EmptyEnvironmentState::ReleaseSurfaceBuffers(SurfaceBuffers& buffers) {
+            if (buffers.vboPos) {
+                glDeleteBuffers(1, &buffers.vboPos);
+                buffers.vboPos = 0;
+            }
+            if (buffers.vboNormal) {
+                glDeleteBuffers(1, &buffers.vboNormal);
+                buffers.vboNormal = 0;
+            }
+            if (buffers.vboUV) {
+                glDeleteBuffers(1, &buffers.vboUV);
+                buffers.vboUV = 0;
+            }
+            if (buffers.ebo) {
+                glDeleteBuffers(1, &buffers.ebo);
+                buffers.ebo = 0;
+            }
+            if (buffers.vao) {
+                glDeleteVertexArrays(1, &buffers.vao);
+                buffers.vao = 0;
+            }
+        }
+
+        bool EmptyEnvironmentState::UploadSurfaceBuffersFromData(
+            const std::vector<glm::vec3>& positions,
+            const std::vector<glm::vec3>& normals,
+            const std::vector<glm::vec2>& uvs,
+            const std::vector<unsigned int>& indices,
+            SurfaceBuffers& outBuffers) {
+
+            ReleaseSurfaceBuffers(outBuffers);
+
+            if (positions.empty() || indices.empty()) {
+                return false;
+            }
+
+            glGenVertexArrays(1, &outBuffers.vao);
+            glBindVertexArray(outBuffers.vao);
+
+            glGenBuffers(1, &outBuffers.vboPos);
+            glBindBuffer(GL_ARRAY_BUFFER, outBuffers.vboPos);
+            glBufferData(GL_ARRAY_BUFFER, positions.size() * sizeof(glm::vec3), positions.data(), GL_STATIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+            glEnableVertexAttribArray(0);
+
+            const std::vector<glm::vec3>* normalsPtr = &normals;
+            std::vector<glm::vec3> fallbackNormals;
+            if (normals.size() != positions.size()) {
+                fallbackNormals.assign(positions.size(), glm::vec3(0.0f, 1.0f, 0.0f));
+                normalsPtr = &fallbackNormals;
+            }
+
+            glGenBuffers(1, &outBuffers.vboNormal);
+            glBindBuffer(GL_ARRAY_BUFFER, outBuffers.vboNormal);
+            glBufferData(GL_ARRAY_BUFFER, normalsPtr->size() * sizeof(glm::vec3), normalsPtr->data(), GL_STATIC_DRAW);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+            glEnableVertexAttribArray(1);
+
+            const std::vector<glm::vec2>* uvPtr = &uvs;
+            std::vector<glm::vec2> fallbackUVs;
+            if (uvs.size() != positions.size()) {
+                fallbackUVs.assign(positions.size(), glm::vec2(0.0f));
+                uvPtr = &fallbackUVs;
+            }
+
+            glGenBuffers(1, &outBuffers.vboUV);
+            glBindBuffer(GL_ARRAY_BUFFER, outBuffers.vboUV);
+            glBufferData(GL_ARRAY_BUFFER, uvPtr->size() * sizeof(glm::vec2), uvPtr->data(), GL_STATIC_DRAW);
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+            glEnableVertexAttribArray(2);
+
+            glGenBuffers(1, &outBuffers.ebo);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, outBuffers.ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+            glBindVertexArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+            return true;
+        }
+
+        void EmptyEnvironmentState::UploadWindowSurfaces(
+            const std::vector<Core::BuildingMesh::WindowWall>& walls,
+            std::vector<SurfaceBuffers>& outBuffers) {
+            outBuffers.resize(walls.size());
+            for (size_t i = 0; i < walls.size(); ++i) {
+                UploadSurfaceBuffersFromData(
+                    walls[i].vertices,
+                    walls[i].normals,
+                    walls[i].texCoords,
+                    walls[i].indices,
+                    outBuffers[i]);
+            }
+        }
+
+        void EmptyEnvironmentState::UploadDoorSurfaces(
+            const std::vector<Core::BuildingMesh::Door>& doors,
+            std::vector<SurfaceBuffers>& outBuffers) {
+            outBuffers.resize(doors.size());
+            for (size_t i = 0; i < doors.size(); ++i) {
+                UploadSurfaceBuffersFromData(
+                    doors[i].vertices,
+                    doors[i].normals,
+                    doors[i].texCoords,
+                    doors[i].indices,
+                    outBuffers[i]);
+            }
+        }
+
+        void EmptyEnvironmentState::ReleaseInstanceBuffers(BuildingRenderInstance& instance) {
+            ReleaseSurfaceBuffers(instance.meshBuffers);
+            for (auto& buffers : instance.windowSurfaces) {
+                ReleaseSurfaceBuffers(buffers);
+            }
+            for (auto& buffers : instance.doorSurfaces) {
+                ReleaseSurfaceBuffers(buffers);
+            }
+            instance.windowSurfaces.clear();
+            instance.doorSurfaces.clear();
+        }
+
+        bool EmptyEnvironmentState::UploadBuildingInstance(BuildingRenderInstance& instance) {
+            ReleaseInstanceBuffers(instance);
+
+            bool b_MainUploaded = UploadSurfaceBuffersFromData(
+                instance.mesh.vertices,
+                instance.mesh.normals,
+                instance.mesh.texCoords,
+                instance.mesh.indices,
+                instance.meshBuffers);
+
+            if (!b_MainUploaded) {
+                instance.ready = false;
+                return false;
+            }
+
+            UploadWindowSurfaces(instance.mesh.windowWalls, instance.windowSurfaces);
+            UploadDoorSurfaces(instance.mesh.doors, instance.doorSurfaces);
+
+            instance.ready = (instance.meshBuffers.vao != 0);
+            return instance.ready;
+        }
+
+        void EmptyEnvironmentState::DestroyBuildingInstance(BuildingRenderInstance& instance) {
+            ReleaseInstanceBuffers(instance);
+            instance.mesh = Core::BuildingMesh();
+            instance.unitScale = 1.0f;
+            instance.position = glm::vec3(0.0f);
+            instance.ready = false;
+        }
+
+        void EmptyEnvironmentState::InitializeShowcaseBuilding(Core::Application* p_App) {
+            DestroyShowcaseBuilding(p_App);
+
+            if (!p_App || p_App->IsTrainingMode()) {
+                return;
+            }
+
+            const float f_BuildingWidth = 8.0f;
+            const float f_BuildingDepth = 5.0f;
+            const float f_BuildingHeight = 9.0f;
+            const float f_RoofHeight = 2.5f;
+
+            m_ShowcaseBuilding.position = glm::vec3(11.0f, 0.0f, 8.0f);
+            m_ShowcaseBuilding.unitScale = k_ShowcaseBuildingScale;
+
+            std::vector<glm::vec2> vec_BasePoints = {
+                { -f_BuildingWidth * 0.5f, -f_BuildingDepth * 0.5f },
+                {  f_BuildingWidth * 0.5f, -f_BuildingDepth * 0.5f },
+                {  f_BuildingWidth * 0.5f,  f_BuildingDepth * 0.5f },
+                { -f_BuildingWidth * 0.5f,  f_BuildingDepth * 0.5f }
+            };
+
+            try {
+                m_ShowcaseBuilding.mesh = Core::BuildingGenerator::GenerateBuilding(
+                    vec_BasePoints, f_BuildingHeight, true, f_RoofHeight);
+            }
+            catch (const std::exception& e) {
+                std::cerr << "[Building] Generation failed: " << e.what() << std::endl;
+                m_ShowcaseBuilding.ready = false;
+                return;
+            }
+
+            ConvertBuildingMeshForEnvironment(m_ShowcaseBuilding.mesh);
+            ScaleBuildingMesh(m_ShowcaseBuilding.mesh, k_ShowcaseBuildingScale);
+
+            if (!UploadBuildingInstance(m_ShowcaseBuilding)) {
+                std::cerr << "[Building] Upload failed." << std::endl;
+            }
+
+            m_ShaderBuilding = CreateBuildingShaderProgram();
+            if (!m_ShaderBuilding) {
+                std::cerr << "[Building] Shader creation failed." << std::endl;
+                m_ShowcaseBuilding.ready = false;
+                return;
+            }
+
+            m_TexBuildingFacade = LoadShowcaseTexture(p_App, "textures/facade/white.jpg");
+            m_TexBuildingRoof = LoadShowcaseTexture(p_App, "textures/210_clay roof texture seamless.jpg");
+            m_TexBuildingWindows = LoadShowcaseTexture(p_App, "textures/windows/window1.png");
+            m_TexBuildingDoors = LoadShowcaseTexture(p_App, "textures/door/door1.jpg");
+
+            m_ShowcaseBuilding.ready = (m_ShowcaseBuilding.meshBuffers.vao != 0 && m_ShaderBuilding != 0);
+        }
+
         void EmptyEnvironmentState::AccelerateCameraForward(float f_DeltaTime) {
             if (!m_b_Camera3D) return;
 
@@ -939,8 +1445,8 @@ namespace ScotlandYard {
             if (!m_b_Camera3D) return;
 
             glm::vec3 vec3_Forward = glm::normalize(glm::vec3(m_vec3_CameraFront.x, 0.0f, m_vec3_CameraFront.z));
-            glm::vec3 vec3_Left = glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), vec3_Forward));
-            m_vec3_CameraVelocity += vec3_Left * k_CameraAcceleration * f_DeltaTime;
+            glm::vec3 vec3_Right = glm::normalize(glm::cross(vec3_Forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+            m_vec3_CameraVelocity += -vec3_Right * k_CameraAcceleration * f_DeltaTime;
 
             float f_Speed = glm::length(m_vec3_CameraVelocity);
             if (f_Speed > k_MaxCameraSpeed) {
@@ -964,115 +1470,306 @@ namespace ScotlandYard {
         void EmptyEnvironmentState::UpdateCameraPhysics(float f_DeltaTime) {
             if (!m_b_Camera3D) return;
 
+            glm::vec3 vec3_HorizontalVelocity(m_vec3_CameraVelocity.x, 0.0f, m_vec3_CameraVelocity.z);
+            m_vec3_Saved3DCameraPosition += vec3_HorizontalVelocity * f_DeltaTime;
+
             m_vec3_CameraVelocity *= k_CameraFriction;
-            if (glm::length(m_vec3_CameraVelocity) < 0.05f) {
+            if (glm::length(m_vec3_CameraVelocity) < 0.01f) {
                 m_vec3_CameraVelocity = glm::vec3(0.0f);
             }
-
-            float f_OriginalY = m_vec3_Saved3DCameraPosition.y;
-            m_vec3_Saved3DCameraPosition += m_vec3_CameraVelocity * f_DeltaTime;
-            m_vec3_Saved3DCameraPosition.y = f_OriginalY;
         }
 
-        void EmptyEnvironmentState::HandleEvent(const SDL_Event& ev, Core::Application* p_App) {
-            if (ev.type == SDL_KEYDOWN) {
-                switch (ev.key.keysym.sym) {
-                case SDLK_g:
-                    p_App->GetStateManager()->PushState("mapgen", p_App);
-                    break;
-                case SDLK_l:
-                    TryLoadGeneratedMap(p_App);
-                    break;
-                case SDLK_ESCAPE:
-                    p_App->GetStateManager()->ChangeState("menu", p_App);
-                    break;
+        void EmptyEnvironmentState::RenderShowcaseBuilding(const glm::mat4& mat4_View,
+            const glm::mat4& mat4_Projection, const glm::vec3& vec3_CameraPos) {
+            RenderBuildingInstance(m_ShowcaseBuilding, mat4_View, mat4_Projection, vec3_CameraPos);
+        }
+
+        void EmptyEnvironmentState::RenderBuildingInstance(const BuildingRenderInstance& instance,
+            const glm::mat4& mat4_View, const glm::mat4& mat4_Projection,
+            const glm::vec3& vec3_CameraPos) const {
+
+            if (!instance.ready || !m_ShaderBuilding || instance.meshBuffers.vao == 0) {
+                return;
+            }
+
+            glUseProgram(m_ShaderBuilding);
+
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), instance.position + glm::vec3(0.0f, 0.01f, 0.0f));
+            glUniformMatrix4fv(glGetUniformLocation(m_ShaderBuilding, "model"), 1, GL_FALSE, glm::value_ptr(model));
+            glUniformMatrix4fv(glGetUniformLocation(m_ShaderBuilding, "view"), 1, GL_FALSE, glm::value_ptr(mat4_View));
+            glUniformMatrix4fv(glGetUniformLocation(m_ShaderBuilding, "projection"), 1, GL_FALSE, glm::value_ptr(mat4_Projection));
+
+            glm::vec3 lightPos = vec3_CameraPos + glm::vec3(6.0f, 8.0f, 4.0f);
+            glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+            glUniform3fv(glGetUniformLocation(m_ShaderBuilding, "lightPos"), 1, glm::value_ptr(lightPos));
+            glUniform3fv(glGetUniformLocation(m_ShaderBuilding, "viewPos"), 1, glm::value_ptr(vec3_CameraPos));
+            glUniform3fv(glGetUniformLocation(m_ShaderBuilding, "lightColor"), 1, glm::value_ptr(lightColor));
+            glUniform1f(glGetUniformLocation(m_ShaderBuilding, "textureExposure"), 1.0f);
+
+            GLboolean b_CullWasEnabledBase = glIsEnabled(GL_CULL_FACE);
+            if (b_CullWasEnabledBase) {
+                glDisable(GL_CULL_FACE);
+            }
+
+            float f_Scale = instance.unitScale > 1e-4f ? instance.unitScale : 1.0f;
+
+            glBindVertexArray(instance.meshBuffers.vao);
+            for (const auto& material : instance.mesh.materials) {
+                bool b_IsRoof = (material.name == "roof") && (m_TexBuildingRoof != 0);
+                GLuint texture = b_IsRoof ? m_TexBuildingRoof : m_TexBuildingFacade;
+                bool b_UseTexture = (texture != 0);
+
+                if (b_UseTexture) {
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texture);
+                    glUniform1i(glGetUniformLocation(m_ShaderBuilding, "texture1"), 0);
+                }
+                glUniform1i(glGetUniformLocation(m_ShaderBuilding, "useTexture"), b_UseTexture ? 1 : 0);
+                glUniform1i(glGetUniformLocation(m_ShaderBuilding, "isRoof"), b_IsRoof ? 1 : 0);
+                float f_RoofUVScale = b_IsRoof ? (k_RoofBaseUVScale / f_Scale) : 1.0f;
+                glUniform1f(glGetUniformLocation(m_ShaderBuilding, "roofUVScale"), f_RoofUVScale);
+                glUniform3fv(glGetUniformLocation(m_ShaderBuilding, "objColor"), 1, glm::value_ptr(material.color));
+
+                glDrawElements(GL_TRIANGLES, material.indexCount, GL_UNSIGNED_INT,
+                    (void*)(material.firstIndex * sizeof(unsigned int)));
+            }
+            glBindVertexArray(0);
+
+            if (b_CullWasEnabledBase) {
+                glEnable(GL_CULL_FACE);
+            }
+
+            bool b_HasWindows = (m_TexBuildingWindows != 0) && !instance.mesh.windowWalls.empty();
+            bool b_HasDoors = (m_TexBuildingDoors != 0) && !instance.mesh.doors.empty();
+
+            if (!(b_HasWindows || b_HasDoors)) {
+                return;
+            }
+
+            glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(model)));
+
+            GLboolean b_CullWasEnabled = glIsEnabled(GL_CULL_FACE);
+            GLboolean b_DepthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+            GLint i_PrevDepthFunc = GL_LESS;
+            glGetIntegerv(GL_DEPTH_FUNC, &i_PrevDepthFunc);
+
+            glDepthMask(GL_FALSE);
+            glDisable(GL_CULL_FACE);
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LEQUAL);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            if (b_HasWindows) {
+                size_t windowCount = std::min(instance.mesh.windowWalls.size(), instance.windowSurfaces.size());
+                for (size_t i = 0; i < windowCount; ++i) {
+                    const auto& wall = instance.mesh.windowWalls[i];
+                    const auto& buffers = instance.windowSurfaces[i];
+                    if (!buffers.vao) {
+                        continue;
+                    }
+
+                    glm::vec3 wallCenterWorld = glm::vec3(model * glm::vec4(wall.wallCenter, 1.0f));
+                    glm::vec3 wallNormalWorld = glm::normalize(normalMatrix * wall.wallNormal);
+                    glm::vec3 viewDir = glm::normalize(vec3_CameraPos - wallCenterWorld);
+                    if (glm::dot(wallNormalWorld, viewDir) <= 0.0f) {
+                        continue;
+                    }
+
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, m_TexBuildingWindows);
+                    glUniform1i(glGetUniformLocation(m_ShaderBuilding, "texture1"), 0);
+                    glUniform1i(glGetUniformLocation(m_ShaderBuilding, "useTexture"), 1);
+                    glUniform1i(glGetUniformLocation(m_ShaderBuilding, "isRoof"), 0);
+                    glUniform1f(glGetUniformLocation(m_ShaderBuilding, "roofUVScale"), 1.0f);
+                    glUniform1f(glGetUniformLocation(m_ShaderBuilding, "textureExposure"), 1.0f);
+
+                    glBindVertexArray(buffers.vao);
+                    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(wall.indices.size()), GL_UNSIGNED_INT, 0);
                 }
             }
 
-            if (ev.type == SDL_MOUSEWHEEL && m_b_Camera3D) {
-                float f_ScrollInput = ev.wheel.y * k_CameraScrollAcceleration;
-                m_f_CameraAngleVelocity -= f_ScrollInput;
+            if (b_HasDoors) {
+                size_t doorCount = std::min(instance.mesh.doors.size(), instance.doorSurfaces.size());
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, m_TexBuildingDoors);
+                glUniform1i(glGetUniformLocation(m_ShaderBuilding, "texture1"), 0);
+                glUniform1i(glGetUniformLocation(m_ShaderBuilding, "useTexture"), 1);
+                glUniform1i(glGetUniformLocation(m_ShaderBuilding, "isRoof"), 0);
+                glUniform1f(glGetUniformLocation(m_ShaderBuilding, "roofUVScale"), 1.0f);
+                glUniform1f(glGetUniformLocation(m_ShaderBuilding, "textureExposure"), 1.0f);
+
+                for (size_t i = 0; i < doorCount; ++i) {
+                    const auto& door = instance.mesh.doors[i];
+                    const auto& buffers = instance.doorSurfaces[i];
+                    if (!buffers.vao) {
+                        continue;
+                    }
+
+                    glm::vec3 doorCenterWorld = glm::vec3(model * glm::vec4(door.wallCenter, 1.0f));
+                    glm::vec3 doorNormalWorld = glm::normalize(normalMatrix * door.wallNormal);
+                    glm::vec3 viewDir = glm::normalize(vec3_CameraPos - doorCenterWorld);
+                    if (glm::dot(doorNormalWorld, viewDir) <= 0.0f) {
+                        continue;
+                    }
+
+                    glBindVertexArray(buffers.vao);
+                    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(door.indices.size()), GL_UNSIGNED_INT, 0);
+                }
             }
 
-            if (ev.type == SDL_MOUSEBUTTONDOWN) {
-                UI::HandleMouseClick(ev.button.x, ev.button.y);
+            glDisable(GL_BLEND);
+            glDepthMask(GL_TRUE);
+            glDepthFunc(i_PrevDepthFunc);
+            if (!b_DepthWasEnabled) {
+                glDisable(GL_DEPTH_TEST);
+            }
+            if (b_CullWasEnabled) {
+                glEnable(GL_CULL_FACE);
+            }
+        }
+
+        void EmptyEnvironmentState::RenderGeneratedBuildings(const glm::mat4& mat4_View,
+            const glm::mat4& mat4_Projection, const glm::vec3& vec3_CameraPos) {
+            for (const auto& building : m_GeneratedBuildings) {
+                RenderBuildingInstance(building, mat4_View, mat4_Projection, vec3_CameraPos);
+            }
+        }
+
+        void EmptyEnvironmentState::DestroyGeneratedBuildings() {
+            for (auto& building : m_GeneratedBuildings) {
+                DestroyBuildingInstance(building);
+            }
+            m_GeneratedBuildings.clear();
+        }
+
+        void EmptyEnvironmentState::BuildBuildingsFromMapData() {
+            DestroyGeneratedBuildings();
+
+            if (!m_b_MapDataLoaded || m_MapData.vec_Buildings.empty()) {
+                return;
             }
 
-            if (ev.type == SDL_MOUSEMOTION) {
-                UI::HandleMouseMotion(ev.motion.x, ev.motion.y);
+            const float f_ScaleX = k_PlaneWidth / k_MapWidth;
+            const float f_ScaleZ = k_PlaneDepth / k_MapHeight;
+            const float f_OffsetX = k_MapOffsetX;
+            const float f_OffsetZ = k_MapOffsetZ;
+            const float f_HeightScale = 0.5f * (f_ScaleX + f_ScaleZ);
+
+            size_t builtCount = 0;
+            m_GeneratedBuildings.reserve(m_MapData.vec_Buildings.size());
+
+            for (const auto& data : m_MapData.vec_Buildings) {
+                if (data.vec_BaseFootprint.size() != 4) {
+                    continue;
+                }
+
+                std::vector<glm::vec2> vec_Footprint = data.vec_BaseFootprint;
+
+                float f_Height = data.f_Height;
+                float f_RoofHeight = data.f_RoofHeight;
+
+                BuildingRenderInstance instance;
+                instance.unitScale = f_HeightScale;
+                instance.position = glm::vec3(
+                    data.vec3_Position.x * f_ScaleX + f_OffsetX,
+                    0.0f,
+                    data.vec3_Position.y * f_ScaleZ + f_OffsetZ);
+
+                try {
+                    instance.mesh = Core::BuildingGenerator::GenerateBuilding(
+                        vec_Footprint,
+                        f_Height,
+                        data.b_HasRoof,
+                        f_RoofHeight,
+                        data.vec3_WallColor,
+                        data.vec3_RoofColor);
+                }
+                catch (const std::exception& e) {
+                    std::cerr << "[Building] Lot generation failed: " << e.what() << std::endl;
+                    continue;
+                }
+
+                ConvertBuildingMeshForEnvironment(instance.mesh);
+                ScaleBuildingMesh(instance.mesh, f_HeightScale);
+                instance.unitScale = f_HeightScale;
+
+                if (!UploadBuildingInstance(instance)) {
+                    std::cerr << "[Building] Failed to upload generated building." << std::endl;
+                    continue;
+                }
+
+                m_GeneratedBuildings.push_back(std::move(instance));
+                ++builtCount;
+            }
+
+            std::cout << "[EmptyEnvironmentState] Prepared " << builtCount << " generated buildings." << std::endl;
+            if (!m_GeneratedBuildings.empty()) {
+                const auto& sample = m_GeneratedBuildings.front();
+                std::cout << "[EmptyEnvironmentState] First building position (world): "
+                    << sample.position.x << ", " << sample.position.z << std::endl;
             }
         }
 
         void EmptyEnvironmentState::CreateTestRoad(Core::Application* p_App) {
-            std::vector<glm::vec2> vec_RoadPoints;
-
-            int i_Segments = 20;
-            float f_Radius = 10.0f; 
-            glm::vec2 vec2_Center(0.0f, 0.0f);
-            for (int i = 0; i <= i_Segments; ++i) {
-                float f_Angle = glm::half_pi<float>() * i / i_Segments; 
-                float f_X = vec2_Center.x + f_Radius * cos(f_Angle);
-                float f_Y = vec2_Center.y + f_Radius * sin(f_Angle);
-                vec_RoadPoints.emplace_back(f_X, f_Y);
+            if (!p_App) {
+                return;
             }
 
-            std::vector<float> vec_RoadWidths;
-            for (int i = 0; i <= i_Segments; ++i) {
-                // float f_WidthTemp = 2.0f + 2.0f * sin((float)i / i_Segments * glm::half_pi<float>()); // road widens along the curve
-                // float f_WidthTemp = 1.0f; // constant width
-                float f_Width = 1.0f - 0.05f * i;
-                vec_RoadWidths.push_back(f_Width);
-            }
+            if (m_VAO_Road) { glDeleteVertexArrays(1, &m_VAO_Road); m_VAO_Road = 0; }
+            if (m_VBO_Road) { glDeleteBuffers(1, &m_VBO_Road); m_VBO_Road = 0; }
+            if (m_EBO_Road) { glDeleteBuffers(1, &m_EBO_Road); m_EBO_Road = 0; }
+            m_RoadIndexCount = 0;
 
-            ScotlandYard::Core::RoadMesh mesh_Road = ScotlandYard::Core::RoadGenerator::GenerateRoad(
-                vec_RoadPoints,
-                vec_RoadWidths,
-                2.0f // texture repeats every 2 meters
-            );
+            struct RoadVertex {
+                glm::vec3 pos;
+                glm::vec3 normal;
+                glm::vec2 uv;
+            };
 
-            for (auto& vertex : mesh_Road.vertices) {
-                vertex.y = 0.5f;
-            }
+            const float halfWidth = k_PlaneWidth * 0.5f;
+            const float startZ = -2.0f;
+            const float endZ = 12.0f;
 
-            struct RoadVertex { glm::vec3 pos; glm::vec3 normal; glm::vec2 uv; };
-            std::vector<RoadVertex> vec_Vertices;
-            for (size_t i = 0; i < mesh_Road.vertices.size(); ++i) {
-                vec_Vertices.push_back({ mesh_Road.vertices[i], mesh_Road.normals[i], mesh_Road.texCoords[i] });
-            }
+            std::vector<RoadVertex> vertices = {
+                {{-halfWidth, 0.001f, startZ}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+                {{ halfWidth, 0.001f, startZ}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+                {{-halfWidth, 0.001f, endZ},   {0.0f, 1.0f, 0.0f}, {0.0f, 4.0f}},
+                {{ halfWidth, 0.001f, endZ},   {0.0f, 1.0f, 0.0f}, {1.0f, 4.0f}},
+            };
+
+            std::vector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
             glGenVertexArrays(1, &m_VAO_Road);
-            glGenBuffers(1, &m_VBO_Road);
-            glGenBuffers(1, &m_EBO_Road);
-
             glBindVertexArray(m_VAO_Road);
 
+            glGenBuffers(1, &m_VBO_Road);
             glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Road);
-            glBufferData(GL_ARRAY_BUFFER, vec_Vertices.size() * sizeof(RoadVertex), vec_Vertices.data(), GL_STATIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(RoadVertex), vertices.data(), GL_STATIC_DRAW);
 
+            glGenBuffers(1, &m_EBO_Road);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_Road);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh_Road.indices.size() * sizeof(unsigned int),
-                mesh_Road.indices.data(), GL_STATIC_DRAW);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
 
-            // Vertex attributes
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)0); // position
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)0);
             glEnableVertexAttribArray(0);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)offsetof(RoadVertex, normal)); // normal
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)offsetof(RoadVertex, normal));
             glEnableVertexAttribArray(1);
-            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)offsetof(RoadVertex, uv)); // uv
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(RoadVertex), (void*)offsetof(RoadVertex, uv));
             glEnableVertexAttribArray(2);
 
             glBindVertexArray(0);
 
-            m_RoadIndexCount = static_cast<int>(mesh_Road.indices.size());
+            m_RoadIndexCount = static_cast<int>(indices.size());
 
-            // Load road texture
-            m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
-
-            if (m_TexRoad == 0) {
-                std::cerr << "[Road] Failed to load road texture!" << std::endl;
-            }
-            else {
-                std::cout << "[Road] Road texture loaded successfully." << std::endl;
+            if (!m_TexRoad) {
+                m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
+                if (m_TexRoad == 0) {
+                    std::cerr << "[Road] Failed to load road texture!" << std::endl;
+                }
+                else {
+                    std::cout << "[Road] Road texture loaded successfully." << std::endl;
+                }
             }
         }
 
@@ -1293,6 +1990,8 @@ namespace ScotlandYard {
             //               << ", inPark=" << (street.b_IsInPark ? "yes" : "no")
             //               << std::endl;
             // }
+
+            BuildBuildingsFromMapData();
         }
 
         void EmptyEnvironmentState::BuildRiverFromMapData() {
