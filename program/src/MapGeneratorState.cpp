@@ -668,13 +668,13 @@ namespace ScotlandYard
             }
 
             // ===== 4. Zakresy parametrów budynków =====
-            const float widthMin = 4.0f;
+            const float widthMin = 6.0f;
             const float widthMax = 45.0f;
-            const float depthMin = 2.0f;
+            const float depthMin = 4.0f;
             const float depthMax = 28.0f;
             const float gapMin = 3.0f;
             const float gapMax = 14.0f;
-            const float sidewalk = 2.0f;   // szerokość chodnika
+            const float sidewalk = 4.0f;   // szerokość chodnika
 
             // ===== 5. Przejdź przez wszystkie drogi i ustawiaj budynki wzdłuż nich =====
             for (size_t roadIdx = 0; roadIdx < m_vec_HighwayRoads.size(); ++roadIdx)
@@ -691,12 +691,12 @@ namespace ScotlandYard
                 glm::vec2 B(nodeB.x, nodeB.y);
                 glm::vec2 roadVec = B - A;
                 float segLen = glm::length(roadVec);
-                if (segLen < 2.0f) continue; // za krótki segment
+                if (segLen < 1.0f) continue; // za krótki segment
 
                 glm::vec2 dir = roadVec / segLen;
                 glm::vec2 nrm(-dir.y, dir.x); // normalna do drogi
 
-                float margin = 4.0f;
+                float margin = 2.0f;
                 float t = margin;
 
                 // idziemy wzdłuż segmentu z krokiem zależnym od szerokości konkretnego budynku
@@ -750,9 +750,9 @@ namespace ScotlandYard
                         int blockedCount = 0;
 
                         // współczynnik próbkowania 2 px, żeby było szybciej
-                        for (int yy = minY; yy <= maxY; yy += 2)
+                        for (int yy = minY; yy <= maxY; yy += 1)
                         {
-                            for (int xx = minX; xx <= maxX; xx += 2)
+                            for (int xx = minX; xx <= maxX; xx += 1)
                             {
                                 sampleCount++;
                                 // zablokowane jeśli rzeka/park/droga LUB inny budynek
@@ -765,7 +765,7 @@ namespace ScotlandYard
                         }
 
                         // Więcej niż 25% próbek w kolizji → odrzuć budynek
-                        if (sampleCount > 0 && blockedCount * 4 > sampleCount)
+                        if (sampleCount > 0 && blockedCount * 5 > sampleCount)
                             canPlace = false;
 
                         if (!canPlace)
@@ -798,6 +798,137 @@ namespace ScotlandYard
                     t += w + gap;
                 }
             }
+
+            // ===== 5b. DRUGI PRZEBIEG – MAŁE BUDYNKI W LUKACH =====
+            // Używamy istniejącej zoneMask oraz m_buildingMask wypełnionej po pierwszym przebiegu
+            {
+                const float smallWidthMin  = 4.0f;
+                const float smallWidthMax  = 24.0f;
+                const float smallDepthMin  = 4.0f;
+                const float smallDepthMax  = 20.0f;
+                const float smallGap       = 3.0f;
+                const float smallMargin    = 2.0f;   // bliżej końców segmentów
+                const float sidewalk2      = 2.0f;   // jak wyżej
+
+                for (size_t roadIdx = 0; roadIdx < m_vec_HighwayRoads.size(); ++roadIdx)
+                {
+                    const auto& road = m_vec_HighwayRoads[roadIdx];
+                    if (road.isDeleted) continue;
+                    if (road.startNodeIdx < 0 || road.startNodeIdx >= (int)m_vec_HighwayNodes.size()) continue;
+                    if (road.endNodeIdx   < 0 || road.endNodeIdx   >= (int)m_vec_HighwayNodes.size()) continue;
+
+                    const auto& nodeA = m_vec_HighwayNodes[road.startNodeIdx];
+                    const auto& nodeB = m_vec_HighwayNodes[road.endNodeIdx];
+
+                    glm::vec2 A(nodeA.x, nodeA.y);
+                    glm::vec2 B(nodeB.x, nodeB.y);
+                    glm::vec2 roadVec = B - A;
+                    float segLen = glm::length(roadVec);
+                    if (segLen < 4.0f) continue; // bardzo krótkie pomijamy
+
+                    glm::vec2 dir = roadVec / segLen;
+                    glm::vec2 nrm(-dir.y, dir.x);
+
+                    float t = smallMargin;
+                    while (t + smallMargin < segLen)
+                    {
+                        float w = smallWidthMin + (rand() / (float)RAND_MAX) * (smallWidthMax - smallWidthMin);
+                        float d = smallDepthMin + (rand() / (float)RAND_MAX) * (smallDepthMax - smallDepthMin);
+
+                        // jeżeli już się nie zmieści – kończymy ten segment
+                        if (t + w + smallMargin > segLen)
+                            break;
+
+                        float halfW = w * 0.5f;
+                        float halfD = d * 0.5f;
+
+                        glm::vec2 centerOnRoad = A + dir * t;
+                        float roadHalfWidth = (road.type == CityGen::RoadType::HIGHWAY) ? 10.0f : 7.0f;
+
+                        bool placedSomethingHere = false;
+
+                        for (int side = -1; side <= 1; side += 2)
+                        {
+                            float sideSign = (float)side;
+
+                            glm::vec2 center = centerOnRoad + nrm * ((roadHalfWidth + sidewalk2 + halfD) * sideSign);
+
+                            glm::vec2 along   = dir * halfW;
+                            glm::vec2 outward = nrm * (halfD * sideSign);
+
+                            glm::vec2 p0 = center - along - outward;
+                            glm::vec2 p1 = center + along - outward;
+                            glm::vec2 p2 = center + along + outward;
+                            glm::vec2 p3 = center - along + outward;
+
+                            bool canPlace = true;
+
+                            int minX = std::max(0,        (int)std::floor(std::min({ p0.x, p1.x, p2.x, p3.x })));
+                            int maxX = std::min(mapW - 1, (int)std::ceil (std::max({ p0.x, p1.x, p2.x, p3.x })));
+                            int minY = std::max(0,        (int)std::floor(std::min({ p0.y, p1.y, p2.y, p3.y })));
+                            int maxY = std::min(mapH - 1, (int)std::ceil (std::max({ p0.y, p1.y, p2.y, p3.y })));
+
+                            // dalej nie stawiamy przy samym brzegu
+                            if (minX <= 0 || minY <= 0 || maxX >= mapW - 1 || maxY >= mapH - 1)
+                                continue;
+
+                            int sampleCount  = 0;
+                            int blockedCount = 0;
+
+                            for (int yy = minY; yy <= maxY; yy += 1)
+                            {
+                                for (int xx = minX; xx <= maxX; xx += 1)
+                                {
+                                    sampleCount++;
+                                    if (zoneMask[yy * mapW + xx] != 0 ||
+                                        m_buildingMask[yy * mapW + xx] != 0)
+                                    {
+                                        blockedCount++;
+                                    }
+                                }
+                            }
+
+                            // dla małych budynków pozwalamy na nieco większy udział kolizji (np. 35%)
+                            if (sampleCount > 0 && blockedCount * 100 > sampleCount * 35)
+                                canPlace = false;
+
+                            if (!canPlace)
+                                continue;
+
+                            // zaakceptuj mały budynek
+                            BuildingFootprint bf;
+                            bf.basePoints = {
+                                MapGen::Point(p0.x, p0.y),
+                                MapGen::Point(p1.x, p1.y),
+                                MapGen::Point(p2.x, p2.y),
+                                MapGen::Point(p3.x, p3.y),
+                            };
+                            bf.height       = 6.0f + (rand() / (float)RAND_MAX) * 10.0f; // trochę niższe
+                            bf.hasGableRoof = (rand() % 100) < 30;
+
+                            m_vec_Buildings.push_back(bf);
+
+                            for (int yy = minY; yy <= maxY; ++yy)
+                            {
+                                for (int xx = minX; xx <= maxX; ++xx)
+                                {
+                                    m_buildingMask[yy * mapW + xx] = 4;
+                                }
+                            }
+
+                            placedSomethingHere = true;
+                        }
+
+                        // jeśli coś się udało – przeskocz o (w + smallGap),
+                        // jeśli nie – przesuwaj się powoli, żeby spróbować w kolejnych miejscach
+                        if (placedSomethingHere)
+                            t += w + smallGap;
+                        else
+                            t += smallGap;
+                    }
+                }
+            }
+
 
             std::cout << "[BuildingGen] Generated " << m_vec_Buildings.size() << " building footprints" << std::endl;
         }
