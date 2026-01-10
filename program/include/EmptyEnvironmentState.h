@@ -30,7 +30,8 @@ namespace ScotlandYard {
                 const std::vector<CityGen::Point>& vec_Nodes,
                 const std::vector<CityGen::Road>& vec_Roads,
                 const std::vector<MapGen::Park>& vec_Parks,
-                const std::vector<MapGen::Point>& vec_RiverPath
+                const std::vector<MapGen::Point>& vec_RiverPath,
+                const std::vector<CityGen::Highway>& vec_Highways
             );
             // -----------------------------------------------------
 
@@ -63,7 +64,14 @@ namespace ScotlandYard {
             GLuint m_EBO_Road = 0;
             GLuint m_ShaderRoad = 0;
             int    m_RoadIndexCount = 0;
-
+            struct RoadMesh {
+                GLuint VAO;
+                GLuint VBO;
+                GLuint EBO;
+                int indexCount;
+            };
+            std::vector<RoadMesh> m_RoadMeshes;
+            
             // Road material/texture
             GLuint m_TexRoad = 0;
 
@@ -107,7 +115,7 @@ namespace ScotlandYard {
             static constexpr float k_CameraScrollAcceleration = 0.003f;
             static constexpr float k_CameraScrollFriction = 0.90f;
             static constexpr float k_CameraScrollToForwardRatio = 8.0f;
-            static constexpr float k_CameraAcceleration = 12.0f;
+            static constexpr float k_CameraAcceleration = 40.0f;
             static constexpr float k_MaxCameraSpeed = 80.0f;
             static constexpr float k_CameraFriction = 0.90f;
             static constexpr float k_MinCameraAngle = -1.55f;
@@ -117,6 +125,10 @@ namespace ScotlandYard {
             MapGen::GeneratedMapData m_MapData;
             bool m_b_MapDataLoaded = false;
             bool m_b_RiverStripLoaded = false;
+            
+            std::vector<CityGen::Point> m_vec_HighwayNodes;
+            std::vector<CityGen::Road>  m_vec_HighwayRoads;
+            std::vector<CityGen::Highway> m_vec_Highways;
 
             // Private methods
             void CreatePlane();
@@ -138,6 +150,9 @@ namespace ScotlandYard {
             void AccelerateCameraRight(float f_DeltaTime);
             void UpdateCameraPhysics(float f_DeltaTime);
             void CreateTestRoad(Core::Application* p_App);
+
+            void BuildHighwaysFromMapData(Core::Application* p_App);
+            void BuildLocalRoadsFromMapData(Core::Application* p_App);
         };
 
     } // namespace States

@@ -1118,7 +1118,7 @@ namespace ScotlandYard
 
                     float segmentLength = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
 
-                    if (i == 0 || i == highway.roadIndices.size() - 1 || i % 10 == 0) {
+                    if (i == 0 || i == highway.roadIndices.size() - 1 || i % 10 == 0 || true ) {
                         // Loguj co 10-ty segment + pierwszy i ostatni
                         std::cout << "  [Segment " << i << "/" << highway.roadIndices.size()
                             << "] Road " << roadIdx
@@ -1659,7 +1659,8 @@ namespace ScotlandYard
                             m_vec_HighwayNodes,
                             m_vec_HighwayRoads,
                             m_vec_Parks,
-                            m_vec_RiverPath
+                            m_vec_RiverPath,
+                            m_vec_Highways
                         );
 
                         // 5. Zarejestruj stan i przełącz
