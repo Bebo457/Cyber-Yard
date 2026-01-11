@@ -241,6 +241,11 @@ namespace ScotlandYard {
             // Station rendering
             std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
             void RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+
+            // Station interaction
+            int m_i_SelectedStationID = -1;
+            int FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            void RenderStationInfo(Core::Application* p_App);
         };
 
     } // namespace States

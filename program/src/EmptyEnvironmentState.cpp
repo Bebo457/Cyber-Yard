@@ -780,7 +780,28 @@ namespace States {
                 if (p_App) {
                     p_App->TransformMouseToVirtual(event.button.x, event.button.y, f_VirtualX, f_VirtualY);
                 }
+
+                // First, check if UI was clicked
                 UI::HandleMouseClick(static_cast<int>(f_VirtualX), static_cast<int>(f_VirtualY));
+
+                // Then check for station clicks (only left mouse button)
+                if (event.button.button == SDL_BUTTON_LEFT && m_b_Camera3D) {
+                    // Get view and projection matrices (same as in Render)
+                    int i_W = p_App ? p_App->GetVirtualWidth() : 1280;
+                    int i_H = p_App ? p_App->GetVirtualHeight() : 720;
+
+                    glm::vec3 vec3_Target = m_vec3_CameraPosition + m_vec3_CameraFront;
+                    glm::mat4 mat4_View = glm::lookAt(m_vec3_CameraPosition, vec3_Target, m_vec3_CameraUp);
+                    glm::mat4 mat4_Projection = glm::perspective(glm::radians(45.0f), (float)i_W / (float)i_H, 0.1f, 100.0f);
+
+                    int i_ClickedStation = FindStationAtScreenPos(event.button.x, event.button.y, mat4_View, mat4_Projection);
+                    if (i_ClickedStation >= 0) {
+                        m_i_SelectedStationID = i_ClickedStation;
+                        std::cout << "[EmptyEnvironmentState] Selected station ID: " << i_ClickedStation << std::endl;
+                    } else {
+                        m_i_SelectedStationID = -1;
+                    }
+                }
                 break;
             }
             case SDL_MOUSEMOTION:
@@ -2673,6 +2694,73 @@ namespace States {
 
             glBindVertexArray(0);
             glUseProgram(0);
+        }
+
+        int EmptyEnvironmentState::FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+            // Get window dimensions (TODO: pass from p_App)
+            int i_WindowW = 1280;
+            int i_WindowH = 720;
+
+            // Flip Y coordinate (OpenGL uses bottom-left origin)
+            int i_ScreenY_GL = i_WindowH - i_ScreenY;
+
+            float f_ClosestDist = std::numeric_limits<float>::max();
+            int i_ClosestStation = -1;
+
+            for (const auto& station : m_vec_CircleStations) {
+                // Project 3D world position to screen space
+                glm::vec4 vec4_WorldPos(station.position.x, 0.02f, station.position.y, 1.0f);
+                glm::vec4 vec4_ClipPos = mat4_Projection * mat4_View * vec4_WorldPos;
+
+                // Perspective divide
+                if (vec4_ClipPos.w == 0.0f) continue;
+                glm::vec3 vec3_NDC = glm::vec3(vec4_ClipPos) / vec4_ClipPos.w;
+
+                // Check if behind camera
+                if (vec3_NDC.z < -1.0f || vec3_NDC.z > 1.0f) continue;
+
+                // Convert NDC to screen coordinates
+                float f_ScreenX = (vec3_NDC.x + 1.0f) * 0.5f * (float)i_WindowW;
+                float f_ScreenY_GL = (vec3_NDC.y + 1.0f) * 0.5f * (float)i_WindowH;
+
+                // Calculate distance from mouse to station in screen space
+                float f_Dx = f_ScreenX - (float)i_ScreenX;
+                float f_Dy = f_ScreenY_GL - (float)i_ScreenY_GL;
+                float f_Dist = std::sqrt(f_Dx * f_Dx + f_Dy * f_Dy);
+
+                // Check if within click radius
+                const float k_ClickRadius = 30.0f;
+                if (f_Dist < k_ClickRadius && f_Dist < f_ClosestDist) {
+                    f_ClosestDist = f_Dist;
+                    i_ClosestStation = station.stationID;
+                }
+            }
+
+            return i_ClosestStation;
+        }
+
+        void EmptyEnvironmentState::RenderStationInfo(Core::Application* p_App) {
+            if (m_i_SelectedStationID < 0 || !p_App) return;
+
+            // Find the selected station
+            auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                [this](const StationCircle& sc) { return sc.stationID == m_i_SelectedStationID; });
+
+            if (it == m_vec_CircleStations.end()) return;
+
+            const auto& station = *it;
+
+            // Build info string
+            std::string s_Info = "Station " + std::to_string(station.stationID) + ": ";
+            for (size_t i = 0; i < station.transportTypes.size(); ++i) {
+                s_Info += station.transportTypes[i];
+                if (i < station.transportTypes.size() - 1) s_Info += ", ";
+            }
+
+            std::cout << "[Selected] " << s_Info << std::endl;
+
+            // TODO: Render actual UI panel with text
+            // For now, selection is just logged to console
         }
 
     } // namespace States
