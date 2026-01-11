@@ -32,23 +32,35 @@ struct RoadMesh {
 class RoadGenerator {
 public:
     /**
-     * Generate a road mesh from a list of 2D points
-     * @param points          Centerline points of the road
-     * @param roadWidth       Width of the road
-     * @param textureRepeat   Number of meters per texture repeat
-     * @return RoadMesh       The generated mesh
+     * Generate a road mesh from a list of 2D points (width per point)
      */
-    // static RoadMesh GenerateRoad(
-    //     const std::vector<glm::vec2>& points,
-    //     float roadWidth,
-    //     float textureRepeatMeters
-    // );
-
-    //Road widths per point version
     static RoadMesh GenerateRoad(
         const std::vector<glm::vec2>& points,
         const std::vector<float>& roadWidths,
         float textureRepeatMeters
+    );
+
+    /**
+     * Generate a simple road segment between two points
+     * @param accumulatedLength - pass by reference to accumulate V coordinate for UV
+     */
+    static RoadMesh GenerateRoadSegment(
+        const glm::vec2& p0,
+        const glm::vec2& p1,
+        float halfWidth,
+        float textureRepeatMeters,
+        float& accumulatedLength
+    );
+
+    /**
+     * Generate a round join (intersection) connecting multiple neighbor nodes
+     * @param segmentsPerJoin - number of triangles per segment of the join
+     */
+    static RoadMesh GenerateRoundJoin(
+        const glm::vec2& nodePos,
+        const std::vector<glm::vec2>& neighborPositions,
+        float halfWidth,
+        int segmentsPerJoin = 6
     );
 };
 

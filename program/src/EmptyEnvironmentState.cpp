@@ -519,32 +519,54 @@ namespace ScotlandYard {
 
             // --- NEW HARD-MASK SHADER FOR ROAD ---
             const char* roadVsSrc = R"(#version 330 core
-        layout(location=0) in vec3 aPos;
-        layout(location=1) in vec3 aNormal;
-        layout(location=2) in vec2 aUV;
+                layout(location=0) in vec3 aPos;
+                layout(location=1) in vec3 aNormal;
+                layout(location=2) in vec2 aUV;
 
-        uniform mat4 uMVP;
-        out vec2 vUV;
+                uniform mat4 uMVP;
+                out vec2 vUV;
 
-        void main() {
-            vUV = aUV;
-            gl_Position = uMVP * vec4(aPos, 1.0);
-        }
-    )";
+                void main() {
+                    vUV = aUV;
+                    gl_Position = uMVP * vec4(aPos, 1.0);
+                }
+            )";
 
             const char* roadFsSrc = R"(#version 330 core
-        in vec2 vUV;
+                in vec2 vUV;
 
-        uniform sampler2D uRoad;      // only one texture
-        uniform vec2 uTileUV;
+                uniform sampler2D uRoad;
+                uniform vec2 uTileUV;
 
-        out vec4 FragColor;
+                uniform vec3 uLaneColor;     // kolor pasów
+                uniform vec3 uLineColor;     // kolor linii
+                uniform float uLineWidth;    // np. 0.02
 
-        void main() {
-            vec2 tiledUV = vUV * uTileUV;
-            FragColor = texture(uRoad, tiledUV);
-        }
-    )";
+                out vec4 FragColor;
+
+                void main() {
+                    vec2 uv = vUV * uTileUV;
+
+                    float center = abs(vUV.x - 0.5);
+
+                    // --- Linia rozdzielająca ---
+                    if (center < uLineWidth) {
+                        FragColor = vec4(uLineColor, 1.0);
+                        return;
+                    }
+
+                    // --- Pas lewy / prawy ---
+                    vec4 road = texture(uRoad, uv);
+
+                    // opcjonalnie różne odcienie pasów
+                    if (vUV.x < 0.5)
+                        road.rgb *= 1.0;
+                    else
+                        road.rgb *= 0.95;
+
+                    FragColor = road;
+                }
+            )";
 
             GLuint roadVs = glCreateShader(GL_VERTEX_SHADER);
             glShaderSource(roadVs, 1, &roadVsSrc, nullptr);
@@ -958,6 +980,7 @@ namespace ScotlandYard {
                     LoadSampleMapData();
                     BuildRiverFromMapData();
                     BuildHighwaysFromMapData(p_App);
+                    GenerateRoadsFromMapData(p_App);
                 }
                 else {
                     std::cout << "[EmptyEnvironmentState] Skipping sample data load (Map injected)." << std::endl;
@@ -966,6 +989,7 @@ namespace ScotlandYard {
                     BuildHighwaysFromMapData(p_App);
                     BuildParkPathsFromMapData();
                     BuildTreesFromMapData(); // Build trees if map injected
+                    GenerateRoadsFromMapData(p_App);
                 }
 
                 std::string s_IconPath = p_App->GetAssetPath("icons/camera_icon.png");
@@ -1370,12 +1394,37 @@ namespace ScotlandYard {
             glDrawArrays(GL_TRIANGLES, 0, 6);
             glBindVertexArray(0);
 
-            // --- Render road ---
-            if (!m_RoadMeshes.empty() && m_TexRoad) {
+            // --- Render highways ---
+           if (!m_HighwayMeshes.empty() && m_TexHighway) {
                 glUseProgram(m_ShaderRoad);
+                
                 GLint mvpLoc = glGetUniformLocation(m_ShaderRoad, "uMVP");
                 glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View));
 
+                
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, m_TexHighway);
+                glUniform1i(glGetUniformLocation(m_ShaderRoad, "uRoad"), 0);
+
+                GLint tileLoc = glGetUniformLocation(m_ShaderRoad, "uTileUV");
+                glUniform2f(tileLoc, 1.0f, 1.0f);
+
+                for (const auto& road : m_HighwayMeshes) {
+                    // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                    glBindVertexArray(road.VAO);
+                    glDrawElements(GL_TRIANGLES, road.indexCount, GL_UNSIGNED_INT, 0);
+                }
+                glBindVertexArray(0);
+            }
+
+            // --- Render roads ---
+           if (!m_RoadMeshes.empty() && m_TexRoad) {
+                glUseProgram(m_ShaderRoad);
+                
+                GLint mvpLoc = glGetUniformLocation(m_ShaderRoad, "uMVP");
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View));
+
+                
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, m_TexRoad);
                 glUniform1i(glGetUniformLocation(m_ShaderRoad, "uRoad"), 0);
@@ -2594,12 +2643,12 @@ namespace ScotlandYard {
             std::cout << "[EmptyEnvironmentState] Building highways from map data..." << std::endl;
 
             // Najpierw wyczyść poprzednie meshe
-            for (auto& roadMesh : m_RoadMeshes) {
+            for (auto& roadMesh : m_HighwayMeshes) {
                 if (roadMesh.VAO) glDeleteVertexArrays(1, &roadMesh.VAO);
                 if (roadMesh.VBO) glDeleteBuffers(1, &roadMesh.VBO);
                 if (roadMesh.EBO) glDeleteBuffers(1, &roadMesh.EBO);
             }
-            m_RoadMeshes.clear();
+            m_HighwayMeshes.clear();
 
             // Iteracja po wszystkich highwayach zwróconych przez generator mapy m_vec_Highways.size()
             for (size_t hwIdx = 0; hwIdx < m_vec_Highways.size(); ++hwIdx)
@@ -2608,7 +2657,7 @@ namespace ScotlandYard {
                 std::vector<glm::vec2> points;
                 std::vector<float> widths;
 
-                // Zbieramy wszystkie punkty dla highwaya
+                // Zbieramy wszystkie punkty dla highwaya 
                 for (size_t i = 0; i < highway.roadIndices.size(); ++i)
                 {
                     int roadIdx = highway.roadIndices[i];
@@ -2643,7 +2692,7 @@ namespace ScotlandYard {
                 // Podnosimy wszystkie wierzchołki na y = 0.5f
                 for (auto& vertex : mesh.vertices)
                 {
-                    vertex.y = 0.01f + hwIdx * 0.001f; // unieś nad ziemię, aby uniknąć z-fightingu przy wielu highwayach
+                    vertex.y = 0.012f + hwIdx * 0.001f; // unieś nad ziemię, aby uniknąć z-fightingu przy wielu highwayach
                 }
 
                 // Tworzymy VAO/VBO/EBO
@@ -2676,7 +2725,7 @@ namespace ScotlandYard {
                 glBindVertexArray(0);
 
                 roadMesh.indexCount = static_cast<int>(mesh.indices.size());
-                m_RoadMeshes.push_back(roadMesh);
+                m_HighwayMeshes.push_back(roadMesh);
 
                 std::cout << "[Highway " << hwIdx << "] Built highway with "
                     << highway.roadIndices.size() << " segments, length: "
@@ -2684,9 +2733,187 @@ namespace ScotlandYard {
             }
 
             // Załaduj teksturę drogi
-            m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
+            m_TexHighway = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
 
-            std::cout << "[EmptyEnvironmentState] Built " << m_RoadMeshes.size() << " highway meshes." << std::endl;
+            std::cout << "[EmptyEnvironmentState] Built " << m_HighwayMeshes.size() << " highway meshes." << std::endl;
+        }
+
+        void EmptyEnvironmentState::GenerateRoadsFromMapData(Core::Application* p_App)
+        {
+            if (m_MapData.vec_GraphNodes.empty() || m_MapData.vec_Streets.empty()) return;
+
+            std::cout << "[EmptyEnvironmentState] Generating roads from map data..." << std::endl;
+
+            // --- wyczyść poprzednie meshe ---
+            for (auto& roadMesh : m_RoadMeshes) {
+                if (roadMesh.VAO) glDeleteVertexArrays(1, &roadMesh.VAO);
+                if (roadMesh.VBO) glDeleteBuffers(1, &roadMesh.VBO);
+                if (roadMesh.EBO) glDeleteBuffers(1, &roadMesh.EBO);
+            }
+            m_RoadMeshes.clear();
+
+            const float textureRepeat = 2.0f;
+
+            // --- skalowanie mapy ---
+            const float f_ScaleX = k_PlaneWidth / k_MapWidth;
+            const float f_ScaleZ = k_PlaneDepth / k_MapHeight;
+            const float f_OffsetX = k_MapOffsetX;
+            const float f_OffsetZ = k_MapOffsetZ;
+            float Height = 0.01f;
+        
+            
+            // --- generowanie segmentów ulic ---
+            for (size_t segIdx = 0; segIdx < m_MapData.vec_Streets.size(); ++segIdx)
+            {
+                const auto& street = m_MapData.vec_Streets[segIdx];
+                const auto& node1 = m_MapData.vec_GraphNodes[street.i_Node1];
+                const auto& node2 = m_MapData.vec_GraphNodes[street.i_Node2];
+                std::vector<glm::vec2> points;
+
+                float accumulatedLength = 0.0f;
+                float halfWidth = 0.06f;
+
+                glm::vec2 pos1(
+                    node1.position.x *  f_ScaleX + f_OffsetX,
+                    node1.position.y *  f_ScaleZ + f_OffsetZ
+                );
+                glm::vec2 pos2(
+                    node2.position.x *  f_ScaleX + f_OffsetX,
+                    node2.position.y *  f_ScaleZ + f_OffsetZ
+                );
+
+                auto segMesh = Core::RoadGenerator::GenerateRoadSegment(
+                    pos1,
+                    pos2,
+                    halfWidth,
+                    textureRepeat,
+                    accumulatedLength
+                );
+
+                // ustaw wysokość drogi
+                for (auto& vertex : segMesh.vertices)
+                {
+                    vertex.y = Height;
+                    // std::cout << "Vertex position: (" << vertex.x << ", " << vertex.y << ", " << vertex.z << ")\n";
+                }
+                    
+                // --- VAO/VBO/EBO ---
+                struct V { glm::vec3 p; glm::vec3 n; glm::vec2 uv; };
+                std::vector<V> verts;
+                for (size_t i = 0; i < segMesh.vertices.size(); ++i)
+                    verts.push_back({ segMesh.vertices[i], segMesh.normals[i], segMesh.texCoords[i] });
+
+                RoadMesh roadMesh{};
+                glGenVertexArrays(1, &roadMesh.VAO);
+                glGenBuffers(1, &roadMesh.VBO);
+                glGenBuffers(1, &roadMesh.EBO);
+
+                glBindVertexArray(roadMesh.VAO);
+                glBindBuffer(GL_ARRAY_BUFFER, roadMesh.VBO);
+                glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(V), verts.data(), GL_STATIC_DRAW);
+
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, roadMesh.EBO);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, segMesh.indices.size() * sizeof(unsigned int),
+                            segMesh.indices.data(), GL_STATIC_DRAW);
+
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V), (void*)0);
+                glEnableVertexAttribArray(0);
+                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(V), (void*)offsetof(V, n));
+                glEnableVertexAttribArray(1);
+                glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(V), (void*)offsetof(V, uv));
+                glEnableVertexAttribArray(2);
+
+                glBindVertexArray(0);
+
+                roadMesh.indexCount = static_cast<int>(segMesh.indices.size());
+                m_RoadMeshes.push_back(roadMesh);
+            }
+
+            // --- generowanie round joinów (skrzyżowań) ---
+            for (auto& node : m_MapData.vec_GraphNodes)
+            {
+                std::vector<glm::vec2> neighborPositions;
+
+                for (const auto& street : m_MapData.vec_Streets)
+                {
+                    if (street.i_Node1 == node.i_ID)
+                        neighborPositions.push_back(glm::vec2(
+                            m_MapData.vec_GraphNodes[street.i_Node2].position.x,
+                            m_MapData.vec_GraphNodes[street.i_Node2].position.y
+                        ));
+                    else if (street.i_Node2 == node.i_ID)
+                        neighborPositions.push_back(glm::vec2(
+                            m_MapData.vec_GraphNodes[street.i_Node1].position.x,
+                            m_MapData.vec_GraphNodes[street.i_Node1].position.y
+                        ));
+                }
+
+                if (neighborPositions.size() >= 2)
+                {
+                    // --- skalowanie węzła ---
+                    glm::vec2 nodePosWorld(
+                        node.position.x * f_ScaleX + f_OffsetX,
+                        node.position.y * f_ScaleZ + f_OffsetZ
+                    );
+
+                    // --- skalowanie sąsiadów ---
+                    std::vector<glm::vec2> neighborPositionsWorld;
+                    for (const auto& pos : neighborPositions)
+                        neighborPositionsWorld.push_back(glm::vec2(
+                            pos.x * f_ScaleX + f_OffsetX,
+                            pos.y * f_ScaleZ + f_OffsetZ
+                        ));
+
+                    auto joinMesh = Core::RoadGenerator::GenerateRoundJoin(
+                        nodePosWorld,
+                        neighborPositionsWorld,
+                        0.06f, // połowa szerokości pasa
+                        6       // segmenty łuku
+                    );
+
+                    // ustaw wysokość drogi
+                    for (auto& vertex : joinMesh.vertices)
+                    {
+                        vertex.y = Height+0.001f;;
+                    }
+                       
+                    struct V { glm::vec3 p; glm::vec3 n; glm::vec2 uv; };
+                    std::vector<V> verts;
+                    for (size_t i = 0; i < joinMesh.vertices.size(); ++i)
+                        verts.push_back({ joinMesh.vertices[i], joinMesh.normals[i], joinMesh.texCoords[i] });
+
+                    RoadMesh roadMesh{};
+                    glGenVertexArrays(1, &roadMesh.VAO);
+                    glGenBuffers(1, &roadMesh.VBO);
+                    glGenBuffers(1, &roadMesh.EBO);
+
+                    glBindVertexArray(roadMesh.VAO);
+                    glBindBuffer(GL_ARRAY_BUFFER, roadMesh.VBO);
+                    glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(V), verts.data(), GL_STATIC_DRAW);
+
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, roadMesh.EBO);
+                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, joinMesh.indices.size() * sizeof(unsigned int),
+                                joinMesh.indices.data(), GL_STATIC_DRAW);
+
+                    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V), (void*)0);
+                    glEnableVertexAttribArray(0);
+                    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(V), (void*)offsetof(V, n));
+                    glEnableVertexAttribArray(1);
+                    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(V), (void*)offsetof(V, uv));
+                    glEnableVertexAttribArray(2);
+
+                    glBindVertexArray(0);
+
+                    roadMesh.indexCount = static_cast<int>(joinMesh.indices.size());
+                    m_RoadMeshes.push_back(roadMesh);
+                }
+            }
+
+            // --- załaduj teksturę drogi ---
+            m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/gravel.jpg"));
+
+            std::cout << "[EmptyEnvironmentState] Generated " << m_RoadMeshes.size() << " road meshes." << std::endl;
+
         }
 
         void EmptyEnvironmentState::BuildParkPathsFromMapData() {
