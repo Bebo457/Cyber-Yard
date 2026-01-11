@@ -656,7 +656,7 @@ namespace ScotlandYard
             std::vector<uint8_t> zoneMask((size_t)mapW * (size_t)mapH, 0);
 
             // ===== 1. RZEKA (wartość 1) =====
-            const float riverHalfWidthPx = 18.0f; // trochę szerzej niż podgląd, żeby mieć margines
+            const float riverHalfWidthPx = 22.0f; // trochę szerzej niż podgląd, żeby mieć margines
             if (m_vec_RiverPath.size() >= 2)
             {
                 for (size_t i = 1; i < m_vec_RiverPath.size(); ++i)
@@ -698,8 +698,8 @@ namespace ScotlandYard
             const float widthMax = 45.0f;
             const float depthMin = 4.0f;
             const float depthMax = 28.0f;
-            const float gapMin = 3.0f;
-            const float gapMax = 14.0f;
+            const float gapMin = 4.0f;
+            const float gapMax = 10.0f;
             const float sidewalk = 4.0f;   // szerokość chodnika
 
             // ===== 5. Przejdź przez wszystkie drogi i ustawiaj budynki wzdłuż nich =====
@@ -791,7 +791,7 @@ namespace ScotlandYard
                         }
 
                         // Więcej niż 25% próbek w kolizji → odrzuć budynek
-                        if (sampleCount > 0 && blockedCount * 5 > sampleCount)
+                        if (sampleCount > 0 && blockedCount * 100 > sampleCount)
                             canPlace = false;
 
                         if (!canPlace)
@@ -828,12 +828,12 @@ namespace ScotlandYard
             // ===== 5b. DRUGI PRZEBIEG – MAŁE BUDYNKI W LUKACH =====
             // Używamy istniejącej zoneMask oraz m_buildingMask wypełnionej po pierwszym przebiegu
             {
-                const float smallWidthMin  = 4.0f;
-                const float smallWidthMax  = 24.0f;
-                const float smallDepthMin  = 4.0f;
-                const float smallDepthMax  = 20.0f;
-                const float smallGap       = 3.0f;
-                const float smallMargin    = 2.0f;   // bliżej końców segmentów
+                const float smallWidthMin  = 6.0f;
+                const float smallWidthMax  = 22.0f;
+                const float smallDepthMin  = 6.0f;
+                const float smallDepthMax  = 18.0f;
+                const float smallGap       = 2.0f;
+                const float smallMargin    = 1.0f;   // bliżej końców segmentów
                 const float sidewalk2      = 2.0f;   // jak wyżej
 
                 for (size_t roadIdx = 0; roadIdx < m_vec_HighwayRoads.size(); ++roadIdx)
@@ -914,8 +914,8 @@ namespace ScotlandYard
                                 }
                             }
 
-                            // dla małych budynków pozwalamy na nieco większy udział kolizji (np. 35%)
-                            if (sampleCount > 0 && blockedCount * 100 > sampleCount * 35)
+                            // dla małych budynków pozwalamy na nieco większy udział kolizji 
+                            if (sampleCount > 0 && blockedCount * 100 > sampleCount * 10)
                                 canPlace = false;
 
                             if (!canPlace)
