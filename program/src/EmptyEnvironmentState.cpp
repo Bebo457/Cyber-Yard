@@ -1033,45 +1033,92 @@ namespace ScotlandYard {
 
                 glBindVertexArray(0);
 
-                // Load station data from CSV - use EXACT same transformation as roads/highways
-                auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
-
+                // Load station data from generated map or CSV
                 m_vec_CircleStations.clear();
 
-                if (vec_StationData.empty()) {
-                    std::cout << "[EmptyEnvironmentState] No station data loaded from CSV" << std::endl;
-                }
-                else {
-                    // Transform using EXACT same formula as highways: (pos * 0.02f) - 1.0f
-                    // This ensures stations are placed at their exact road positions
-                    for (const auto& sd : vec_StationData) {
+                if (m_b_MapDataLoaded && !m_MapData.vec_GraphNodes.empty()) {
+                    // Use generated map data
+                    std::cout << "[EmptyEnvironmentState] Loading stations from generated map..." << std::endl;
+
+                    for (const auto& graphNode : m_MapData.vec_GraphNodes) {
                         StationCircle sc;
 
-                        // Same transformation as highways (line 2390 in BuildHighwaysFromMapData)
-                        // sc.position.x = (sd.vec2_Position.x * 0.02f) - 1.0f;
-                        // sc.position.y = (sd.vec2_Position.y * 0.02f) - 1.0f;
+                        // Transform from map coordinates (0-1200) to world coordinates
+                        sc.position.x = (graphNode.position.x * 0.02f) - 1.0f;
+                        sc.position.y = (graphNode.position.y * 0.02f) - 1.0f;
 
-                        sc.position.x = sd.vec2_Position.x;
-                        sc.position.y = sd.vec2_Position.y;
+                        // Determine transport types based on connections
+                        sc.transportTypes.clear();
+                        if (!graphNode.vec_TaxiConnections.empty()) {
+                            sc.transportTypes.push_back("taxi");
+                        }
+                        if (!graphNode.vec_BusConnections.empty()) {
+                            sc.transportTypes.push_back("bus");
+                        }
+                        if (!graphNode.vec_MetroConnections.empty()) {
+                            sc.transportTypes.push_back("metro");
+                        }
+                        if (!graphNode.vec_FerryConnections.empty()) {
+                            sc.transportTypes.push_back("water");
+                        }
 
-                        sc.transportTypes = sd.vec_TransportTypes;
-                        sc.stationID = sd.i_StationID;
+                        // Default to taxi if no connections (shouldn't happen)
+                        if (sc.transportTypes.empty()) {
+                            sc.transportTypes.push_back("taxi");
+                        }
+
+                        sc.stationID = graphNode.i_ID;
                         m_vec_CircleStations.push_back(sc);
                     }
 
                     std::cout << "[EmptyEnvironmentState] Loaded " << m_vec_CircleStations.size()
-                        << " transport stations from CSV (exact road positions)" << std::endl;
+                        << " transport stations from generated map" << std::endl;
 
                     if (!m_vec_CircleStations.empty()) {
-                        const auto& first = vec_StationData.front();
-                        std::cout << "[EmptyEnvironmentState] First station: CSV pos=("
-                            << first.vec2_Position.x << ", " << first.vec2_Position.y
+                        std::cout << "[EmptyEnvironmentState] First station: Map pos=("
+                            << m_MapData.vec_GraphNodes[0].position.x << ", " << m_MapData.vec_GraphNodes[0].position.y
                             << ") -> World pos=(" << m_vec_CircleStations[0].position.x
                             << ", " << m_vec_CircleStations[0].position.y << ")" << std::endl;
                     }
 
-                    // Load graph connections
-                    LoadGraphData();
+                    // Load graph connections from generated map
+                    LoadGraphDataFromGeneratedMap();
+                }
+                else {
+                    // Fallback: Load from CSV
+                    auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
+
+                    if (vec_StationData.empty()) {
+                        std::cout << "[EmptyEnvironmentState] No station data loaded from CSV" << std::endl;
+                    }
+                    else {
+                        // Transform using EXACT same formula as highways: (pos * 0.02f) - 1.0f
+                        // This ensures stations are placed at their exact road positions
+                        for (const auto& sd : vec_StationData) {
+                            StationCircle sc;
+
+                            sc.position.x = sd.vec2_Position.x;
+                            sc.position.y = sd.vec2_Position.y;
+
+                            sc.transportTypes = sd.vec_TransportTypes;
+                            sc.stationID = sd.i_StationID;
+                            m_vec_CircleStations.push_back(sc);
+                        }
+
+                        std::cout << "[EmptyEnvironmentState] Loaded " << m_vec_CircleStations.size()
+                            << " transport stations from CSV (exact road positions)" << std::endl;
+
+                        if (!m_vec_CircleStations.empty()) {
+                            const auto& first = vec_StationData.front();
+                            std::cout << "[EmptyEnvironmentState] First station: CSV pos=("
+                                << first.vec2_Position.x << ", " << first.vec2_Position.y
+                                << ") -> World pos=(" << m_vec_CircleStations[0].position.x
+                                << ", " << m_vec_CircleStations[0].position.y << ")" << std::endl;
+                        }
+
+                        // Load graph connections from CSV
+                        LoadGraphData();
+                    }
                 }
             }
 
@@ -3258,6 +3305,91 @@ namespace ScotlandYard {
 
             // TODO: Render actual UI panel with text
             // For now, selection is just logged to console
+        }
+
+        void EmptyEnvironmentState::LoadGraphDataFromGeneratedMap() {
+            try {
+                std::cout << "[EmptyEnvironmentState] Loading graph from generated map data..." << std::endl;
+
+                if (m_MapData.vec_GraphNodes.empty()) {
+                    std::cerr << "[EmptyEnvironmentState] No graph nodes in generated map data!" << std::endl;
+                    m_b_GraphLoaded = false;
+                    return;
+                }
+
+                // Initialize nodes in GraphManager
+                // GraphManager nodes are already initialized in constructor, we just need to set their data
+                for (const auto& graphNode : m_MapData.vec_GraphNodes) {
+                    Node* pNode = m_graph.GetNode(graphNode.i_ID);
+                    if (pNode) {
+                        pNode->i_Id = graphNode.i_ID;
+                        // Store map coordinates (0-1200) as grid coordinates (divide by ~50 to get 0-24 range)
+                        pNode->i_X = static_cast<int>(graphNode.position.x / 50.0f);
+                        pNode->i_Y = static_cast<int>(graphNode.position.y / 50.0f);
+                    }
+                }
+
+                // Create edges from connections
+                int connectionCount = 0;
+                for (const auto& graphNode : m_MapData.vec_GraphNodes) {
+                    int srcId = graphNode.i_ID;
+                    Node* pSrcNode = m_graph.GetNode(srcId);
+                    if (!pSrcNode) continue;
+
+                    // Add taxi connections
+                    for (int dstId : graphNode.vec_TaxiConnections) {
+                        if (srcId < dstId) { // Avoid duplicates
+                            Node* pDstNode = m_graph.GetNode(dstId);
+                            if (pDstNode) {
+                                pSrcNode->ConnectTo(pDstNode, Core::k_TransportTypeTaxi);
+                                connectionCount++;
+                            }
+                        }
+                    }
+
+                    // Add bus connections
+                    for (int dstId : graphNode.vec_BusConnections) {
+                        if (srcId < dstId) {
+                            Node* pDstNode = m_graph.GetNode(dstId);
+                            if (pDstNode) {
+                                pSrcNode->ConnectTo(pDstNode, Core::k_TransportTypeBus);
+                                connectionCount++;
+                            }
+                        }
+                    }
+
+                    // Add metro connections
+                    for (int dstId : graphNode.vec_MetroConnections) {
+                        if (srcId < dstId) {
+                            Node* pDstNode = m_graph.GetNode(dstId);
+                            if (pDstNode) {
+                                pSrcNode->ConnectTo(pDstNode, Core::k_TransportTypeMetro);
+                                connectionCount++;
+                            }
+                        }
+                    }
+
+                    // Add water connections
+                    for (int dstId : graphNode.vec_FerryConnections) {
+                        if (srcId < dstId) {
+                            Node* pDstNode = m_graph.GetNode(dstId);
+                            if (pDstNode) {
+                                pSrcNode->ConnectTo(pDstNode, Core::k_TransportTypeWater);
+                                connectionCount++;
+                            }
+                        }
+                    }
+                }
+
+                m_b_GraphLoaded = true;
+
+                std::cout << "[EmptyEnvironmentState] Graph loaded from generated map: "
+                    << m_MapData.vec_GraphNodes.size() << " nodes, "
+                    << connectionCount << " connections" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[EmptyEnvironmentState] Failed to load graph from generated map: " << e.what() << std::endl;
+                m_b_GraphLoaded = false;
+            }
         }
 
         void EmptyEnvironmentState::LoadGraphData() {

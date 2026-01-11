@@ -286,6 +286,7 @@ namespace ScotlandYard {
             void RenderConnectionLines(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void LoadGraphData();
+            void LoadGraphDataFromGeneratedMap();
         };
 
     } // namespace States
