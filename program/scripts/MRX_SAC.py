@@ -10,7 +10,7 @@ import torch.optim as optim
 from torch.distributions import Categorical
 import zmq
 
-from metrics_logger2 import log_game
+from metrics_logger import log_game
 
 
 class ObservationEncoder:

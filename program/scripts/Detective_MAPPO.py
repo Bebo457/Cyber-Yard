@@ -29,8 +29,11 @@ import json
 import numpy as np
 import os
 from typing import Dict, List, Any, Optional, Tuple
-from metrics_logger import log_game
+from metrics_logger import log_game, set_algorithm
 from copy import deepcopy
+
+# Set algorithm for metrics logging
+set_algorithm("mappo")
 
 
 # =================================================================
@@ -505,7 +508,7 @@ def run_server():
                     agent.update()
                     print(f"[DATA] Final reward: {final_reward}")
                 
-                log_game(winner=winner, det_reward=final_reward, rounds=current_round)
+                log_game(winner=winner, det_reward=final_reward, rounds=current_round, training_role="detective")
                 
                 # Reset state
                 last_round = -1

@@ -7,8 +7,11 @@ import json
 import numpy as np
 import os
 from typing import Dict, List, Any, Optional
-from metrics_logger import log_game
+from metrics_logger import log_game, set_algorithm
 from copy import deepcopy
+
+# Set algorithm for metrics logging
+set_algorithm("mappo")
 
 # WAŻNE: Ten kod jest uproszczonym MAPPO ze względu na to że decyzja jest podejmowana tylko przez Mr X,
 # jest to zrobione po to aby kod szybciej działał i się uczył.
@@ -331,7 +334,7 @@ try:
                 agent.episode_reward = 0.0
                 agent.round_counter = 0
 
-            log_game(winner=winner, mrx_reward=total_episode_reward, rounds=final_rounds)
+            log_game(winner=winner, mrx_reward=total_episode_reward, rounds=final_rounds, training_role="mrx")
             sock.send_json({"status": "ok"})
             continue
 
