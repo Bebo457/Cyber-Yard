@@ -96,6 +96,14 @@ namespace CityGen {
         // KROK 4: Generowanie sieci połączeń gry (taxi, bus, metro, water)
         std::cout << "[CityGen] Phase 4: Generating Game Connections Network..." << std::endl;
         GenerateGameConnections();
+        
+        // KROK 5: Zapisywanie danych do plików
+        std::cout << "[CityGen] Phase 5: Saving data to files..." << std::endl;
+        SaveNodesToCSV("nodes_with_station.csv");
+        SaveEdgesGeometryToCSV("edges_geometry.csv");
+        SaveGameConnectionsToCSV("game_connections.csv");
+        
+        std::cout << "[CityGen] All data saved successfully!" << std::endl;
     }
 
 
@@ -4677,6 +4685,182 @@ namespace CityGen {
         
         file.close();
         std::cout << "[GameConnections] Saved " << sortedConns.size() << " connections" << std::endl;
+    }
+
+    void HighwayGenerator::SaveNodesToCSV(const std::string& filename) const {
+        std::cout << "[CityGen] Saving nodes to: " << filename << std::endl;
+        
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+            std::cerr << "[ERROR] Cannot open file for writing: " << filename << std::endl;
+            return;
+        }
+
+        // Nagłówek
+        file << "id,pos_x,pos_y,station_type\n";
+
+        if (m_StreetBranchNodes.empty()) {
+            std::cerr << "[ERROR] No game nodes to save!" << std::endl;
+            file.close();
+            return;
+        }
+
+        // Sprawdź jakie typy transportu są dostępne w każdym węźle gry (1-199)
+        // Połączenia używają numeracji 1-199, ale my używamy 0-198 w pliku
+        std::map<int, std::set<TransportType>> nodeTransports;
+        
+        for (const auto& conn : m_GameConnections) {
+            // conn.sourceNode i conn.destNode to numery 1-199, konwertujemy na 0-198
+            int srcId = conn.sourceNode - 1;
+            int dstId = conn.destNode - 1;
+            nodeTransports[srcId].insert(conn.type);
+            nodeTransports[dstId].insert(conn.type);
+        }
+
+        // Zapisz tylko węzły gry (199 węzłów z m_StreetBranchNodes)
+        for (size_t i = 0; i < m_StreetBranchNodes.size(); ++i) {
+            int nodeIdx = m_StreetBranchNodes[i];
+            const auto& node = m_RoadNodes[nodeIdx];
+            
+            // Określ typ stacji na podstawie dostępnych transportów
+            std::string stationType;
+            const auto& transports = nodeTransports[i];
+            
+            if (transports.empty()) {
+                stationType = "none";
+            } else {
+                std::vector<std::string> types;
+                if (transports.count(TransportType::METRO)) types.push_back("metro");
+                if (transports.count(TransportType::BUS)) types.push_back("bus");
+                if (transports.count(TransportType::TAXI)) types.push_back("taxi");
+                if (transports.count(TransportType::WATER)) types.push_back("water");
+                
+                for (size_t j = 0; j < types.size(); ++j) {
+                    stationType += types[j];
+                    if (j < types.size() - 1) stationType += "_";
+                }
+            }
+            
+            file << i << "," << node.x << "," << node.y << "," << stationType << "\n";
+        }
+
+        file.close();
+        std::cout << "[CityGen] Nodes saved: " << m_StreetBranchNodes.size() << " game nodes" << std::endl;
+    }
+
+    void HighwayGenerator::SaveEdgesGeometryToCSV(const std::string& filename) const {
+        std::cout << "[CityGen] Saving edge geometry to: " << filename << std::endl;
+        
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+            std::cerr << "[ERROR] Cannot open file for writing: " << filename << std::endl;
+            return;
+        }
+
+        // Nagłówek bez komentarzy
+        file << "source,dest,type,format,points\n";
+
+        // Buduj graf sąsiedztwa dla BFS
+        std::map<int, std::vector<int>> adjacency;
+        for (const auto& road : m_Roads) {
+            if (!road.isDeleted) {
+                adjacency[road.startNodeIdx].push_back(road.endNodeIdx);
+                adjacency[road.endNodeIdx].push_back(road.startNodeIdx);
+            }
+        }
+
+        // Funkcja pomocnicza do znajdowania ścieżki między węzłami
+        auto findPath = [&](int start, int end) -> std::vector<int> {
+            if (start == end) return {start};
+            
+            std::queue<int> q;
+            std::map<int, int> parent;
+            std::set<int> visited;
+            
+            q.push(start);
+            visited.insert(start);
+            parent[start] = -1;
+            
+            while (!q.empty()) {
+                int current = q.front();
+                q.pop();
+                
+                if (current == end) {
+                    // Rekonstruuj ścieżkę
+                    std::vector<int> path;
+                    int node = end;
+                    while (node != -1) {
+                        path.push_back(node);
+                        node = parent[node];
+                    }
+                    std::reverse(path.begin(), path.end());
+                    return path;
+                }
+                
+                if (adjacency.find(current) != adjacency.end()) {
+                    for (int neighbor : adjacency[current]) {
+                        if (visited.find(neighbor) == visited.end()) {
+                            visited.insert(neighbor);
+                            parent[neighbor] = current;
+                            q.push(neighbor);
+                        }
+                    }
+                }
+            }
+            
+            return {}; // Nie znaleziono ścieżki
+        };
+
+        // Zapisz połączenia (konwertuj z numeracji 1-199 na 0-198)
+        int savedCount = 0;
+        for (const auto& conn : m_GameConnections) {
+            // Nazwa typu do pliku
+            std::string typeStr;
+            switch (conn.type) {
+                case TransportType::TAXI: typeStr = "taxi"; break;
+                case TransportType::BUS: typeStr = "bus"; break;
+                case TransportType::METRO: typeStr = "metro"; break;
+                case TransportType::WATER: typeStr = "water"; break;
+            }
+            
+            // Konwertuj numery węzłów gry (1-199) na ID pliku (0-198) i indeksy w m_RoadNodes
+            int srcId = conn.sourceNode - 1;
+            int dstId = conn.destNode - 1;
+            int srcNodeIdx = m_StreetBranchNodes[srcId];  // Indeks w m_RoadNodes
+            int dstNodeIdx = m_StreetBranchNodes[dstId];  // Indeks w m_RoadNodes
+            
+            // Dla innych typów znajdź ścieżkę przez graf (używając indeksów węzłów)
+            std::vector<int> path = findPath(srcNodeIdx, dstNodeIdx);
+
+            // Metro jest prostą linią - nie potrzebuje punktów pośrednich
+            if (conn.type == TransportType::METRO) {
+                file << srcId << "," << dstId << "," << typeStr << ",polyline,";
+                file << "\n";
+                continue; // Metro nie zapisujemy, to prosta linia
+            } else if (path.size() <= 2) {  // Pomiń proste połączenia (bez węzłów pośrednich)
+                file << srcId << "," << dstId << "," << typeStr << ",polyline,";
+                file << "\n";
+                continue;
+            }
+            
+            
+            
+            // Format: source,dest,type,format,points
+            file << srcId << "," << dstId << "," << typeStr << ",polyline,";
+            
+            // Zapisz węzły pośrednie (bez pierwszego i ostatniego)
+            for (size_t i = 1; i < path.size() - 1; ++i) {
+                const Point& node = m_RoadNodes[path[i]];
+                file << node.x << ";" << node.y;
+                if (i < path.size() - 2) file << "|";
+            }
+            
+            file << "\n";
+            savedCount++;
+        }
+
+        file.close();
+        std::cout << "[CityGen] Edge geometry saved: " << savedCount << " edges with intermediate points (out of " << m_GameConnections.size() << " total)" << std::endl;
     }
 
 } // namespace CityGen

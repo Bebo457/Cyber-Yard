@@ -148,6 +148,10 @@ struct HighwayEnd {
         // Generowanie sieci połączeń gry
         void GenerateGameConnections();
         void SaveGameConnectionsToCSV(const std::string& filename) const;
+        
+        // Zapisywanie danych węzłów i krawędzi
+        void SaveNodesToCSV(const std::string& filename) const;
+        void SaveEdgesGeometryToCSV(const std::string& filename) const;
 
         // Getters
         float GetDensityAt(int x, int y) const;
