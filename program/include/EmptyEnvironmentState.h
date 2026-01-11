@@ -7,6 +7,7 @@
 #include "HighwayGenerator.h"
 #include "MapGenerator.h"
 #include "BuildingGenerator.h"
+#include "GraphManager.h"
 
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
@@ -244,8 +245,15 @@ namespace ScotlandYard {
 
             // Station interaction
             int m_i_SelectedStationID = -1;
+            std::vector<int> m_vec_HighlightedStations; // Stations connected to selected
+            Core::GraphManager m_graph;
+            bool m_b_GraphLoaded = false;
+
             int FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void RenderStationInfo(Core::Application* p_App);
+            void RenderConnectionLines(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            void RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            void LoadGraphData();
         };
 
     } // namespace States
