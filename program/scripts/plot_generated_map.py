@@ -31,9 +31,9 @@ def read_edges(filename):
     return edges
 
 def plot_map(nodes, edges):
-    color_map = {'taxi': 'yellow', 'bus': 'green', 'metro': 'red', 'water': 'blue'}
-    size_map = {'taxi': 30, 'bus': 60, 'metro': 100}
-    zorder_map = {'taxi': 1, 'bus': 2, 'metro': 3}
+    color_map = {'taxi': 'yellow', 'bus': 'green', 'metro': 'red', 'water': 'darkblue'}
+    size_map = {'taxi': 30, 'bus': 60, 'metro': 100, 'water': 80}
+    zorder_map = {'taxi': 1, 'bus': 2, 'metro': 3, 'water': 3}
     plt.figure(figsize=(10, 10))
     ax = plt.gca()
 
@@ -53,6 +53,8 @@ def plot_map(nodes, edges):
         lw = 2
         if typ == 'metro':
             lw = 4
+        elif typ == 'water':
+            lw = 3.5
         elif typ == 'bus':
             lw = 3
         path = [(nodes[src][0], -nodes[src][1])] + [(x, -y) for (x, y) in points] + [(nodes[dst][0], -nodes[dst][1])]
@@ -67,6 +69,8 @@ def plot_map(nodes, edges):
         my = -y
         if 'metro' in stype:
             sc = ax.scatter(x, my, c=color_map['metro'], s=size_map['metro'], marker='o', zorder=3, edgecolors='black', linewidths=0.7, picker=True)
+        elif 'water' in stype:
+            sc = ax.scatter(x, my, c=color_map['water'], s=size_map['water'], marker='D', zorder=3, edgecolors='black', linewidths=0.7, picker=True)
         elif 'bus' in stype:
             sc = ax.scatter(x, my, c=color_map['bus'], s=size_map['bus'], marker='s', zorder=2, edgecolors='black', linewidths=0.7, picker=True)
         elif 'taxi' in stype:
@@ -112,6 +116,8 @@ def plot_map(nodes, edges):
             my = -y
             if 'metro' in stype:
                 node_scatters[idx].set_facecolor(color_map['metro'])
+            elif 'water' in stype:
+                node_scatters[idx].set_facecolor(color_map['water'])
             elif 'bus' in stype:
                 node_scatters[idx].set_facecolor(color_map['bus'])
             elif 'taxi' in stype:

@@ -3,6 +3,7 @@
 #include "IGameState.h"
 #include "MapGenerator.h"
 #include "HighwayGenerator.h"
+#include "TreePlacement.h" // Dodano include
 #include <SDL2/SDL.h>
 #include <string>
 #include <vector>
@@ -95,6 +96,9 @@ namespace ScotlandYard {
             std::vector<BuildingFootprint> m_vec_Buildings;
             std::vector<uint8_t> m_buildingMask;
 
+            // --- NOWE: Wektor przechowujący wygenerowane drzewa ---
+            std::vector<Core::TreeInstance> m_vec_Trees;
+
 
             GLuint m_VAO_PreviewQuad = 0;
             GLuint m_VBO_PreviewQuad = 0;
@@ -115,7 +119,7 @@ namespace ScotlandYard {
 
             void GenerateBuildingFootprints(int mapW, int mapH);
 
-            // Metody do obs�ugi tekstury i zapisu
+            // Metody do obsugi tekstury i zapisu
             void GeneratePreviewTexture();
             void RenderPreviewTexture(Core::Application* p_App);
             void CreatePreviewQuad();
