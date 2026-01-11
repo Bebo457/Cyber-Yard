@@ -4121,8 +4121,8 @@ MoveDecision AIPlayerController::CalculateBestMove(
             break;
         }
         case Core::AIAlgorithm::DistanceMaximizationMrX:
-            //decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
-            decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
+            decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
+            //decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
             // todo trzeba co rundę wysyłać algorytmowi nagrodę za ruch i dawać mu znać (done) że gra się skończyła żeby na zdobytych danych się nauczył
             // trzeba też napisać skrypt który będzie uruchamiał wiele gier pod rząd żeby zebrać dane do nauki 
             // oraz napisać kod RL dla policjantów ale na innym porcie żeby nie było sprzeczności w danych
