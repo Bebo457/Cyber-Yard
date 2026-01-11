@@ -14,19 +14,22 @@ namespace ScotlandYard {
             unsigned int seed = 0; // per-tree seed for TreeGenerator
         };
 
+        using PathSegment = std::pair<glm::vec2, glm::vec2>;
+
         class TreePlacement
         {
         public:
-            // density trees per ~
             static std::vector<TreeInstance> GenerateInPark(
                 const ScotlandYard::MapGen::Park& park,
                 int targetCount,
                 float minDistance,
-                unsigned int seed
+                unsigned int seed,
+                const std::vector<PathSegment>& obstacles = {}
             );
 
         private:
             static float RandRange(std::mt19937& rng, float a, float b);
+            static float DistToSegmentSq(glm::vec2 p, glm::vec2 a, glm::vec2 b);
         };
 
     } // namespace Core

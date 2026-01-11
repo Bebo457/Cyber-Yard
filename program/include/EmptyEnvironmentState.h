@@ -88,6 +88,9 @@ namespace ScotlandYard {
             std::vector<RoadMesh> m_RoadMeshes;
             std::vector<RoadMesh> m_HighwayMeshes;
 
+            std::vector<RoadMesh> m_ParkPathMeshes;
+            void BuildParkPathsFromMapData();
+
             std::vector<CityGen::Point> m_vec_HighwayNodes;
             std::vector<CityGen::Road>  m_vec_HighwayRoads;
             std::vector<CityGen::Highway> m_vec_Highways;

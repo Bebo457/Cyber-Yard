@@ -502,27 +502,7 @@ namespace ScotlandYard
                 m_i_CurrentCorner, numParks,
                 parkMinSize, parkMaxSize);
 
-            // --- NOWOŚĆ: Generowanie drzew w parkach ---
-            std::cout << "[MapGen] Generating trees..." << std::endl;
-            m_vec_Trees.clear();
-            for (const auto& park : m_vec_Parks)
-            {
-                // Liczba drzew zależy od promienia parku (np. 1 drzewo na 200 jednostek kwadratowych)
-                float area = glm::pi<float>() * park.f_BaseRadius * park.f_BaseRadius;
-                int targetTrees = static_cast<int>(area / 300.0f);
-                if (targetTrees < 5) targetTrees = 5;
-
-                // Minimalny dystans między drzewami
-                float minDist = 10.0f;
-
-                // Unikalny seed dla parku, żeby generacja była deterministyczna względem seeda mapy
-                unsigned int parkSeed = ui_Seed + static_cast<unsigned int>(park.center.x * 10.0f);
-
-                auto parkTrees = Core::TreePlacement::GenerateInPark(park, targetTrees, minDist, parkSeed);
-                m_vec_Trees.insert(m_vec_Trees.end(), parkTrees.begin(), parkTrees.end());
-            }
-            std::cout << "[MapGen] Generated " << m_vec_Trees.size() << " trees." << std::endl;
-            // -------------------------------------------
+            
 
             m_vec_Bridges = MapGen::GenerateBridges(m_vec_GridPoints, m_vec_RiverPath,
                 numBridges, m_i_CurrentCorner);
@@ -595,6 +575,61 @@ namespace ScotlandYard
             m_vec_HighwayEndpointNodes = hg.GetHighwayEndpointNodes();
             m_PopulationDensity = hg.GetPopulationDensity();
             m_vec_GameConnections = hg.GetGameConnections();
+
+            // --- NOWOŚĆ: Generowanie drzew w parkach ---
+            std::cout << "[MapGen] Generating trees..." << std::endl;
+
+            // 1. Zbierz wszystkie segmenty ścieżek parkowych ze wszystkich dróg
+            std::vector<std::pair<glm::vec2, glm::vec2>> parkPathSegments;
+            float scaleBack = 1.0f / streetGenScale; // Musimy przeskalować z powrotem do koordynatów mapy (1200x900)
+
+            for (const auto& road : m_vec_HighwayRoads) {
+                if (road.isDeleted) continue;
+                if (road.type == CityGen::RoadType::PARK_PATH) {
+                    // Pobierz węzły (są już przeskalowane w górę w m_vec_HighwayNodes po hg.Generate)
+                    if (road.startNodeIdx >= 0 && road.endNodeIdx >= 0) {
+                        const auto& n1 = m_vec_HighwayNodes[road.startNodeIdx];
+                        const auto& n2 = m_vec_HighwayNodes[road.endNodeIdx];
+                        parkPathSegments.push_back({ {n1.x, n1.y}, {n2.x, n2.y} });
+                    }
+                }
+            }
+
+            m_vec_Trees.clear();
+            for (const auto& park : m_vec_Parks)
+            {
+                // Wybierz tylko te ścieżki, które są w pobliżu parku (prosta optymalizacja)
+                std::vector<std::pair<glm::vec2, glm::vec2>> localObstacles;
+
+                // Bounding box parku + margines
+                float pMinX = park.center.x - park.f_BaseRadius - 10.0f;
+                float pMaxX = park.center.x + park.f_BaseRadius + 10.0f;
+                float pMinY = park.center.y - park.f_BaseRadius - 10.0f;
+                float pMaxY = park.center.y + park.f_BaseRadius + 10.0f;
+
+                for (const auto& seg : parkPathSegments) {
+                    // Sprawdź czy chociaż jeden punkt segmentu jest w bounding boxie parku
+                    bool p1Inside = (seg.first.x >= pMinX && seg.first.x <= pMaxX && seg.first.y >= pMinY && seg.first.y <= pMaxY);
+                    bool p2Inside = (seg.second.x >= pMinX && seg.second.x <= pMaxX && seg.second.y >= pMinY && seg.second.y <= pMaxY);
+
+                    if (p1Inside || p2Inside) {
+                        localObstacles.push_back(seg);
+                    }
+                }
+
+                float area = glm::pi<float>() * park.f_BaseRadius * park.f_BaseRadius;
+                int targetTrees = static_cast<int>(area / 300.0f);
+                if (targetTrees < 5) targetTrees = 5;
+
+                float minDist = 10.0f;
+                unsigned int parkSeed = ui_Seed + static_cast<unsigned int>(park.center.x * 10.0f);
+
+                // Przekazujemy localObstacles do generatora
+                auto parkTrees = Core::TreePlacement::GenerateInPark(park, targetTrees, minDist, parkSeed, localObstacles);
+                m_vec_Trees.insert(m_vec_Trees.end(), parkTrees.begin(), parkTrees.end());
+            }
+            std::cout << "[MapGen] Generated " << m_vec_Trees.size() << " trees avoiding paths." << std::endl;
+            // -------------------------------------------
 
             // Zapisz sieć połączeń do pliku CSV (bezwzględna ścieżka)
             std::string csvPath = "C:/Users/Mikolaj/Cyber-Yard/Cyber-Yard/program/build/polaczenia_generated.csv";
