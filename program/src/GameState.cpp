@@ -3223,8 +3223,15 @@ void GameState::HandleTicketButtonClick(int i_TransportType) {
 
     if (b_MoveSuccessful) {
         std::cout << "[GameState] Player " << i_PlayerIndex << " moved to node " << i_DestinationNode << BuildPlayerTicketsSuffix(i_PlayerIndex) << "\n";
-        std::string msg = std::to_string(i_PlayerIndex) + "_" + std::to_string(i_DestinationNode);
-        BroadcastMessage(msg);
+        std::string msg2 =
+            std::to_string(i_PlayerIndex) + "_" +
+            std::to_string(i_moveBuffor) + "_" +
+            std::to_string(i_DestinationNode) + "_" +
+            std::to_string(i_TransportType) + "_" +
+            std::to_string(b_MrXUsedBlack ? 1 : 0) + "_" +
+            std::to_string(m_b_MrXSecondMovePending.load() ? 1 : 0);
+        BroadcastMessage(msg2);
+        
         logger.logPlayerMove(i_PlayerIndex, i_moveBuffor , i_DestinationNode, i_TransportType);
 
         m_i_SelectedPlayerIndex = -1;
