@@ -1863,6 +1863,7 @@ namespace ScotlandYard
                             m_vec_HighwayRoads,
                             m_vec_Parks,
                             m_vec_RiverPath,
+                            m_vec_Highways,
                             buildingData
                         );
 
