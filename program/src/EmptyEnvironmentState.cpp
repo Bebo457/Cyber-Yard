@@ -2685,7 +2685,7 @@ namespace ScotlandYard {
                 float worldX = treeInstance.position.x * f_ScaleX + f_OffsetX;
                 float worldZ = treeInstance.position.y * f_ScaleZ + f_OffsetZ;
 
-                float globalTreeScale = 0.06f * treeInstance.scale; // Twoja zmniejszona skala
+                float globalTreeScale = 0.06f * treeInstance.scale; 
 
                 // 2. Budowanie macierzy modelu
                 renderObj.modelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(worldX, 0.0f, worldZ));
