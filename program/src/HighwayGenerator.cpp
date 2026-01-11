@@ -4424,6 +4424,136 @@ namespace CityGen {
         }
         
         // ============================================
+        // 3.5. WATER: Połączenia wodne
+        // Znajdź 10 stacji najbliższych rzeki
+        // Losowo wybierz 3 połączenia (4 próby na każde)
+        // Połączenie musi przechodzić przez wodę
+        // ============================================
+        std::cout << "[GameConnections] Generating WATER connections..." << std::endl;
+        
+        // Znajdź odległości wszystkich stacji od rzeki
+        std::vector<std::pair<float, int>> stationsWithDistance; // (distance, gameNum)
+        for (int gameNum = 1; gameNum <= numGameNodes; ++gameNum) {
+            int nodeIdx = gameNumberToNodeIdx[gameNum];
+            const Point& pos = m_RoadNodes[nodeIdx];
+            float distToRiver = DistanceToRiver(pos.x, pos.y);
+            stationsWithDistance.push_back({distToRiver, gameNum});
+        }
+        
+        // Sortuj po odległości
+        std::sort(stationsWithDistance.begin(), stationsWithDistance.end());
+        
+        // Weź 10 najbliższych
+        const int NUM_CLOSEST_STATIONS = std::min(10, (int)stationsWithDistance.size());
+        std::vector<int> closestStations;
+        for (int i = 0; i < NUM_CLOSEST_STATIONS; ++i) {
+            closestStations.push_back(stationsWithDistance[i].second);
+            std::cout << "[GameConnections] Station " << stationsWithDistance[i].second 
+                      << " distance to river: " << stationsWithDistance[i].first << std::endl;
+        }
+        
+        // Losowo wybierz 3 połączenia z 4 próbami każde
+        std::default_random_engine waterRng(static_cast<unsigned>(std::time(nullptr)) + 42);
+        std::uniform_int_distribution<int> stationDist(0, NUM_CLOSEST_STATIONS - 1);
+        
+        const int NUM_WATER_CONNECTIONS = 3;
+        const int ATTEMPTS_PER_CONNECTION = 4;
+        int successfulWaterConnections = 0;
+        
+        for (int connNum = 0; connNum < NUM_WATER_CONNECTIONS; ++connNum) {
+            bool connectionMade = false;
+            
+            for (int attempt = 0; attempt < ATTEMPTS_PER_CONNECTION && !connectionMade; ++attempt) {
+                // Losuj dwie różne stacje
+                int idx1 = stationDist(waterRng);
+                int idx2 = stationDist(waterRng);
+                
+                // Upewnij się że to różne stacje
+                int maxTries = 20;
+                while (idx1 == idx2 && maxTries-- > 0) {
+                    idx2 = stationDist(waterRng);
+                }
+                
+                if (idx1 == idx2) continue;
+                
+                int station1 = closestStations[idx1];
+                int station2 = closestStations[idx2];
+                
+                // Sprawdź czy połączenie już istnieje
+                int minNode = std::min(station1, station2);
+                int maxNode = std::max(station1, station2);
+                
+                bool alreadyExists = false;
+                for (const auto& conn : m_GameConnections) {
+                    if ((conn.sourceNode == minNode && conn.destNode == maxNode) ||
+                        (conn.sourceNode == maxNode && conn.destNode == minNode)) {
+                        if (conn.type == TransportType::WATER) {
+                            alreadyExists = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (alreadyExists) continue;
+                
+                // Pobierz pozycje stacji
+                int node1Idx = gameNumberToNodeIdx[station1];
+                int node2Idx = gameNumberToNodeIdx[station2];
+                const Point& pos1 = m_RoadNodes[node1Idx];
+                const Point& pos2 = m_RoadNodes[node2Idx];
+                
+                // Sprawdź czy linia prosta między nimi przechodzi przez wodę
+                // Próbkuj kilka punktów wzdłuż linii
+                const int NUM_SAMPLES = 20;
+                bool crossesWater = false;
+                
+                for (int sample = 1; sample < NUM_SAMPLES; ++sample) {
+                    float t = (float)sample / (float)NUM_SAMPLES;
+                    float x = pos1.x + t * (pos2.x - pos1.x);
+                    float y = pos1.y + t * (pos2.y - pos1.y);
+                    
+                    if (IsRiver((int)x, (int)y)) {
+                        crossesWater = true;
+                        break;
+                    }
+                }
+                
+                if (crossesWater) {
+                    // Oblicz długość połączenia
+                    float connectionLength = std::sqrt((pos2.x - pos1.x) * (pos2.x - pos1.x) + 
+                                                       (pos2.y - pos1.y) * (pos2.y - pos1.y));
+                    
+                    // Użyj stałej szerokości rzeki z konfiguracji
+                    const float riverWidth = 40.0f; // MapGen::Config::RIVER_WIDTH
+                    
+                    // Sprawdź czy długość nie przekracza 3x szerokości rzeki
+                    const float MAX_LENGTH_MULTIPLIER = 3.0f;
+                    if (connectionLength > riverWidth * MAX_LENGTH_MULTIPLIER) {
+                        std::cout << "[GameConnections] WATER connection rejected: length " << connectionLength 
+                                  << " exceeds " << MAX_LENGTH_MULTIPLIER << "x river width " << riverWidth << std::endl;
+                        continue;
+                    }
+                    
+                    m_GameConnections.push_back(GameConnection(station1, station2, TransportType::WATER));
+                    successfulWaterConnections++;
+                    connectionMade = true;
+                    
+                    std::cout << "[GameConnections] WATER connection " << successfulWaterConnections 
+                              << ": " << station1 << " <-> " << station2 
+                              << " (length: " << connectionLength << ", river width: " << riverWidth 
+                              << ", attempt: " << (attempt + 1) << ")" << std::endl;
+                }
+            }
+            
+            if (!connectionMade) {
+                std::cout << "[GameConnections] Could not find valid water connection " 
+                          << (connNum + 1) << " after " << ATTEMPTS_PER_CONNECTION << " attempts" << std::endl;
+            }
+        }
+        
+        std::cout << "[GameConnections] Water: " << successfulWaterConnections << " connections created" << std::endl;
+        
+        // ============================================
         // 4. CZYSZCZENIE - usuń węzły spoza największego komponentu
         // ============================================
         std::cout << "[GameConnections] Phase 4: Removing nodes outside main component..." << std::endl;
@@ -4597,12 +4727,13 @@ namespace CityGen {
         // ============================================
         // PODSUMOWANIE
         // ============================================
-        int finalTaxi = 0, finalBus = 0, finalMetro = 0;
+        int finalTaxi = 0, finalBus = 0, finalMetro = 0, finalWater = 0;
         for (const auto& conn : m_GameConnections) {
             switch (conn.type) {
                 case TransportType::TAXI: finalTaxi++; break;
                 case TransportType::BUS: finalBus++; break;
                 case TransportType::METRO: finalMetro++; break;
+                case TransportType::WATER: finalWater++; break;
                 default: break;
             }
         }
@@ -4611,6 +4742,7 @@ namespace CityGen {
         std::cout << "  - Metro: " << finalMetro << std::endl;
         std::cout << "  - Bus: " << finalBus << std::endl;
         std::cout << "  - Taxi: " << finalTaxi << std::endl;
+        std::cout << "  - Water: " << finalWater << std::endl;
         std::cout << "  - Total: " << m_GameConnections.size() << std::endl;
         
         // ============================================
@@ -4832,11 +4964,11 @@ namespace CityGen {
             // Dla innych typów znajdź ścieżkę przez graf (używając indeksów węzłów)
             std::vector<int> path = findPath(srcNodeIdx, dstNodeIdx);
 
-            // Metro jest prostą linią - nie potrzebuje punktów pośrednich
-            if (conn.type == TransportType::METRO) {
+            // Metro i Water są prostymi liniami - nie potrzebują punktów pośrednich
+            if (conn.type == TransportType::METRO || conn.type == TransportType::WATER) {
                 file << srcId << "," << dstId << "," << typeStr << ",polyline,";
                 file << "\n";
-                continue; // Metro nie zapisujemy, to prosta linia
+                continue; // Metro i Water nie zapisujemy, to proste linie
             } else if (path.size() <= 2) {  // Pomiń proste połączenia (bez węzłów pośrednich)
                 file << srcId << "," << dstId << "," << typeStr << ",polyline,";
                 file << "\n";

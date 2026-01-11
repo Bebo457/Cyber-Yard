@@ -1266,7 +1266,7 @@ namespace ScotlandYard
                     case CityGen::TransportType::TAXI:  return {255, 220, 0};    // Żółty
                     case CityGen::TransportType::BUS:   return {0, 200, 0};      // Zielony
                     case CityGen::TransportType::METRO: return {255, 0, 0};      // Czerwony
-                    case CityGen::TransportType::WATER: return {0, 0, 139};      // Ciemny niebieski
+                    case CityGen::TransportType::WATER: return {0, 0, 139};      // Ciemny niebieski (dark blue)
                     default: return {128, 128, 128};
                 }
             };
@@ -1288,13 +1288,12 @@ namespace ScotlandYard
             std::set<int> drawnMetroStationNodes;
             
             for (const auto& [nodePair, types] : connectionsByPair) {
-                // Filtruj - rysuj TAXI, BUS i METRO
+                // Filtruj - rysuj TAXI, BUS, METRO i WATER
                 std::vector<CityGen::TransportType> filteredTypes;
                 for (auto t : types) {
-                    if (t == CityGen::TransportType::BUS || t == CityGen::TransportType::METRO || t == CityGen::TransportType::TAXI) {
+                    if (t == CityGen::TransportType::BUS || t == CityGen::TransportType::METRO || 
+                        t == CityGen::TransportType::TAXI || t == CityGen::TransportType::WATER) {
                         filteredTypes.push_back(t);
-                    } else if (t == CityGen::TransportType::WATER) {
-                        waterDrawn++;  // Liczone ale nie rysowane
                     }
                 }
                 if (filteredTypes.empty()) continue;
@@ -1384,6 +1383,10 @@ namespace ScotlandYard
                         metroDrawn++;
                         drawnMetroStationNodes.insert(nodeAIdx);
                         drawnMetroStationNodes.insert(nodeBIdx);
+                    } else if (transportType == CityGen::TransportType::WATER) {
+                        // WATER - rysuj linię prostą jak metro (grubość 5)
+                        DrawThickLine(x1, y1, x2, y2, 5, r, g, b);
+                        waterDrawn++;
                     } else if (transportType == CityGen::TransportType::TAXI) {
                         // TAXI - rysuj wzdłuż drogi (BFS), cienka żółta linia
                         std::queue<int> taxiBfsQueue;
