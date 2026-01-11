@@ -185,9 +185,9 @@ private:
 
     std::atomic_bool m_b_ShowPausedModal{false};
 
-    std::atomic_bool m_b_DebuggingMode{true};
+    std::atomic_bool m_b_DebuggingMode{false};
     std::atomic_bool m_b_ShowPickingBuffer{false};
-    std::atomic_bool m_b_ShowMrXInDebug{true};
+    std::atomic_bool m_b_ShowMrXInDebug{false};
 
     enum class ClickableType : uint8_t {
         None = 0,
