@@ -4122,10 +4122,6 @@ MoveDecision AIPlayerController::CalculateBestMove(
         }
         case Core::AIAlgorithm::DistanceMaximizationMrX:
             decision = DistanceMaximizationAlgorithm(p_Player, vec_PossibleMoves, gameState);
-            //decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
-            // todo trzeba co rundę wysyłać algorytmowi nagrodę za ruch i dawać mu znać (done) że gra się skończyła żeby na zdobytych danych się nauczył
-            // trzeba też napisać skrypt który będzie uruchamiał wiele gier pod rząd żeby zebrać dane do nauki 
-            // oraz napisać kod RL dla policjantów ale na innym porcie żeby nie było sprzeczności w danych
             break;
         case Core::AIAlgorithm::DecoyMovementMrX:
             decision = DecoyMovementAlgorithm(p_Player, vec_PossibleMoves, gameState);
@@ -4150,7 +4146,11 @@ MoveDecision AIPlayerController::CalculateBestMove(
             break;
         
         case Core::AIAlgorithm::NeuralNet:
+                    decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
+            break;
         case Core::AIAlgorithm::PPOMrX:
+                    decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
+            break;
         case Core::AIAlgorithm::MAPPOMrX:
             decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
             break;
@@ -4158,8 +4158,14 @@ MoveDecision AIPlayerController::CalculateBestMove(
             decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
             break;
         case Core::AIAlgorithm::NeuralNetPolice:
+                    decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
+            break;
         case Core::AIAlgorithm::PPOPolice:
+                    decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
+            break;
         case Core::AIAlgorithm::MAPPOPolice:
+                    decision = ExternalPythonAlgorithmmrX(p_Player, vec_PossibleMoves, gameState);
+            break;
         case Core::AIAlgorithm::DiscreteSACPolice:
             decision = ExternalPythonAlgorithmPolice(p_Player, vec_PossibleMoves, gameState);
             break;
