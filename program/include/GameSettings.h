@@ -37,7 +37,7 @@ namespace ScotlandYard {
 
             // Online settings
             bool onlineMode = false;          // launch game in online mode
-            bool onlineIsServer = false;      // true = host/server, false = client
+            bool onlineIsServer = true;      // true = host/server, false = client
             std::string onlineHost = "127.0.0.1";
             uint16_t onlinePort = 12345;
         };

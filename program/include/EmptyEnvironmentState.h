@@ -8,6 +8,8 @@
 #include "MapGenerator.h"
 #include "BuildingGenerator.h"
 #include "GraphManager.h"
+#include "TreeGenerator.h" // Include tree generator definitions
+#include "TreePlacement.h" // Include tree placement definitions
 
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
@@ -27,7 +29,7 @@ namespace ScotlandYard {
             EmptyEnvironmentState();
             ~EmptyEnvironmentState() override;
 
-            // --- NOWA METODA: Wstrzykiwanie danych z generatora ---
+            // --- Wstrzykiwanie danych z generatora ---
             void InjectMapData(
                 const std::vector<CityGen::Point>& vec_Nodes,
                 const std::vector<CityGen::Road>& vec_Roads,
@@ -36,7 +38,9 @@ namespace ScotlandYard {
                 const std::vector<CityGen::Highway>& vec_Highways,
                 const std::vector<MapGen::BuildingData>& vec_Buildings = std::vector<MapGen::BuildingData>()
             );
-            // -----------------------------------------------------
+
+            // --- Wstrzykiwanie danych o drzewach ---
+            void InjectTreeData(const std::vector<Core::TreeInstance>& vec_Trees);
 
             // Bridge utilities
             void SetBridgeLength(float f_LengthWorld);
@@ -73,6 +77,7 @@ namespace ScotlandYard {
 
             // Road material/texture
             GLuint m_TexRoad = 0;
+            GLuint m_TexHighway = 0;
 
             struct RoadMesh {
                 GLuint VAO;
@@ -81,6 +86,10 @@ namespace ScotlandYard {
                 int indexCount;
             };
             std::vector<RoadMesh> m_RoadMeshes;
+            std::vector<RoadMesh> m_HighwayMeshes;
+
+            std::vector<RoadMesh> m_ParkPathMeshes;
+            void BuildParkPathsFromMapData();
 
             std::vector<CityGen::Point> m_vec_HighwayNodes;
             std::vector<CityGen::Road>  m_vec_HighwayRoads;
@@ -94,7 +103,7 @@ namespace ScotlandYard {
             glm::vec3 m_vec3_BridgePosition{ 11.0f, 0.0f, 8.0f };
             glm::vec3 m_vec3_BridgeBaseScale{ 0.165f, 0.165f, 0.165f };
             glm::vec3 m_vec3_BridgeScale{ 0.165f, 0.165f, 0.165f };
-            float m_f_BridgeModelLength = 1.0f; 
+            float m_f_BridgeModelLength = 1.0f;
             GLuint m_TexBridge = 0;
             bool   m_b_BridgeHasTexture = false;
             bool   m_b_DrawBridge = false;
@@ -172,6 +181,19 @@ namespace ScotlandYard {
                 GLuint doorTexture = 0;
             };
 
+            // Tree rendering structures
+            struct TreeRenderObj {
+                Core::TreeMesh mesh;
+                SurfaceBuffers buffers;
+                glm::mat4 modelMatrix;
+                int materialCount = 0;
+            };
+            std::vector<Core::TreeInstance> m_vec_TreeData; // Raw data from generator
+            std::vector<TreeRenderObj> m_RenderTrees;       // GPU objects
+            GLuint m_ShaderTree = 0;
+            GLuint m_TexTreeTrunk = 0;
+            GLuint m_TexTreeCrown = 0;
+
             BuildingRenderInstance m_ShowcaseBuilding;
             bool m_b_ShowcaseBuildingVisible = false;
             std::vector<BuildingRenderInstance> m_GeneratedBuildings;
@@ -186,6 +208,9 @@ namespace ScotlandYard {
             void CreatePlane();
             void CreateFrame();
             void CreateShaders();
+            void CreateTreeShader(); // New shader for trees
+            GLuint Create1x1Texture(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255); // Helper texture gen
+
             void TryLoadGeneratedMap(Core::Application* p_App);
             void LoadPolygonData(Core::Application* p_App);
             void LoadSampleMapData();
@@ -238,6 +263,13 @@ namespace ScotlandYard {
             void CreateTestRoad(Core::Application* p_App);
 
             void BuildHighwaysFromMapData(Core::Application* p_App);
+            void GenerateRoadsFromMapData(Core::Application* p_App);
+            void RenderRoads(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View);
+
+            // Tree methods
+            void BuildTreesFromMapData();
+            void RenderTrees(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, const glm::vec3& vec3_CameraPos);
+            void DestroyTrees();
 
             // Station rendering
             std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
@@ -254,6 +286,7 @@ namespace ScotlandYard {
             void RenderConnectionLines(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void LoadGraphData();
+            void LoadGraphDataFromGeneratedMap();
         };
 
     } // namespace States

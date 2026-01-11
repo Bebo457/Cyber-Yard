@@ -33,6 +33,8 @@ namespace States {
 
 namespace {
 
+auto& settings = Core::Settings();
+
 bool HasTicketForTransport(const Core::Player& player, int i_TransportType) {
     using namespace Core;
 
@@ -114,7 +116,7 @@ std::string GameState::BuildPlayerTicketsSuffix(int i_PlayerIndex) {
 void GameState::OnEnter(Core::Application* p_App) {
     m_p_App = p_App;
 
-    auto& settings = Core::Settings();
+    
     if (settings.onlineMode) {
         if (settings.onlineIsServer) {
             std::cout << "[GameState] Starting as SERVER on port " << settings.onlinePort << "\n";
@@ -1680,6 +1682,7 @@ void GameState::RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4
 }
 
 void GameState::RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+
     glUseProgram(m_ShaderProgram_Circle);
     GLuint mvpLoc = glGetUniformLocation(m_ShaderProgram_Circle, "MVP");
     GLuint colorLoc = glGetUniformLocation(m_ShaderProgram_Circle, "circleColor");
@@ -1756,7 +1759,9 @@ void GameState::RenderPlayers(const glm::mat4& mat4_View, const glm::mat4& mat4_
 
         bool b_ShouldRenderMrX = false;
         if (m_b_DebuggingMode && m_b_ShowMrXInDebug) b_ShouldRenderMrX = true;
-        if (player.IsActive()) b_ShouldRenderMrX = true;
+        if (settings.onlineIsServer) b_ShouldRenderMrX = true;
+        // if (player.IsActive()) b_ShouldRenderMrX = true;
+        
         if (!b_ShouldRenderMrX) continue;
 
         int i_NodeId = player.GetOccupiedNode();
@@ -2078,10 +2083,12 @@ void GameState::RenderHUD(Core::Application* p_App) {
     std::vector<int> counts = { -1, black, dbl, -1, -1, -1 };
 
     // Show Mr X action buttons only during Mr X turn
-    ScotlandYard::UI::SetMrXButtonsVisible(b_MrXActive);
+    bool b_EnableMrXButtons =false;
+    if(settings.onlineIsServer && b_MrXActive)  b_EnableMrXButtons= true;
+    ScotlandYard::UI::SetMrXButtonsVisible(b_EnableMrXButtons);
     // Enable if Mr X has tickets and (for double) not on second step
-    bool b_EnableBlack = b_MrXActive && black > 0;
-    bool b_EnableDouble = b_MrXActive && dbl > 0 && !b_DoublePending;
+    bool b_EnableBlack = settings.onlineIsServer && b_MrXActive && black > 0;
+    bool b_EnableDouble = settings.onlineIsServer && b_MrXActive && dbl > 0 && !b_DoublePending;
     ScotlandYard::UI::SetMrXButtonsEnabled(b_EnableBlack, b_EnableDouble);
     ScotlandYard::UI::SetTopBar(labels, {}, counts);
     ScotlandYard::UI::SetRound(m_i_Round.load());
