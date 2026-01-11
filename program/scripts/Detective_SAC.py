@@ -5,6 +5,8 @@ reward sign flipped: Detectives gain when catching Mr X.
 """
 import os
 import json
+import tempfile
+import shutil
 from collections import deque
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -238,15 +240,34 @@ class DiscreteSACAgent:
         for target_param, param in zip(self.target_q2.parameters(), self.q2.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-        torch.save({
-            "policy": self.policy.state_dict(),
-            "q1": self.q1.state_dict(),
-            "q2": self.q2.state_dict(),
-            "target_q1": self.target_q1.state_dict(),
-            "target_q2": self.target_q2.state_dict(),
-            "policy_opt": self.policy_opt.state_dict(),
-            "q_opt": self.q_opt.state_dict(),
-        }, self.model_path)
+        # Ensure directory exists before saving
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+
+        # Save to temporary file, then atomically rename (avoids Windows file lock issues)
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, dir=os.path.dirname(self.model_path), suffix='.pth') as tmp:
+                tmp_path = tmp.name
+            
+            torch.save({
+                "policy": self.policy.state_dict(),
+                "q1": self.q1.state_dict(),
+                "q2": self.q2.state_dict(),
+                "target_q1": self.target_q1.state_dict(),
+                "target_q2": self.target_q2.state_dict(),
+                "policy_opt": self.policy_opt.state_dict(),
+                "q_opt": self.q_opt.state_dict(),
+            }, tmp_path)
+            
+            # Atomically replace the old file
+            shutil.move(tmp_path, self.model_path, copy_function=shutil.copy2)
+        except Exception as e:
+            print(f"[ERROR] Failed to save model to {self.model_path}: {e}")
+            # Clean up temp file if it exists
+            try:
+                if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except:
+                pass
 
 
 def run_server():

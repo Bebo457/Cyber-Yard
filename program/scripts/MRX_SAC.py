@@ -239,17 +239,31 @@ class DiscreteSACAgent:
         for target_param, param in zip(self.target_q2.parameters(), self.q2.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-        torch.save({
-            "policy": self.policy.state_dict(),
-            "q1": self.q1.state_dict(),
-            "q2": self.q2.state_dict(),
-            "target_q1": self.target_q1.state_dict(),
-            "target_q2": self.target_q2.state_dict(),
-            "policy_opt": self.policy_opt.state_dict(),
-            "q_opt": self.q_opt.state_dict(),
-            "epsilon": self.epsilon,  # Save training state
-            "steps": self.steps,
-        }, self.model_path)
+        # Ensure directory exists before saving
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+
+        # Try to remove old file if it exists and is locked
+        try:
+            if os.path.exists(self.model_path):
+                os.remove(self.model_path)
+        except Exception as e:
+            print(f"[WARNING] Could not remove old model file: {e}")
+
+        # Save model with error handling
+        try:
+            torch.save({
+                "policy": self.policy.state_dict(),
+                "q1": self.q1.state_dict(),
+                "q2": self.q2.state_dict(),
+                "target_q1": self.target_q1.state_dict(),
+                "target_q2": self.target_q2.state_dict(),
+                "policy_opt": self.policy_opt.state_dict(),
+                "q_opt": self.q_opt.state_dict(),
+                "epsilon": self.epsilon,  # Save training state
+                "steps": self.steps,
+            }, self.model_path)
+        except Exception as e:
+            print(f"[ERROR] Failed to save model to {self.model_path}: {e}")
 
 
 encoder = ObservationEncoder(max_moves=10)
