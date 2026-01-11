@@ -1004,6 +1004,8 @@ def main():
     parser.add_argument("--no-parallel", dest="parallel", action="store_false", default=True,
                         help="Disable parallel training (use sequential curriculum)")
     parser.add_argument("--interleaved", action="store_true", help="Alternate between MrX and Detective training")
+    parser.add_argument("--reverse", action="store_true", 
+                        help="Reverse curriculum order (harder opponents first)")
     args = parser.parse_args()
     
     # Create config with selected algorithm
@@ -1034,6 +1036,11 @@ def main():
         config.mrx_curriculum = [args.opponent]
         config.detective_curriculum = [args.opponent]
     
+    # Reverse curriculum if requested (harder opponents first)
+    if args.reverse:
+        config.mrx_curriculum = config.mrx_curriculum[::-1]
+        config.detective_curriculum = config.detective_curriculum[::-1]
+    
     # Setup logging
     logger = setup_logging(config)
     
@@ -1060,10 +1067,15 @@ def main():
             
             if dashboard_script.exists():
                 dashboard_proc = subprocess.Popen(
-                    [config.python_exe, str(dashboard_script), "--algorithm", args.algorithm],
+                    [
+                        config.python_exe, 
+                        str(dashboard_script), 
+                        "--algorithm", args.algorithm,
+                        "--games", str(config.games_per_opponent)
+                    ],
                     cwd=str(config.script_dir)
                 )
-                logger.info(f"Training dashboard launched: {dashboard_script.name} --algorithm {args.algorithm}")
+                logger.info(f"Training dashboard launched: {dashboard_script.name} --algorithm {args.algorithm} --games {config.games_per_opponent}")
         except Exception as e:
             logger.warning(f"Could not launch dashboard: {e}")
     
