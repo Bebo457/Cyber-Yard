@@ -366,7 +366,7 @@ namespace ScotlandYard {
 namespace States {
 
     EmptyEnvironmentState::EmptyEnvironmentState()
-        : m_Rng(std::random_device{}()) {
+        : m_Rng(std::random_device{}()), m_graph(Core::k_MaxNodes) {
     }
 
     EmptyEnvironmentState::~EmptyEnvironmentState() = default;
@@ -798,8 +798,20 @@ namespace States {
                     if (i_ClickedStation >= 0) {
                         m_i_SelectedStationID = i_ClickedStation;
                         std::cout << "[EmptyEnvironmentState] Selected station ID: " << i_ClickedStation << std::endl;
+
+                        // Update highlighted stations (connected to selected)
+                        m_vec_HighlightedStations.clear();
+                        if (m_b_GraphLoaded) {
+                            auto connections = m_graph.GetConnections(i_ClickedStation);
+                            for (const auto& conn : connections) {
+                                m_vec_HighlightedStations.push_back(conn.i_NodeId);
+                            }
+                            std::cout << "[EmptyEnvironmentState] Found " << m_vec_HighlightedStations.size()
+                                      << " connected stations" << std::endl;
+                        }
                     } else {
                         m_i_SelectedStationID = -1;
+                        m_vec_HighlightedStations.clear();
                     }
                 }
                 break;
@@ -948,6 +960,9 @@ namespace States {
                                   << ") -> World pos=(" << m_vec_CircleStations[0].position.x
                                   << ", " << m_vec_CircleStations[0].position.y << ")" << std::endl;
                     }
+
+                    // Load graph connections
+                    LoadGraphData();
                 }
             }
 
@@ -1308,6 +1323,12 @@ namespace States {
 
             // Render transport stations
             RenderStations(mat4_View, mat4_Projection);
+
+            // Render highlighted stations (connected to selected)
+            RenderHighlightedStations(mat4_View, mat4_Projection);
+
+            // Render connection lines from selected station
+            RenderConnectionLines(mat4_View, mat4_Projection);
 
             if (!m_vec_ParkRenderers.empty() && m_TexGrass) {
                 glEnable(GL_POLYGON_OFFSET_FILL);
@@ -2674,6 +2695,12 @@ namespace States {
                         f_TransportScale = 6.0f; // Largest
                     }
 
+                    // Enlarge selected station by 1.5x
+                    bool b_IsSelected = (station.stationID == m_i_SelectedStationID);
+                    if (b_IsSelected) {
+                        f_TransportScale *= 1.5f;
+                    }
+
                     float f_Y = f_BaseY + (i_RingIdx) * f_YOffset;
 
                     glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f),
@@ -2761,6 +2788,154 @@ namespace States {
 
             // TODO: Render actual UI panel with text
             // For now, selection is just logged to console
+        }
+
+        void EmptyEnvironmentState::LoadGraphData() {
+            try {
+                std::string s_NodeFile = Core::GetMapPath(Core::k_NodeDataRelativePath);
+                std::string s_ConnFile = Core::GetMapPath(Core::k_ConnectionsRelativePath);
+
+                std::cout << "[EmptyEnvironmentState] Loading graph from:" << std::endl;
+                std::cout << "  Nodes: " << s_NodeFile << std::endl;
+                std::cout << "  Connections: " << s_ConnFile << std::endl;
+
+                m_graph.LoadData(s_NodeFile, s_ConnFile, true);
+                m_b_GraphLoaded = true;
+
+                std::cout << "[EmptyEnvironmentState] Graph loaded successfully!" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[EmptyEnvironmentState] Failed to load graph: " << e.what() << std::endl;
+                m_b_GraphLoaded = false;
+            }
+        }
+
+        void EmptyEnvironmentState::RenderConnectionLines(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+            if (m_i_SelectedStationID < 0 || !m_b_GraphLoaded) return;
+
+            // Find selected station position
+            auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                [this](const StationCircle& sc) { return sc.stationID == m_i_SelectedStationID; });
+
+            if (it == m_vec_CircleStations.end()) return;
+
+            glm::vec2 vec2_StartPos = it->position;
+
+            // Get connections for selected station
+            auto connections = m_graph.GetConnections(m_i_SelectedStationID);
+
+            const float k_LineHeight = 0.05f;
+            const float k_ArrowSize = 0.15f; // Size of arrow head
+            const float k_ArrowAngle = 0.4f; // Angle of arrow wings in radians (~23 degrees)
+
+            // Setup OpenGL state for rendering lines and arrows
+            glDisable(GL_TEXTURE_2D);
+            glUseProgram(0);
+            glMatrixMode(GL_PROJECTION);
+            glLoadMatrixf(glm::value_ptr(mat4_Projection));
+            glMatrixMode(GL_MODELVIEW);
+            glLoadMatrixf(glm::value_ptr(mat4_View));
+            glLineWidth(2.5f);
+
+            // Render lines and arrows to each connected station
+            for (const auto& conn : connections) {
+                // Find connected station
+                auto connIt = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                    [&conn](const StationCircle& sc) { return sc.stationID == conn.i_NodeId; });
+
+                if (connIt == m_vec_CircleStations.end()) continue;
+
+                glm::vec2 vec2_EndPos = connIt->position;
+
+                // Color based on transport type
+                glm::vec3 vec3_Color;
+                switch (conn.i_TransportType) {
+                    case 0: // Taxi
+                        vec3_Color = glm::vec3(1.0f, 1.0f, 0.0f); // Yellow
+                        break;
+                    case 1: // Bus
+                        vec3_Color = glm::vec3(0.0f, 1.0f, 0.0f); // Green
+                        break;
+                    case 2: // Metro
+                        vec3_Color = glm::vec3(1.0f, 0.0f, 0.0f); // Red
+                        break;
+                    case 3: // Water
+                        vec3_Color = glm::vec3(0.0f, 0.4f, 1.0f); // Blue
+                        break;
+                    default:
+                        vec3_Color = glm::vec3(1.0f, 1.0f, 1.0f); // White
+                        break;
+                }
+
+                glColor3f(vec3_Color.r, vec3_Color.g, vec3_Color.b);
+
+                // Draw line slightly above ground to avoid z-fighting
+                glBegin(GL_LINES);
+                glVertex3f(vec2_StartPos.x, k_LineHeight, vec2_StartPos.y);
+                glVertex3f(vec2_EndPos.x, k_LineHeight, vec2_EndPos.y);
+                glEnd();
+
+                // Draw arrow at the end pointing to destination
+                glm::vec2 vec2_Direction = glm::normalize(vec2_EndPos - vec2_StartPos);
+                glm::vec2 vec2_ArrowTip = vec2_EndPos - vec2_Direction * 0.3f; // Arrow tip slightly before station
+
+                // Calculate perpendicular vector for arrow wings
+                glm::vec2 vec2_Perp(-vec2_Direction.y, vec2_Direction.x);
+
+                // Arrow wing points
+                glm::vec2 vec2_Wing1 = vec2_ArrowTip - vec2_Direction * k_ArrowSize + vec2_Perp * k_ArrowSize * 0.5f;
+                glm::vec2 vec2_Wing2 = vec2_ArrowTip - vec2_Direction * k_ArrowSize - vec2_Perp * k_ArrowSize * 0.5f;
+
+                // Draw arrow head
+                glBegin(GL_TRIANGLES);
+                glVertex3f(vec2_ArrowTip.x, k_LineHeight, vec2_ArrowTip.y);
+                glVertex3f(vec2_Wing1.x, k_LineHeight, vec2_Wing1.y);
+                glVertex3f(vec2_Wing2.x, k_LineHeight, vec2_Wing2.y);
+                glEnd();
+            }
+
+            // Restore OpenGL state
+            glLineWidth(1.0f);
+        }
+
+        void EmptyEnvironmentState::RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+            if (m_vec_HighlightedStations.empty()) return;
+
+            glUseProgram(m_ShaderCircle);
+
+            GLint i_LocMVP = glGetUniformLocation(m_ShaderCircle, "MVP");
+            GLint i_LocColor = glGetUniformLocation(m_ShaderCircle, "circleColor");
+
+            glBindVertexArray(m_VAO_Circle);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            // Render highlight rings for each connected station
+            for (int i_StationID : m_vec_HighlightedStations) {
+                // Find station
+                auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                    [i_StationID](const StationCircle& sc) { return sc.stationID == i_StationID; });
+
+                if (it == m_vec_CircleStations.end()) continue;
+
+                const auto& station = *it;
+
+                // Render larger white/yellow highlight ring
+                glm::mat4 mat4_Model = glm::mat4(1.0f);
+                mat4_Model = glm::translate(mat4_Model, glm::vec3(station.position.x, 0.03f, station.position.y));
+                mat4_Model = glm::scale(mat4_Model, glm::vec3(m_f_GlobalScale * 8.0f)); // Larger than largest station
+
+                glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+                glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, &mat4_MVP[0][0]);
+
+                // Bright yellow highlight
+                glUniform3f(i_LocColor, 1.0f, 1.0f, 0.5f);
+
+                glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+            }
+
+            glDisable(GL_BLEND);
+            glBindVertexArray(0);
+            glUseProgram(0);
         }
 
     } // namespace States
