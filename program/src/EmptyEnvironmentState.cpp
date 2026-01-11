@@ -964,6 +964,7 @@ namespace ScotlandYard {
                     BuildRiverFromMapData();
                     BuildBuildingsFromMapData();
                     BuildHighwaysFromMapData(p_App);
+                    BuildParkPathsFromMapData();
                     BuildTreesFromMapData(); // Build trees if map injected
                 }
 
@@ -1122,6 +1123,12 @@ namespace ScotlandYard {
             if (m_VAO_Bridge) { glDeleteVertexArrays(1, &m_VAO_Bridge); m_VAO_Bridge = 0; }
             if (m_ShaderBridge) { glDeleteProgram(m_ShaderBridge); m_ShaderBridge = 0; }
             if (m_TexBridge) { p_App->UnloadTexture(m_TexBridge); m_TexBridge = 0; m_b_BridgeHasTexture = false; }
+            for (auto& mesh : m_ParkPathMeshes) {
+                if (mesh.VAO) glDeleteVertexArrays(1, &mesh.VAO);
+                if (mesh.VBO) glDeleteBuffers(1, &mesh.VBO);
+                if (mesh.EBO) glDeleteBuffers(1, &mesh.EBO);
+            }
+            m_ParkPathMeshes.clear();
 
             DestroyGeneratedBuildings();
             DestroyShowcaseBuilding(p_App);
@@ -1380,6 +1387,26 @@ namespace ScotlandYard {
                     // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                     glBindVertexArray(road.VAO);
                     glDrawElements(GL_TRIANGLES, road.indexCount, GL_UNSIGNED_INT, 0);
+                }
+                glBindVertexArray(0);
+            }
+
+            if (!m_ParkPathMeshes.empty() && m_TexSidewalk) { // Używamy tekstury chodnika
+                glUseProgram(m_ShaderRoad); // Ten sam shader co drogi
+                GLint mvpLoc = glGetUniformLocation(m_ShaderRoad, "uMVP");
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_Projection * mat4_View));
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, m_TexSidewalk); // <--- TEKSTURA CHODNIKA
+                glUniform1i(glGetUniformLocation(m_ShaderRoad, "uRoad"), 0);
+
+                // Gęstsze kafelkowanie dla węższych ścieżek
+                GLint tileLoc = glGetUniformLocation(m_ShaderRoad, "uTileUV");
+                glUniform2f(tileLoc, 3.0f, 3.0f);
+
+                for (const auto& path : m_ParkPathMeshes) {
+                    glBindVertexArray(path.VAO);
+                    glDrawElements(GL_TRIANGLES, path.indexCount, GL_UNSIGNED_INT, 0);
                 }
                 glBindVertexArray(0);
             }
@@ -2660,6 +2687,80 @@ namespace ScotlandYard {
             m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
 
             std::cout << "[EmptyEnvironmentState] Built " << m_RoadMeshes.size() << " highway meshes." << std::endl;
+        }
+
+        void EmptyEnvironmentState::BuildParkPathsFromMapData() {
+            // Czyścimy stare meshe
+            for (auto& mesh : m_ParkPathMeshes) {
+                if (mesh.VAO) glDeleteVertexArrays(1, &mesh.VAO);
+                if (mesh.VBO) glDeleteBuffers(1, &mesh.VBO);
+                if (mesh.EBO) glDeleteBuffers(1, &mesh.EBO);
+            }
+            m_ParkPathMeshes.clear();
+
+            if (!m_b_MapDataLoaded) return;
+
+            std::cout << "[EmptyEnvironmentState] Building park paths..." << std::endl;
+
+            for (const auto& road : m_vec_HighwayRoads) {
+                // Interesują nas tylko ścieżki parkowe
+                if (road.isDeleted || road.type != CityGen::RoadType::PARK_PATH) continue;
+                if (road.startNodeIdx < 0 || road.endNodeIdx < 0) continue;
+
+                const auto& n1 = m_vec_HighwayNodes[road.startNodeIdx];
+                const auto& n2 = m_vec_HighwayNodes[road.endNodeIdx];
+
+                std::vector<glm::vec2> points;
+                points.emplace_back(n1.x, n1.y);
+                points.emplace_back(n2.x, n2.y);
+
+                // Transformacja do świata 3D (taka sama jak w BuildHighways)
+                for (auto& p : points) {
+                    p.x = (p.x * 0.02f) - 1.0f;
+                    p.y = (p.y * 0.02f) - 1.0f;
+                }
+
+                std::vector<float> widths = { 0.08f, 0.08f }; // Węższe niż ulice (0.25f)
+
+                // Generowanie mesha
+                auto mesh = ScotlandYard::Core::RoadGenerator::GenerateRoad(points, widths, 1.0f);
+
+                // Podnieś lekko nad ziemię, ale niżej/wyżej niż trawa?
+                // Trawa jest na 0.0, ulice na 0.01+.
+                // Dajmy ścieżki na 0.015f, żeby leżały na trawie.
+                for (auto& vertex : mesh.vertices) {
+                    vertex.y = 0.015f;
+                }
+
+                // Upload do GPU (kopiuj-wklej z BuildHighways logic)
+                struct V { glm::vec3 p; glm::vec3 n; glm::vec2 uv; };
+                std::vector<V> verts;
+                for (size_t i = 0; i < mesh.vertices.size(); ++i)
+                    verts.push_back({ mesh.vertices[i], mesh.normals[i], mesh.texCoords[i] });
+
+                RoadMesh pathMesh{};
+                glGenVertexArrays(1, &pathMesh.VAO);
+                glGenBuffers(1, &pathMesh.VBO);
+                glGenBuffers(1, &pathMesh.EBO);
+
+                glBindVertexArray(pathMesh.VAO);
+                glBindBuffer(GL_ARRAY_BUFFER, pathMesh.VBO);
+                glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(V), verts.data(), GL_STATIC_DRAW);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pathMesh.EBO);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size() * sizeof(unsigned int), mesh.indices.data(), GL_STATIC_DRAW);
+
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V), (void*)0);
+                glEnableVertexAttribArray(0);
+                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(V), (void*)offsetof(V, n));
+                glEnableVertexAttribArray(1);
+                glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(V), (void*)offsetof(V, uv));
+                glEnableVertexAttribArray(2);
+                glBindVertexArray(0);
+
+                pathMesh.indexCount = static_cast<int>(mesh.indices.size());
+                m_ParkPathMeshes.push_back(pathMesh);
+            }
+            std::cout << "[EmptyEnvironmentState] Built " << m_ParkPathMeshes.size() << " park path meshes." << std::endl;
         }
 
         void EmptyEnvironmentState::BuildTreesFromMapData() {
