@@ -7,6 +7,8 @@
 #include "MapDataSerializer.h"
 #include "MapGenerator.h"
 #include "HighwayGenerator.h"
+#include "MapDataLoader.h"
+#include "GameConstants.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -607,6 +609,39 @@ namespace States {
 
             glDeleteShader(modelVs);
             glDeleteShader(modelFs);
+
+            // --- Circle shader for transport stations ---
+            const char* circleVsSrc = R"(#version 330 core
+        layout(location = 0) in vec3 aPos;
+        uniform mat4 MVP;
+        void main() {
+            gl_Position = MVP * vec4(aPos, 1.0);
+        }
+    )";
+
+            const char* circleFsSrc = R"(#version 330 core
+        uniform vec3 circleColor;
+        out vec4 FragColor;
+        void main() {
+            FragColor = vec4(circleColor, 1.0);
+        }
+    )";
+
+            GLuint circleVs = glCreateShader(GL_VERTEX_SHADER);
+            glShaderSource(circleVs, 1, &circleVsSrc, nullptr);
+            glCompileShader(circleVs);
+
+            GLuint circleFs = glCreateShader(GL_FRAGMENT_SHADER);
+            glShaderSource(circleFs, 1, &circleFsSrc, nullptr);
+            glCompileShader(circleFs);
+
+            m_ShaderCircle = glCreateProgram();
+            glAttachShader(m_ShaderCircle, circleVs);
+            glAttachShader(m_ShaderCircle, circleFs);
+            glLinkProgram(m_ShaderCircle);
+
+            glDeleteShader(circleVs);
+            glDeleteShader(circleFs);
         }
 
 
@@ -626,6 +661,105 @@ namespace States {
             glBindVertexArray(m_VAO_Plane);
             glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Plane);
             glBufferData(GL_ARRAY_BUFFER, sizeof(f_PlaneVertices), f_PlaneVertices, GL_STATIC_DRAW);
+
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+            glEnableVertexAttribArray(2);
+            glBindVertexArray(0);
+        }
+
+        void EmptyEnvironmentState::CreateFrame() {
+            float frameWidth = 0.8f;
+            float frameHeight = 0.12f;
+            float innerLip = 0.0f;
+            float frameY = 0.01f;
+
+            std::vector<float> frameVertices;
+            auto addQuad = [&](float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4, float z4) {
+                frameVertices.insert(frameVertices.end(), {x1, y1, z1, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+                frameVertices.insert(frameVertices.end(), {x2, y2, z2, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f});
+                frameVertices.insert(frameVertices.end(), {x3, y3, z3, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f});
+                frameVertices.insert(frameVertices.end(), {x1, y1, z1, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+                frameVertices.insert(frameVertices.end(), {x3, y3, z3, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f});
+                frameVertices.insert(frameVertices.end(), {x4, y4, z4, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f});
+            };
+
+            float boardLeft = -1.0f;
+            float boardRight = 23.0f;
+            float boardTop = 17.0f;
+            float boardBottom = -1.0f;
+            // === TOP EDGE ===
+            addQuad(boardLeft - frameWidth, frameY, boardTop + frameWidth,
+                   boardRight + frameWidth, frameY, boardTop + frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardLeft - frameWidth, frameY + frameHeight, boardTop - innerLip,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop - innerLip,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardLeft - innerLip, frameY, boardTop - innerLip,
+                   boardRight + innerLip, frameY, boardTop - innerLip,
+                   boardRight + innerLip, frameY + frameHeight, boardTop - innerLip,
+                   boardLeft - innerLip, frameY + frameHeight, boardTop - innerLip);
+
+            // === LEFT EDGE ===
+            addQuad(boardLeft - frameWidth, frameY, boardBottom - frameWidth,
+                   boardLeft - frameWidth, frameY, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom - frameWidth);
+
+            addQuad(boardLeft - frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardBottom - frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardLeft + innerLip, frameY, boardBottom - frameWidth,
+                   boardLeft + innerLip, frameY, boardTop + frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardBottom - frameWidth);
+
+            // === RIGHT EDGE ===
+            addQuad(boardRight + frameWidth, frameY, boardTop + frameWidth,
+                   boardRight + frameWidth, frameY, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardRight - innerLip, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardRight - innerLip, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardRight - innerLip, frameY, boardTop + frameWidth,
+                   boardRight - innerLip, frameY, boardBottom - frameWidth,
+                   boardRight - innerLip, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight - innerLip, frameY + frameHeight, boardTop + frameWidth);
+
+            // === BOTTOM EDGE ===
+            addQuad(boardRight + frameWidth, frameY, boardBottom,
+                   boardLeft - frameWidth, frameY, boardBottom,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom);
+
+            addQuad(boardLeft - frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom + innerLip,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom + innerLip);
+
+            addQuad(boardRight + frameWidth, frameY, boardBottom + innerLip,
+                   boardLeft - frameWidth, frameY, boardBottom + innerLip,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom + innerLip,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom + innerLip);
+
+            glGenVertexArrays(1, &m_VAO_Frame);
+            glGenBuffers(1, &m_VBO_Frame);
+            glBindVertexArray(m_VAO_Frame);
+            glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Frame);
+            glBufferData(GL_ARRAY_BUFFER, frameVertices.size() * sizeof(float), frameVertices.data(), GL_STATIC_DRAW);
 
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
             glEnableVertexAttribArray(0);
@@ -689,6 +823,7 @@ namespace States {
                 glEnable(GL_DEPTH_TEST);
                 CreateShaders();
                 CreatePlane();
+                CreateFrame();
                 m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.jpg"));
                 m_TexGrass = p_App->LoadTexture(p_App->GetAssetPath("textures/grass.png"));
                 TryLoadGeneratedMap(p_App);
@@ -738,6 +873,61 @@ namespace States {
                 UI::SetRound(1);
 
                 InitializeShowcaseBuilding(p_App);
+
+                // Initialize circle geometry for transport stations
+                float f_Radius = 0.02f;
+                int i_Segments = 30;
+                std::vector<float> vec_CircleVertices = generateCircleVertices(f_Radius, i_Segments);
+                m_i_CircleVertexCount = static_cast<int>(vec_CircleVertices.size() / 3);
+
+                glGenVertexArrays(1, &m_VAO_Circle);
+                glGenBuffers(1, &m_VBO_Circle);
+
+                glBindVertexArray(m_VAO_Circle);
+                glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Circle);
+                glBufferData(GL_ARRAY_BUFFER, vec_CircleVertices.size() * sizeof(float), vec_CircleVertices.data(), GL_STATIC_DRAW);
+
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+                glEnableVertexAttribArray(0);
+
+                glBindVertexArray(0);
+
+                // Load station data from CSV - use EXACT same transformation as roads/highways
+                auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
+
+                m_vec_CircleStations.clear();
+
+                if (vec_StationData.empty()) {
+                    std::cout << "[EmptyEnvironmentState] No station data loaded from CSV" << std::endl;
+                } else {
+                    // Transform using EXACT same formula as highways: (pos * 0.02f) - 1.0f
+                    // This ensures stations are placed at their exact road positions
+                    for (const auto& sd : vec_StationData) {
+                        StationCircle sc;
+
+                        // Same transformation as highways (line 2390 in BuildHighwaysFromMapData)
+                        // sc.position.x = (sd.vec2_Position.x * 0.02f) - 1.0f;
+                        // sc.position.y = (sd.vec2_Position.y * 0.02f) - 1.0f;
+
+                        sc.position.x = sd.vec2_Position.x ;
+                        sc.position.y = sd.vec2_Position.y ;
+
+                        sc.transportTypes = sd.vec_TransportTypes;
+                        sc.stationID = sd.i_StationID;
+                        m_vec_CircleStations.push_back(sc);
+                    }
+
+                    std::cout << "[EmptyEnvironmentState] Loaded " << m_vec_CircleStations.size()
+                              << " transport stations from CSV (exact road positions)" << std::endl;
+
+                    if (!m_vec_CircleStations.empty()) {
+                        const auto& first = vec_StationData.front();
+                        std::cout << "[EmptyEnvironmentState] First station: CSV pos=("
+                                  << first.vec2_Position.x << ", " << first.vec2_Position.y
+                                  << ") -> World pos=(" << m_vec_CircleStations[0].position.x
+                                  << ", " << m_vec_CircleStations[0].position.y << ")" << std::endl;
+                    }
+                }
             }
 
             UI::SetPauseCallback([this]() {
@@ -780,6 +970,14 @@ namespace States {
             if (m_VAO_Plane) {
                 glDeleteVertexArrays(1, &m_VAO_Plane);
                 m_VAO_Plane = 0;
+            }
+            if (m_VBO_Frame) {
+                glDeleteBuffers(1, &m_VBO_Frame);
+                m_VBO_Frame = 0;
+            }
+            if (m_VAO_Frame) {
+                glDeleteVertexArrays(1, &m_VAO_Frame);
+                m_VAO_Frame = 0;
             }
             if (m_ShaderProgram) {
                 glDeleteProgram(m_ShaderProgram);
@@ -1087,6 +1285,9 @@ namespace States {
             }
             RenderGeneratedBuildings(mat4_View, mat4_Projection, vec3_ViewPosition);
 
+            // Render transport stations
+            RenderStations(mat4_View, mat4_Projection);
+
             if (!m_vec_ParkRenderers.empty() && m_TexGrass) {
                 glEnable(GL_POLYGON_OFFSET_FILL);
                 glPolygonOffset(-1.0f, -1.0f);
@@ -1099,6 +1300,30 @@ namespace States {
                 }
 
                 glDisable(GL_POLYGON_OFFSET_FILL);
+            }
+
+            if (m_VAO_Frame) {
+                GLint previousProgram = 0;
+                GLint previousVAO = 0;
+                glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+                glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+                GLboolean wasCullingEnabled = glIsEnabled(GL_CULL_FACE);
+                glDisable(GL_CULL_FACE);
+
+                glUseProgram(m_ShaderBridge);
+                glm::mat4 mat4_MVP_Frame = mat4_Projection * mat4_View;
+                glUniformMatrix4fv(glGetUniformLocation(m_ShaderBridge, "uMVP"), 1, GL_FALSE, glm::value_ptr(mat4_MVP_Frame));
+                glUniformMatrix4fv(glGetUniformLocation(m_ShaderBridge, "uModel"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+                glUniform3f(glGetUniformLocation(m_ShaderBridge, "uColor"), 0.545f, 0.353f, 0.169f);
+                glUniform1i(glGetUniformLocation(m_ShaderBridge, "uHasTex"), 0);
+                glBindVertexArray(m_VAO_Frame);
+                glDrawArrays(GL_TRIANGLES, 0, 72);
+
+                glBindVertexArray(previousVAO);
+                glUseProgram(previousProgram);
+                if (wasCullingEnabled) {
+                    glEnable(GL_CULL_FACE);
+                }
             }
 
             // HUD
@@ -2352,6 +2577,102 @@ namespace States {
             m_TexRoad = p_App->LoadTexture(p_App->GetAssetPath("textures/road.jpg"));
 
             std::cout << "[EmptyEnvironmentState] Built " << m_RoadMeshes.size() << " highway meshes." << std::endl;
+        }
+
+        std::vector<float> EmptyEnvironmentState::generateCircleVertices(float f_Radius, int i_Segments) {
+            std::vector<float> vec_Vertices;
+
+            // Center point
+            vec_Vertices.push_back(0.0f);
+            vec_Vertices.push_back(0.01f);
+            vec_Vertices.push_back(0.0f);
+
+            // Perimeter points
+            for (int i = 0; i <= i_Segments; i++) {
+                float f_Theta = 2.0f * glm::pi<float>() * i / i_Segments;
+                float f_X = f_Radius * cos(f_Theta);
+                float f_Z = f_Radius * sin(f_Theta);
+                vec_Vertices.push_back(f_X);
+                vec_Vertices.push_back(0.01f);
+                vec_Vertices.push_back(f_Z);
+            }
+
+            return vec_Vertices;
+        }
+
+        void EmptyEnvironmentState::RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+            if (m_vec_CircleStations.empty() || !m_VAO_Circle || !m_ShaderCircle) {
+                static bool s_b_Warned = false;
+                if (!s_b_Warned) {
+                    std::cout << "[RenderStations] Skipping: empty=" << m_vec_CircleStations.empty()
+                              << " VAO=" << m_VAO_Circle << " Shader=" << m_ShaderCircle << std::endl;
+                    s_b_Warned = true;
+                }
+                return;
+            }
+
+            static bool s_b_DebugOnce = false;
+            if (!s_b_DebugOnce) {
+                std::cout << "[RenderStations] Rendering " << m_vec_CircleStations.size() << " stations" << std::endl;
+                if (!m_vec_CircleStations.empty()) {
+                    std::cout << "[RenderStations] First station pos: ("
+                              << m_vec_CircleStations[0].position.x << ", "
+                              << m_vec_CircleStations[0].position.y << ")" << std::endl;
+                }
+                s_b_DebugOnce = true;
+            }
+
+            glUseProgram(m_ShaderCircle);
+            glBindVertexArray(m_VAO_Circle);
+
+            GLint mvpLoc = glGetUniformLocation(m_ShaderCircle, "MVP");
+            GLint colorLoc = glGetUniformLocation(m_ShaderCircle, "circleColor");
+
+            for (const auto& station : m_vec_CircleStations) {
+                // Render each transport type as a separate circle with different size
+                float f_BaseY = 0.02f;  // Higher than roads to be visible
+                float f_YOffset = 0.001f;  // Small vertical offset between overlapping circles
+                int i_RingIdx = 0;
+
+                for (const auto& transportType : station.transportTypes) {
+                    glm::vec3 vec3_Color(1.0f, 1.0f, 1.0f); // Default white
+                    float f_TransportScale = 5.0f; // Default scale
+
+                    // Different sizes for different transport types: taxi < bus < metro < water
+                    if (transportType == "taxi") {
+                        vec3_Color = glm::vec3(1.0f, 1.0f, 0.0f); // Yellow
+                        f_TransportScale = 3.0f; // Smallest
+                    } else if (transportType == "bus") {
+                        vec3_Color = glm::vec3(0.0f, 1.0f, 0.0f); // Green
+                        f_TransportScale = 4.0f; // Medium-small
+                    } else if (transportType == "metro") {
+                        vec3_Color = glm::vec3(1.0f, 0.0f, 0.0f); // Red
+                        f_TransportScale = 5.0f; // Medium-large
+                    } else if (transportType == "water") {
+                        vec3_Color = glm::vec3(0.0f, 0.4f, 1.0f); // Light blue
+                        f_TransportScale = 6.0f; // Largest
+                    }
+
+                    float f_Y = f_BaseY + (i_RingIdx) * f_YOffset;
+
+                    glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(station.position.x, f_Y, station.position.y));
+                    mat4_Model = glm::scale(mat4_Model, glm::vec3(f_TransportScale, 1.0f, f_TransportScale));
+                    glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+
+                    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+                    glUniform3f(colorLoc, vec3_Color.r, vec3_Color.g, vec3_Color.b);
+                    glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+
+                    i_RingIdx++;
+                }
+
+                // No top white circle - we show different sizes per transport type
+                // (removed to keep visual clarity of different transport sizes)
+            }
+
+            glBindVertexArray(0);
+            glUseProgram(0);
         }
 
     } // namespace States

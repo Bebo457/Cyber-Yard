@@ -25,22 +25,29 @@ BASE_DATA_DIR = SCRIPT_DIR / "training_data"
 
 # Will be set by command line argument
 ALGORITHM = "PPO"
+TARGET_GAMES = 500  # Default target games per opponent
 DATA_DIR = None
 METRICS_FILE_MRX = None
 METRICS_FILE_DET = None
 LOG_DIR = None
 
-def set_algorithm(algo: str):
-    """Set paths based on algorithm"""
-    global ALGORITHM, DATA_DIR, METRICS_FILE_MRX, METRICS_FILE_DET, LOG_DIR
+def set_algorithm(algo: str, games: int = 500):
+    """Set paths based on algorithm and target games"""
+    global ALGORITHM, TARGET_GAMES, DATA_DIR, METRICS_FILE_MRX, METRICS_FILE_DET, LOG_DIR
     ALGORITHM = algo.upper()
+    try:
+        if games > 0:
+            TARGET_GAMES = games
+    except (ValueError, TypeError):
+        pass
+        
     DATA_DIR = BASE_DATA_DIR / ALGORITHM
     METRICS_FILE_MRX = DATA_DIR / "training_metrics_mrx.json"
     METRICS_FILE_DET = DATA_DIR / "training_metrics_det.json"
     LOG_DIR = DATA_DIR / "logs"
 
 # Default to PPO
-set_algorithm("ppo")
+set_algorithm("ppo", 500)
 
 MAX_POINTS = 1000
 
@@ -62,6 +69,7 @@ class RoleDashboard:
         self.moves_history = deque(maxlen=MAX_POINTS)
         self.session_start = datetime.now()
         self.current_opponent = "..."
+        self.current_opponent_games = 0  # Games played against current opponent in this sequence
         
         self.last_file_size = 0
         self.setup_figure()
@@ -71,7 +79,7 @@ class RoleDashboard:
         plt.style.use('dark_background')
         
         self.fig = plt.figure(num=self.fig_num, figsize=(14, 9))
-        title = f"PPO {self.role} Training"
+        title = f"{ALGORITHM} {self.role} Training"
         self.fig.suptitle(title, fontsize=16, fontweight='bold', color=self.color)
         
         # 3 rows, 2 columns. Left col for graphs, Right col for stats
@@ -119,7 +127,7 @@ class RoleDashboard:
             bbox=dict(boxstyle='round,pad=1', facecolor='#1f2937', edgecolor='#374151')
         )
         
-        # 5. Right Side Bottom: Cycle Comparison (replaces pie chart)
+        # 5. Right Side Bottom: Cycle Comparison
         self.ax_compare = self.fig.add_subplot(gs[2, 1])
         self.ax_compare.set_title('Cycle Comparison', fontweight='bold', fontsize=10)
         self.ax_compare.set_facecolor('#1a1a2e')
@@ -193,7 +201,31 @@ class RoleDashboard:
             self.rewards.clear()
             self.win_history.clear()
             self.moves_history.clear()
+            self.current_opponent_games = 0
             
+            # Find current opponent from last game or logs
+            last_opp_in_file = None
+            if games:
+                last_opp_in_file = games[-1].get('opponent', '')
+            
+            # Count backwards to find how many games against CURRENT opponent sequence
+            if self.current_opponent == "...":
+                if last_opp_in_file:
+                    self.current_opponent = last_opp_in_file
+            
+            calc_opp = self.current_opponent if self.current_opponent != "..." else last_opp_in_file
+            
+            if calc_opp:
+                count = 0
+                for g in reversed(games):
+                    if g.get('opponent', '').lower() == calc_opp.lower():
+                        count += 1
+                    else:
+                        break
+                self.current_opponent_games = count
+                if self.current_opponent == "...":
+                    self.current_opponent = calc_opp
+
             for game in games:
                 winner = game.get('winner', '')
                 rounds = game.get('rounds', 0)
@@ -223,7 +255,6 @@ class RoleDashboard:
             return True
             
         except Exception as e:
-            # print(f"[{self.role}] Error loading data: {e}")
             return False
     
     def get_matchup_from_logs(self):
@@ -232,20 +263,16 @@ class RoleDashboard:
             if LOG_DIR.exists():
                 logs = sorted(LOG_DIR.glob("training_*.log"), key=lambda x: x.stat().st_mtime, reverse=True)
                 if logs:
-                    # Read from start of file to find all Training vs lines
                     with open(logs[0], 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
                     
-                    # Look for lines like "[MrX] Training vs random" or "[Detective] Training vs random"
                     search_tag = f"[{self.role}]" if self.role == "MrX" else "[Detective]"
                     
                     for line in reversed(content.split('\n')):
                         if search_tag in line and 'Training vs' in line:
-                            # Extract opponent: [MrX] Training vs random (500 games)
                             idx = line.find('Training vs ')
                             if idx != -1:
                                 rest = line[idx + len('Training vs '):].strip()
-                                # Get first word (opponent name)
                                 opponent = rest.split()[0] if rest else None
                                 if opponent:
                                     self.current_opponent = opponent.upper()
@@ -265,12 +292,12 @@ class RoleDashboard:
     def update(self, frame):
         """Update animation frame"""
         self.load_data()
+        self.get_matchup_from_logs()  # Refresh opponent from logs
         
         if self.games_played == 0:
             return []
         
         x = list(range(1, self.games_played + 1))
-        # Determine x-axis view window
         view_start = max(1, self.games_played - MAX_POINTS)
         view_end = self.games_played + 10
         
@@ -300,7 +327,6 @@ class RoleDashboard:
         duration = datetime.now() - self.session_start
         win_pct = (self.wins / self.games_played * 100) if self.games_played > 0 else 0
         secs_per_game = duration.total_seconds() / self.games_played if self.games_played > 0 else 0
-        opponent = self.get_matchup_from_logs()
         
         avg_moves = 0
         if self.moves_history:
@@ -308,7 +334,7 @@ class RoleDashboard:
             avg_moves = sum(recent_moves) / len(recent_moves)
         
         stats = (
-            f"vs {opponent}\n"
+            f"vs {self.current_opponent}\n"
             f"{'='*15}\n\n"
             f"Total Games: {self.games_played}\n"
             f"WINS: {self.wins}\n"
@@ -324,18 +350,24 @@ class RoleDashboard:
         prev_wr = self.get_cycle_comparison(self.current_opponent)
         curr_wr = win_pct  # Use live win rate
         
+        # Calculate progress
+        progress_pct = min(100.0, (self.current_opponent_games / TARGET_GAMES * 100)) if TARGET_GAMES > 0 else 0.0
+        progress_str = f"Progress: {progress_pct:.0f}% ({self.current_opponent_games}/{TARGET_GAMES})"
+        
         if prev_wr is not None:
             diff = curr_wr - prev_wr
             sign = "+" if diff >= 0 else ""
             
             compare_str = (
-                f"vs {self.current_opponent.upper()}\n\n"
+                f"vs {self.current_opponent.upper()}\n"
+                f"{progress_str}\n\n"
                 f"{prev_wr:.1f}% → {curr_wr:.1f}%\n"
                 f"({sign}{diff:.1f}%)"
             )
         else:
             compare_str = (
-                f"vs {self.current_opponent.upper()}\n\n"
+                f"vs {self.current_opponent.upper()}\n"
+                f"{progress_str}\n\n"
                 f"Current: {curr_wr:.1f}%\n"
                 f"(No history)"
             )
@@ -343,7 +375,7 @@ class RoleDashboard:
         self.compare_text.set_text(compare_str)
         
         # Update title
-        self.fig.suptitle(f"{ALGORITHM} {self.role} vs {opponent}", 
+        self.fig.suptitle(f"{ALGORITHM} {self.role} vs {self.current_opponent}", 
                          fontsize=16, fontweight='bold', color=self.color)
         
         return []
@@ -352,7 +384,7 @@ class RoleDashboard:
 def run_dual_dashboard():
     """Run both dashboards side by side"""
     print("="*50)
-    print(f"  {ALGORITHM} Dual Training Dashboard")
+    print(f"  {ALGORITHM} Dual Training Dashboard (Target: {TARGET_GAMES} games)")
     print("="*50)
     print(f"  Algorithm: {ALGORITHM}")
     print(f"  Data dir: {DATA_DIR}")
@@ -360,23 +392,18 @@ def run_dual_dashboard():
     print(f"  Detective metrics: {METRICS_FILE_DET}")
     print("="*50)
     
-    # Create both dashboards
     mrx_dash = RoleDashboard("MrX", METRICS_FILE_MRX, '#ff4444', 1)
     det_dash = RoleDashboard("Detective", METRICS_FILE_DET, '#00cccc', 2)
     
-    # Position windows side by side
     try:
         mrx_manager = mrx_dash.fig.canvas.manager
         det_manager = det_dash.fig.canvas.manager
-        
-        # Try to position windows (works on some backends)
         if hasattr(mrx_manager, 'window'):
             mrx_manager.window.wm_geometry("+0+0")
             det_manager.window.wm_geometry("+520+0")
     except:
-        pass  # Window positioning not supported
+        pass
     
-    # Create animations
     ani_mrx = animation.FuncAnimation(mrx_dash.fig, mrx_dash.update, interval=2000, cache_frame_data=False)
     ani_det = animation.FuncAnimation(det_dash.fig, det_dash.update, interval=2000, cache_frame_data=False)
     
@@ -388,8 +415,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual Training Dashboard")
     parser.add_argument("--algorithm", type=str, default="ppo", choices=["ppo", "mappo", "sac"],
                         help="Training algorithm to monitor (default: ppo)")
+    parser.add_argument("--games", type=int, default=500, 
+                        help="Target games per opponent for progress tracking (default: 500)")
     args = parser.parse_args()
     
-    set_algorithm(args.algorithm)
+    set_algorithm(args.algorithm, args.games)
     run_dual_dashboard()
-

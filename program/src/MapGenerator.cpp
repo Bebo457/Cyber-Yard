@@ -201,7 +201,7 @@ std::vector<Point> GenerateRiverControlPoints(int* p_CurrentCorner, int i_Width,
                 break;
         }
 
-        float f_Extension = 0.04f;
+        float f_Extension = 0.02f;
         Point entryExtended = entryEdge;
         Point exitExtended = exitEdge;
 

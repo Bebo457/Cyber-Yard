@@ -52,6 +52,8 @@ namespace ScotlandYard {
             // Rendering
             GLuint m_VAO_Plane = 0;
             GLuint m_VBO_Plane = 0;
+            GLuint m_VAO_Frame = 0;
+            GLuint m_VBO_Frame = 0;
             GLuint m_ShaderProgram = 0;
             GLuint m_ShaderBridge = 0;
 
@@ -109,6 +111,19 @@ namespace ScotlandYard {
 
             // Game state
             bool m_b_GameActive = true;
+
+            // Transport stations rendering
+            struct StationCircle {
+                glm::vec2 position;
+                std::vector<std::string> transportTypes;
+                int stationID;
+            };
+            std::vector<StationCircle> m_vec_CircleStations;
+            GLuint m_VAO_Circle = 0;
+            GLuint m_VBO_Circle = 0;
+            GLuint m_ShaderCircle = 0;
+            int m_i_CircleVertexCount = 0;
+            float m_f_GlobalScale = 0.1f;
 
             // Camera system (mirrors GameState behavior)
             bool m_b_Camera3D = true;
@@ -168,6 +183,7 @@ namespace ScotlandYard {
 
             // Private methods
             void CreatePlane();
+            void CreateFrame();
             void CreateShaders();
             void TryLoadGeneratedMap(Core::Application* p_App);
             void LoadPolygonData(Core::Application* p_App);
@@ -221,6 +237,10 @@ namespace ScotlandYard {
             void CreateTestRoad(Core::Application* p_App);
 
             void BuildHighwaysFromMapData(Core::Application* p_App);
+
+            // Station rendering
+            std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
+            void RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
         };
 
     } // namespace States
