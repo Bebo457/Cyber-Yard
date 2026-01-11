@@ -1975,6 +1975,8 @@ namespace ScotlandYard
                         my >= m_BtnGenerate.y && my <= m_BtnGenerate.y + m_BtnGenerate.h)
                     {
                         TryGenerateMap();
+                        SaveMapToFile();
+
                     }
                     if (mx >= m_BtnSave.x && mx <= m_BtnSave.x + m_BtnSave.w &&
                         my >= m_BtnSave.y && my <= m_BtnSave.y + m_BtnSave.h)
@@ -1982,10 +1984,10 @@ namespace ScotlandYard
                         std::cout << "[MapGen] PLAY clicked. Generating and switching..." << std::endl;
 
                         // 1. Generuj (aby dane były świeże)
-                        TryGenerateMap();
+                        // TryGenerateMap();
 
                         // 2. Zapisz bitmapę (potrzebne dla shadera terenu w EmptyEnvironmentState)
-                        SaveMapToFile();
+                        // SaveMapToFile();
 
                         // 3. Utwórz nowy stan środowiska
                         auto pGameEnv = std::make_unique<ScotlandYard::States::EmptyEnvironmentState>();

@@ -73,6 +73,7 @@ namespace ScotlandYard {
 
             // Road material/texture
             GLuint m_TexRoad = 0;
+            GLuint m_TexHighway = 0;
 
             struct RoadMesh {
                 GLuint VAO;
@@ -81,6 +82,7 @@ namespace ScotlandYard {
                 int indexCount;
             };
             std::vector<RoadMesh> m_RoadMeshes;
+            std::vector<RoadMesh> m_HighwayMeshes;
 
             std::vector<CityGen::Point> m_vec_HighwayNodes;
             std::vector<CityGen::Road>  m_vec_HighwayRoads;
@@ -238,6 +240,8 @@ namespace ScotlandYard {
             void CreateTestRoad(Core::Application* p_App);
 
             void BuildHighwaysFromMapData(Core::Application* p_App);
+            void GenerateRoadsFromMapData(Core::Application* p_App);
+            void RenderRoads(const glm::mat4& mat4_Projection, const glm::mat4& mat4_View);
 
             // Station rendering
             std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
