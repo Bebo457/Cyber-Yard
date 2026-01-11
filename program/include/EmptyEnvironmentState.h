@@ -129,11 +129,23 @@ namespace ScotlandYard {
                 int stationID;
             };
             std::vector<StationCircle> m_vec_CircleStations;
+            struct PlayerToken {
+                int i_StationID = -1;
+                glm::vec3 vec3_Color{ 1.0f, 1.0f, 1.0f };
+                bool b_IsMrX = false;
+            };
+            std::vector<PlayerToken> m_vec_PlayerTokens;
             GLuint m_VAO_Circle = 0;
             GLuint m_VBO_Circle = 0;
             GLuint m_ShaderCircle = 0;
             int m_i_CircleVertexCount = 0;
             float m_f_GlobalScale = 0.1f;
+            GLuint m_VAO_PlayerCylinder = 0;
+            GLuint m_VBO_PlayerCylinder = 0;
+            int m_i_PlayerCylinderVertexCount = 0;
+            GLuint m_VAO_PlayerHemisphere = 0;
+            GLuint m_VBO_PlayerHemisphere = 0;
+            int m_i_PlayerHemisphereVertexCount = 0;
 
             // Camera system (mirrors GameState behavior)
             bool m_b_Camera3D = true;
@@ -274,6 +286,13 @@ namespace ScotlandYard {
             // Station rendering
             std::vector<float> generateCircleVertices(float f_Radius, int i_Segments);
             void RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            std::vector<float> generateCylinderVertices(float radius, float height, int segments);
+            std::vector<float> generateHemisphereVertices(float radius, int segments);
+            void InitializePlayerTokenGeometry();
+            void DestroyPlayerTokenGeometry();
+            void RenderPlayerTokens(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            void InitializeDebugPlayerTokens();
+            const StationCircle* FindStationCircle(int stationID) const;
 
             // Station interaction
             int m_i_SelectedStationID = -1;

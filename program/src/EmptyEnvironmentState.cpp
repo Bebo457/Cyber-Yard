@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <limits>
 #include <type_traits>
+#include <unordered_map>
 #include <nlohmann/json.hpp>
 
 namespace {
@@ -1033,6 +1034,8 @@ namespace ScotlandYard {
 
                 glBindVertexArray(0);
 
+                InitializePlayerTokenGeometry();
+
                 // Load station data from generated map or CSV
                 m_vec_CircleStations.clear();
 
@@ -1120,6 +1123,8 @@ namespace ScotlandYard {
                         LoadGraphData();
                     }
                 }
+
+                InitializeDebugPlayerTokens();
             }
 
             UI::SetPauseCallback([this]() {
@@ -1210,6 +1215,9 @@ namespace ScotlandYard {
             if (m_ShaderTree) { glDeleteProgram(m_ShaderTree); m_ShaderTree = 0; }
             if (m_TexTreeTrunk) { glDeleteTextures(1, &m_TexTreeTrunk); m_TexTreeTrunk = 0; }
             if (m_TexTreeCrown) { glDeleteTextures(1, &m_TexTreeCrown); m_TexTreeCrown = 0; }
+
+            DestroyPlayerTokenGeometry();
+            m_vec_PlayerTokens.clear();
 
         }
 
@@ -1537,6 +1545,7 @@ namespace ScotlandYard {
 
             // Render transport stations
             RenderStations(mat4_View, mat4_Projection);
+            RenderPlayerTokens(mat4_View, mat4_Projection);
 
             // Render highlighted stations (connected to selected)
             RenderHighlightedStations(mat4_View, mat4_Projection);
@@ -3154,6 +3163,235 @@ namespace ScotlandYard {
             }
 
             return vec_Vertices;
+        }
+
+        std::vector<float> EmptyEnvironmentState::generateCylinderVertices(float radius, float height, int segments) {
+            std::vector<float> verts;
+            const float k_TwoPi = 2.0f * glm::pi<float>();
+
+            for (int i = 0; i < segments; ++i) {
+                float theta1 = (float)i / segments * k_TwoPi;
+                float theta2 = (float)(i + 1) / segments * k_TwoPi;
+
+                float x1 = radius * cos(theta1);
+                float z1 = radius * sin(theta1);
+                float x2 = radius * cos(theta2);
+                float z2 = radius * sin(theta2);
+
+                verts.push_back(x1); verts.push_back(0.0f); verts.push_back(z1);
+                verts.push_back(x2); verts.push_back(0.0f); verts.push_back(z2);
+                verts.push_back(x2); verts.push_back(height); verts.push_back(z2);
+
+                verts.push_back(x1); verts.push_back(0.0f); verts.push_back(z1);
+                verts.push_back(x2); verts.push_back(height); verts.push_back(z2);
+                verts.push_back(x1); verts.push_back(height); verts.push_back(z1);
+
+                verts.push_back(0.0f); verts.push_back(0.0f); verts.push_back(0.0f);
+                verts.push_back(x2); verts.push_back(0.0f); verts.push_back(z2);
+                verts.push_back(x1); verts.push_back(0.0f); verts.push_back(z1);
+
+                verts.push_back(0.0f); verts.push_back(height); verts.push_back(0.0f);
+                verts.push_back(x1); verts.push_back(height); verts.push_back(z1);
+                verts.push_back(x2); verts.push_back(height); verts.push_back(z2);
+            }
+
+            return verts;
+        }
+
+        std::vector<float> EmptyEnvironmentState::generateHemisphereVertices(float radius, int segments) {
+            std::vector<float> verts;
+            const float k_Pi = glm::pi<float>();
+            const float k_TwoPi = 2.0f * k_Pi;
+
+            for (int i = 0; i < segments / 2; ++i) {
+                float theta1 = k_Pi * i / segments;
+                float theta2 = k_Pi * (i + 1) / segments;
+
+                for (int j = 0; j < segments; ++j) {
+                    float phi1 = k_TwoPi * j / segments;
+                    float phi2 = k_TwoPi * (j + 1) / segments;
+
+                    float x1 = radius * sin(theta1) * cos(phi1);
+                    float y1 = radius * cos(theta1);
+                    float z1 = radius * sin(theta1) * sin(phi1);
+
+                    float x2 = radius * sin(theta2) * cos(phi1);
+                    float y2 = radius * cos(theta2);
+                    float z2 = radius * sin(theta2) * sin(phi1);
+
+                    float x3 = radius * sin(theta2) * cos(phi2);
+                    float y3 = radius * cos(theta2);
+                    float z3 = radius * sin(theta2) * sin(phi2);
+
+                    float x4 = radius * sin(theta1) * cos(phi2);
+                    float y4 = radius * cos(theta1);
+                    float z4 = radius * sin(theta1) * sin(phi2);
+
+                    verts.push_back(x1); verts.push_back(y1); verts.push_back(z1);
+                    verts.push_back(x2); verts.push_back(y2); verts.push_back(z2);
+                    verts.push_back(x3); verts.push_back(y3); verts.push_back(z3);
+
+                    verts.push_back(x1); verts.push_back(y1); verts.push_back(z1);
+                    verts.push_back(x3); verts.push_back(y3); verts.push_back(z3);
+                    verts.push_back(x4); verts.push_back(y4); verts.push_back(z4);
+                }
+            }
+
+            return verts;
+        }
+
+        void EmptyEnvironmentState::InitializePlayerTokenGeometry() {
+            DestroyPlayerTokenGeometry();
+
+            std::vector<float> vec_CylinderVerts = generateCylinderVertices(0.1f, 0.2f, 20);
+            m_i_PlayerCylinderVertexCount = static_cast<int>(vec_CylinderVerts.size() / 3);
+            if (!vec_CylinderVerts.empty()) {
+                glGenVertexArrays(1, &m_VAO_PlayerCylinder);
+                glGenBuffers(1, &m_VBO_PlayerCylinder);
+                glBindVertexArray(m_VAO_PlayerCylinder);
+                glBindBuffer(GL_ARRAY_BUFFER, m_VBO_PlayerCylinder);
+                glBufferData(GL_ARRAY_BUFFER, vec_CylinderVerts.size() * sizeof(float), vec_CylinderVerts.data(), GL_STATIC_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+                glEnableVertexAttribArray(0);
+                glBindVertexArray(0);
+            }
+
+            std::vector<float> vec_HemisphereVerts = generateHemisphereVertices(0.1f, 30);
+            m_i_PlayerHemisphereVertexCount = static_cast<int>(vec_HemisphereVerts.size() / 3);
+            if (!vec_HemisphereVerts.empty()) {
+                glGenVertexArrays(1, &m_VAO_PlayerHemisphere);
+                glGenBuffers(1, &m_VBO_PlayerHemisphere);
+                glBindVertexArray(m_VAO_PlayerHemisphere);
+                glBindBuffer(GL_ARRAY_BUFFER, m_VBO_PlayerHemisphere);
+                glBufferData(GL_ARRAY_BUFFER, vec_HemisphereVerts.size() * sizeof(float), vec_HemisphereVerts.data(), GL_STATIC_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+                glEnableVertexAttribArray(0);
+                glBindVertexArray(0);
+            }
+        }
+
+        void EmptyEnvironmentState::DestroyPlayerTokenGeometry() {
+            if (m_VBO_PlayerCylinder) {
+                glDeleteBuffers(1, &m_VBO_PlayerCylinder);
+                m_VBO_PlayerCylinder = 0;
+            }
+            if (m_VAO_PlayerCylinder) {
+                glDeleteVertexArrays(1, &m_VAO_PlayerCylinder);
+                m_VAO_PlayerCylinder = 0;
+            }
+            m_i_PlayerCylinderVertexCount = 0;
+
+            if (m_VBO_PlayerHemisphere) {
+                glDeleteBuffers(1, &m_VBO_PlayerHemisphere);
+                m_VBO_PlayerHemisphere = 0;
+            }
+            if (m_VAO_PlayerHemisphere) {
+                glDeleteVertexArrays(1, &m_VAO_PlayerHemisphere);
+                m_VAO_PlayerHemisphere = 0;
+            }
+            m_i_PlayerHemisphereVertexCount = 0;
+        }
+
+        const EmptyEnvironmentState::StationCircle* EmptyEnvironmentState::FindStationCircle(int stationID) const {
+            auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
+                [stationID](const StationCircle& sc) { return sc.stationID == stationID; });
+            if (it == m_vec_CircleStations.end()) {
+                return nullptr;
+            }
+            return &(*it);
+        }
+
+        void EmptyEnvironmentState::InitializeDebugPlayerTokens() {
+            m_vec_PlayerTokens.clear();
+            if (m_vec_CircleStations.empty()) {
+                return;
+            }
+
+            constexpr size_t k_DetectiveCount = 4;
+            const glm::vec3 vec3_DetectiveColor(0.0f, 0.0f, 1.0f);
+            size_t i_AvailableStations = m_vec_CircleStations.size();
+            size_t i_Stride = std::max<size_t>(1, i_AvailableStations / (k_DetectiveCount + 1));
+            size_t i_Cursor = 0;
+
+            for (size_t i_Index = 0; i_Index < k_DetectiveCount && i_Index < i_AvailableStations; ++i_Index) {
+                const auto& station = m_vec_CircleStations[i_Cursor % i_AvailableStations];
+                PlayerToken token{};
+                token.i_StationID = station.stationID;
+                token.vec3_Color = vec3_DetectiveColor;
+                token.b_IsMrX = false;
+                m_vec_PlayerTokens.push_back(token);
+                i_Cursor += i_Stride;
+            }
+
+            const auto& stationMrX = m_vec_CircleStations[i_Cursor % i_AvailableStations];
+            PlayerToken tokenMrX{};
+            tokenMrX.i_StationID = stationMrX.stationID;
+            tokenMrX.vec3_Color = glm::vec3(0.0f, 0.0f, 0.0f);
+            tokenMrX.b_IsMrX = true;
+            m_vec_PlayerTokens.push_back(tokenMrX);
+        }
+
+        void EmptyEnvironmentState::RenderPlayerTokens(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+            if (m_vec_PlayerTokens.empty() || !m_ShaderCircle || !m_VAO_PlayerCylinder || !m_VAO_PlayerHemisphere) {
+                return;
+            }
+
+            glUseProgram(m_ShaderCircle);
+            GLuint mvpLoc = glGetUniformLocation(m_ShaderCircle, "MVP");
+            GLuint colorLoc = glGetUniformLocation(m_ShaderCircle, "circleColor");
+
+            constexpr float k_PlayerScale = 0.5f;
+            constexpr float k_PlayerHover = 0.01f;
+            constexpr float k_PlayerHeadOffset = 0.125f;
+            constexpr float k_MultiTokenRadius = 0.03f;
+            constexpr float k_PlayerHeightScale = 2.5f;
+
+            std::unordered_map<int, std::vector<size_t>> map_TokensByStation;
+            for (size_t i_Index = 0; i_Index < m_vec_PlayerTokens.size(); ++i_Index) {
+                map_TokensByStation[m_vec_PlayerTokens[i_Index].i_StationID].push_back(i_Index);
+            }
+
+            for (const auto& pair_TokenEntry : map_TokensByStation) {
+                const StationCircle* p_Station = FindStationCircle(pair_TokenEntry.first);
+                if (!p_Station) {
+                    continue;
+                }
+
+                const auto& vec_TokenIndices = pair_TokenEntry.second;
+                for (size_t i_Order = 0; i_Order < vec_TokenIndices.size(); ++i_Order) {
+                    const auto& token = m_vec_PlayerTokens[vec_TokenIndices[i_Order]];
+
+                    float f_OffsetX = 0.0f;
+                    float f_OffsetZ = 0.0f;
+                    if (vec_TokenIndices.size() > 1) {
+                        float f_Angle = (2.0f * glm::pi<float>() * static_cast<float>(i_Order)) / static_cast<float>(vec_TokenIndices.size());
+                        f_OffsetX = k_MultiTokenRadius * cos(f_Angle);
+                        f_OffsetZ = k_MultiTokenRadius * sin(f_Angle);
+                    }
+
+                    glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(p_Station->position.x + f_OffsetX, k_PlayerHover,
+                            p_Station->position.y + f_OffsetZ));
+                    mat4_Model = glm::scale(mat4_Model, glm::vec3(k_PlayerScale, k_PlayerScale * k_PlayerHeightScale, k_PlayerScale));
+
+                    glm::vec3 vec3_DisplayColor = token.b_IsMrX ? glm::vec3(0.0f, 0.0f, 0.0f) : token.vec3_Color;
+                    glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_DisplayColor));
+
+                    glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+                    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+                    glBindVertexArray(m_VAO_PlayerCylinder);
+                    glDrawArrays(GL_TRIANGLES, 0, m_i_PlayerCylinderVertexCount);
+
+                    glm::mat4 mat4_HemiModel = glm::translate(mat4_Model, glm::vec3(0.0f, k_PlayerHeadOffset, 0.0f));
+                    glm::mat4 mat4_HemiMVP = mat4_Projection * mat4_View * mat4_HemiModel;
+                    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_HemiMVP));
+                    glBindVertexArray(m_VAO_PlayerHemisphere);
+                    glDrawArrays(GL_TRIANGLES, 0, m_i_PlayerHemisphereVertexCount);
+                }
+            }
+
+            glBindVertexArray(0);
+            glUseProgram(0);
         }
 
         void EmptyEnvironmentState::RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
