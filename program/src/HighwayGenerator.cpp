@@ -3762,6 +3762,28 @@ namespace CityGen {
         std::set<int> selectedNodeSet(m_StreetBranchNodes.begin(), m_StreetBranchNodes.end());
         
         // ============================================
+        // DIAGNOSTYKA: Sprawdź czy węzły mają połączenia drogowe
+        // ============================================
+        int nodesWithNoRoads = 0;
+        for (int i = 0; i < numGameNodes; ++i) {
+            int nodeIdx = m_StreetBranchNodes[i];
+            int validRoads = 0;
+            for (int roadIdx : m_RoadNodes[nodeIdx].connectedRoadIndices) {
+                if (roadIdx >= 0 && roadIdx < (int)m_Roads.size() && !m_Roads[roadIdx].isDeleted) {
+                    validRoads++;
+                }
+            }
+            if (validRoads == 0) {
+                nodesWithNoRoads++;
+                std::cout << "[GameConnections] WARNING: Game node " << (i+1) 
+                          << " (roadIdx=" << nodeIdx << ") has 0 valid road connections!" << std::endl;
+            }
+        }
+        if (nodesWithNoRoads > 0) {
+            std::cout << "[GameConnections] TOTAL nodes with no road connections: " << nodesWithNoRoads << std::endl;
+        }
+        
+        // ============================================
         // NAJPIERW: Zbuduj graf bezpośredniego sąsiedztwa (dla taxi i bus)
         // ============================================
         std::map<int, std::vector<std::pair<int, float>>> nodeNeighbors; // gameNum -> [(neighborGameNum, distance)]
@@ -3910,7 +3932,13 @@ namespace CityGen {
                 if (bestFrom != -1 && bestTo != -1) {
                     int minNode = std::min(bestFrom, bestTo);
                     int maxNode = std::max(bestFrom, bestTo);
-                    metroConnections.insert({minNode, maxNode});
+                    
+                    // Sprawdź czy połączenie metra nie przechodzi przez park
+                    const Point& posFrom = m_RoadNodes[gameNumberToNodeIdx[bestFrom]];
+                    const Point& posTo = m_RoadNodes[gameNumberToNodeIdx[bestTo]];
+                    if (!IsSegmentIntersectingPark(posFrom, posTo)) {
+                        metroConnections.insert({minNode, maxNode});
+                    }
                     connectedMetroStations.insert(bestTo);
                 }
             }
@@ -3928,6 +3956,10 @@ namespace CityGen {
                     
                     const Point& posA = m_RoadNodes[gameNumberToNodeIdx[nodeA]];
                     const Point& posB = m_RoadNodes[gameNumberToNodeIdx[nodeB]];
+                    
+                    // Sprawdź czy połączenie metra nie przechodzi przez park
+                    if (IsSegmentIntersectingPark(posA, posB)) continue;
+                    
                     float dist = std::sqrt((posB.x - posA.x) * (posB.x - posA.x) + 
                                           (posB.y - posA.y) * (posB.y - posA.y));
                     
@@ -3983,7 +4015,7 @@ namespace CityGen {
             {1, 0.15}, {2, 0.35}, {3, 0.30}, {4, 0.15}, {5, 0.05}
         };
         
-        const int TARGET_BUS_COUNT = 100;
+        const int TARGET_BUS_COUNT = 40;
         std::vector<std::pair<int,int>> selectedBus;
         std::default_random_engine rng(static_cast<unsigned>(std::time(nullptr)));
         
@@ -3992,20 +4024,112 @@ namespace CityGen {
             std::shuffle(candidates.begin(), candidates.end(), rng);
         }
         
-        // Wybierz połączenia zgodnie z rozkładem
+        // Licznik połączeń na węzeł (wszystkie typy)
+        std::map<int, int> connectionCountBusPhase;
+        for (int i = 1; i <= numGameNodes; ++i) connectionCountBusPhase[i] = 0;
+        // Dodaj metro do licznika
+        for (const auto& conn : metroConnections) {
+            connectionCountBusPhase[conn.first]++;
+            connectionCountBusPhase[conn.second]++;
+        }
+        // Wybierz połączenia zgodnie z rozkładem, nie przekraczając 5 połączeń na węzeł
         for (const auto& [hops, prob] : hopProbability) {
             int targetForHops = static_cast<int>(TARGET_BUS_COUNT * prob);
             auto& candidates = busCandidatesByHops[hops];
-            int toTake = std::min(targetForHops, static_cast<int>(candidates.size()));
-            
-            for (int i = 0; i < toTake; ++i) {
-                selectedBus.push_back(candidates[i]);
+            int toTake = static_cast<int>(candidates.size());
+            int added = 0;
+            for (int i = 0; i < toTake && added < targetForHops; ++i) {
+                int a = candidates[i].first;
+                int b = candidates[i].second;
+                if (connectionCountBusPhase[a] < 5 && connectionCountBusPhase[b] < 5) {
+                    selectedBus.push_back(candidates[i]);
+                    connectionCountBusPhase[a]++;
+                    connectionCountBusPhase[b]++;
+                    added++;
+                }
             }
-            std::cout << "[GameConnections] BUS " << hops << " hops: " << toTake 
+            std::cout << "[GameConnections] BUS " << hops << " hops: " << added 
                       << " (target: " << targetForHops << ", available: " << candidates.size() << ")" << std::endl;
         }
         
-        // Dodaj wybrane połączenia
+        // Walidacja BUS - usuń te które nie mają ścieżki drogowej lub przechodzą przez park
+        std::vector<std::pair<int,int>> validatedBus;
+        int busRemovedNoPath = 0, busRemovedPark = 0;
+        
+        for (const auto& conn : selectedBus) {
+            int nodeAIdx = gameNumberToNodeIdx[conn.first];
+            int nodeBIdx = gameNumberToNodeIdx[conn.second];
+            
+            // BFS po drogach aby znaleźć ścieżkę
+            std::queue<int> pathBfsQueue;
+            std::map<int, int> pathParent;
+            std::set<int> pathVisited;
+            
+            pathBfsQueue.push(nodeAIdx);
+            pathVisited.insert(nodeAIdx);
+            pathParent[nodeAIdx] = -1;
+            
+            bool pathFound = false;
+            while (!pathBfsQueue.empty() && !pathFound) {
+                int current = pathBfsQueue.front();
+                pathBfsQueue.pop();
+                
+                if (current == nodeBIdx) {
+                    pathFound = true;
+                    break;
+                }
+                
+                for (int roadIdx : m_RoadNodes[current].connectedRoadIndices) {
+                    if (roadIdx < 0 || roadIdx >= (int)m_Roads.size()) continue;
+                    if (m_Roads[roadIdx].isDeleted) continue;
+                    
+                    const Road& road = m_Roads[roadIdx];
+                    int neighbor = (road.startNodeIdx == current) ? road.endNodeIdx : road.startNodeIdx;
+                    
+                    if (pathVisited.count(neighbor)) continue;
+                    pathVisited.insert(neighbor);
+                    pathParent[neighbor] = current;
+                    pathBfsQueue.push(neighbor);
+                }
+            }
+            
+            if (!pathFound) {
+                busRemovedNoPath++;
+                continue; // Nie ma ścieżki drogowej - usuń
+            }
+            
+            // Odtwórz ścieżkę i sprawdź czy przechodzi przez park
+            std::vector<int> path;
+            int curr = nodeBIdx;
+            while (curr != -1) {
+                path.push_back(curr);
+                curr = pathParent[curr];
+            }
+            std::reverse(path.begin(), path.end());
+            
+            bool passesThroughPark = false;
+            for (size_t i = 0; i + 1 < path.size() && !passesThroughPark; ++i) {
+                const Point& p1 = m_RoadNodes[path[i]];
+                const Point& p2 = m_RoadNodes[path[i + 1]];
+                
+                if (IsSegmentIntersectingPark(p1, p2)) {
+                    passesThroughPark = true;
+                }
+            }
+            
+            if (passesThroughPark) {
+                busRemovedPark++;
+                continue; // Przechodzi przez park - usuń
+            }
+            
+            validatedBus.push_back(conn);
+        }
+        
+        selectedBus = validatedBus;
+        std::cout << "[GameConnections] BUS validation: removed " << busRemovedNoPath << " (no path), " 
+                  << busRemovedPark << " (through park)" << std::endl;
+        
+        // Dodaj wybrane połączenia BUS
         for (const auto& conn : selectedBus) {
             m_GameConnections.push_back(GameConnection(conn.first, conn.second, TransportType::BUS));
         }
@@ -4019,15 +4143,18 @@ namespace CityGen {
         
         std::set<std::pair<int,int>> taxiConnections;
         
-        // Funkcja licząca połączenia węzła (METRO + BUS + TAXI)
-        auto countNodeConnections = [&](int node) -> int {
+        // Funkcja licząca połączenia dowolnego typu węzła (BUS, TAXI, METRO)
+        auto countAllConnections = [&](int node) -> int {
             int count = 0;
-            for (const auto& conn : metroConnections) {
-                if (conn.first == node || conn.second == node) count++;
-            }
+            // BUS
             for (const auto& conn : selectedBus) {
                 if (conn.first == node || conn.second == node) count++;
             }
+            // METRO
+            for (const auto& conn : metroConnections) {
+                if (conn.first == node || conn.second == node) count++;
+            }
+            // TAXI
             for (const auto& conn : taxiConnections) {
                 if (conn.first == node || conn.second == node) count++;
             }
@@ -4068,63 +4195,38 @@ namespace CityGen {
             return (int)visited.size() == numGameNodes;
         };
         
-        // Faza 1: Każdy węzeł musi mieć min 2 połączenia
-        std::cout << "[GameConnections] Phase 1: Ensuring min 2 connections per node..." << std::endl;
+        // Faza 1: Iteracyjne budowanie TAXI z losowaniem dla 2-4 połączeń
+        std::cout << "[GameConnections] Phase 1: Iterative TAXI with randomization for 2-4 connections..." << std::endl;
         bool changed = true;
         int iterations = 0;
+        std::default_random_engine taxi_rng(static_cast<unsigned>(std::time(nullptr)));
+        std::uniform_int_distribution<int> coin_flip(0, 1);
         while (changed && iterations < 1000) {
             changed = false;
             iterations++;
-            
             for (int gameNum = 1; gameNum <= numGameNodes; ++gameNum) {
-                while (countNodeConnections(gameNum) < 2) {
+                int connCount = countAllConnections(gameNum);
+                if (connCount >= 5) continue;
+                if (connCount <= 1) {
+                    // Wymuś połączenie jak dotychczas
                     bool added = false;
-                    
-                    // Najpierw próbuj sąsiadów 1-hop (adjacencyGraph)
                     for (int neighbor : adjacencyGraph[gameNum]) {
                         int minN = std::min(gameNum, neighbor);
                         int maxN = std::max(gameNum, neighbor);
-                        
-                        // Sprawdź czy już nie ma tego połączenia
                         bool exists = taxiConnections.count({minN, maxN}) > 0;
-                        if (!exists) {
-                            for (const auto& conn : metroConnections) {
-                                if (conn.first == minN && conn.second == maxN) { exists = true; break; }
-                            }
-                        }
-                        if (!exists) {
-                            for (const auto& conn : selectedBus) {
-                                if (conn.first == minN && conn.second == maxN) { exists = true; break; }
-                            }
-                        }
-                        
-                        if (!exists) {
+                        if (!exists && countAllConnections(neighbor) < 5 && countAllConnections(gameNum) < 5) {
                             taxiConnections.insert({minN, maxN});
                             added = true;
                             changed = true;
                             break;
                         }
                     }
-                    
-                    // Jeśli nie znaleziono w adjacencyGraph, użyj nodeNeighbors
                     if (!added && nodeNeighbors.count(gameNum)) {
                         for (const auto& [neighborNum, dist] : nodeNeighbors[gameNum]) {
                             int minN = std::min(gameNum, neighborNum);
                             int maxN = std::max(gameNum, neighborNum);
-                            
                             bool exists = taxiConnections.count({minN, maxN}) > 0;
-                            if (!exists) {
-                                for (const auto& conn : metroConnections) {
-                                    if (conn.first == minN && conn.second == maxN) { exists = true; break; }
-                                }
-                            }
-                            if (!exists) {
-                                for (const auto& conn : selectedBus) {
-                                    if (conn.first == minN && conn.second == maxN) { exists = true; break; }
-                                }
-                            }
-                            
-                            if (!exists) {
+                            if (!exists && countAllConnections(neighborNum) < 5 && countAllConnections(gameNum) < 5) {
                                 taxiConnections.insert({minN, maxN});
                                 added = true;
                                 changed = true;
@@ -4132,12 +4234,83 @@ namespace CityGen {
                             }
                         }
                     }
-                    
-                    if (!added) break; // Nie ma więcej sąsiadów
+                } else if (connCount >= 2 && connCount <= 4) {
+                    // Losuj czy dodać połączenie (50%)
+                    if (coin_flip(taxi_rng) == 1) {
+                        bool added = false;
+                        for (int neighbor : adjacencyGraph[gameNum]) {
+                            int minN = std::min(gameNum, neighbor);
+                            int maxN = std::max(gameNum, neighbor);
+                            bool exists = taxiConnections.count({minN, maxN}) > 0;
+                            if (!exists && countAllConnections(neighbor) < 5 && countAllConnections(gameNum) < 5) {
+                                taxiConnections.insert({minN, maxN});
+                                added = true;
+                                changed = true;
+                                break;
+                            }
+                        }
+                        if (!added && nodeNeighbors.count(gameNum)) {
+                            for (const auto& [neighborNum, dist] : nodeNeighbors[gameNum]) {
+                                int minN = std::min(gameNum, neighborNum);
+                                int maxN = std::max(gameNum, neighborNum);
+                                bool exists = taxiConnections.count({minN, maxN}) > 0;
+                                if (!exists && countAllConnections(neighborNum) < 5 && countAllConnections(gameNum) < 5) {
+                                    taxiConnections.insert({minN, maxN});
+                                    added = true;
+                                    changed = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
         std::cout << "[GameConnections] Phase 1 done: " << taxiConnections.size() << " TAXI after " << iterations << " iterations" << std::endl;
+
+        // Faza 1.5: Węzły z < 2 połączeniami TAXI - połącz z najbliższymi po współrzędnych
+        std::cout << "[GameConnections] Phase 1.5: Fixing nodes with < 2 TAXI connections (by distance)..." << std::endl;
+        int phase15Added = 0;
+        for (int gameNum = 1; gameNum <= numGameNodes; ++gameNum) {
+            while (countAllConnections(gameNum) < 2) {
+                // Znajdź najbliższy węzeł po współrzędnych
+                const Point& pos = m_RoadNodes[gameNumberToNodeIdx[gameNum]];
+                int bestNeighbor = -1;
+                float bestDist = 1e9f;
+                
+                for (int otherNum = 1; otherNum <= numGameNodes; ++otherNum) {
+                    if (otherNum == gameNum) continue;
+                    
+                    int minN = std::min(gameNum, otherNum);
+                    int maxN = std::max(gameNum, otherNum);
+                    
+                    // Sprawdź czy już nie ma tego połączenia TAXI
+                    bool exists = taxiConnections.count({minN, maxN}) > 0;
+                    if (exists) continue;
+                    
+                    const Point& otherPos = m_RoadNodes[gameNumberToNodeIdx[otherNum]];
+                    float dist = std::sqrt((otherPos.x - pos.x) * (otherPos.x - pos.x) + 
+                                          (otherPos.y - pos.y) * (otherPos.y - pos.y));
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestNeighbor = otherNum;
+                    }
+                }
+                
+                if (bestNeighbor != -1) {
+                    int minN = std::min(gameNum, bestNeighbor);
+                    int maxN = std::max(gameNum, bestNeighbor);
+                    taxiConnections.insert({minN, maxN});
+                    phase15Added++;
+                    std::cout << "[GameConnections] Phase 1.5: Connected node " << gameNum 
+                              << " to " << bestNeighbor << " (dist: " << bestDist << ")" << std::endl;
+                } else {
+                    std::cout << "[GameConnections] WARNING: Node " << gameNum << " cannot find any neighbor!" << std::endl;
+                    break;
+                }
+            }
+        }
+        std::cout << "[GameConnections] Phase 1.5 done: added " << phase15Added << " connections" << std::endl;
         
         // Faza 2: Zapewnij spójność grafu
         std::cout << "[GameConnections] Phase 2: Ensuring graph connectivity..." << std::endl;
@@ -4237,52 +4410,6 @@ namespace CityGen {
             std::cout << "[GameConnections] Unreachable nodes: " << unreachableNodes.size() << std::endl;
         }
         
-        // ============================================
-        // Faza 3: Dodatkowe TAXI - tylko do najbliższego sąsiada z 50% prawdopodobieństwem
-        // ============================================
-        std::cout << "[GameConnections] Phase 3: Adding extra TAXI (50% for closest neighbor)..." << std::endl;
-        int extraTaxiAdded = 0;
-        
-        for (int gameNum = 1; gameNum <= numGameNodes; ++gameNum) {
-            // Użyj nodeNeighbors (posortowanych po odległości)
-            if (!nodeNeighbors.count(gameNum)) continue;
-            
-            auto neighbors = nodeNeighbors[gameNum];
-            std::sort(neighbors.begin(), neighbors.end(),
-                [](const auto& a, const auto& b) { return a.second < b.second; });
-            
-            // Tylko najbliższy sąsiad
-            for (const auto& [neighbor, dist] : neighbors) {
-                if (neighbor <= gameNum) continue; // Unikaj duplikatów
-                
-                int minN = std::min(gameNum, neighbor);
-                int maxN = std::max(gameNum, neighbor);
-                
-                // Sprawdź czy już nie ma tego połączenia
-                if (taxiConnections.count({minN, maxN})) break;
-                
-                // Sprawdź czy nie ma w METRO lub BUS
-                bool exists = false;
-                for (const auto& conn : metroConnections) {
-                    if (conn.first == minN && conn.second == maxN) { exists = true; break; }
-                }
-                if (!exists) {
-                    for (const auto& conn : selectedBus) {
-                        if (conn.first == minN && conn.second == maxN) { exists = true; break; }
-                    }
-                }
-                if (exists) break;
-                
-                // 50% szans na dodanie
-                if (rand() % 100 < 50) {
-                    taxiConnections.insert({minN, maxN});
-                    extraTaxiAdded++;
-                }
-                break; // Tylko jeden (najbliższy) sąsiad
-            }
-        }
-        std::cout << "[GameConnections] Phase 3 done: added " << extraTaxiAdded << " extra TAXI" << std::endl;
-        
         // Dodaj finalne TAXI
         for (const auto& conn : taxiConnections) {
             m_GameConnections.push_back(GameConnection(conn.first, conn.second, TransportType::TAXI));
@@ -4301,6 +4428,72 @@ namespace CityGen {
             finalAdj[conn.destNode].insert(conn.sourceNode);
         }
         
+        // ============================================
+        // OGRANICZENIE: Usuwanie nadmiarowych krawędzi z węzłów >5 połączeń
+        // ============================================
+        {
+            int finalNodeCount = static_cast<int>(m_StreetBranchNodes.size());
+            std::map<int, std::set<int>> nodeToNeighbors;
+            std::map<int, int> connectionCount;
+            for (int i = 1; i <= finalNodeCount; ++i) connectionCount[i] = 0;
+            for (const auto& conn : m_GameConnections) {
+                nodeToNeighbors[conn.sourceNode].insert(conn.destNode);
+                nodeToNeighbors[conn.destNode].insert(conn.sourceNode);
+                connectionCount[conn.sourceNode]++;
+                connectionCount[conn.destNode]++;
+            }
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                for (int node = 1; node <= finalNodeCount; ++node) {
+                    while (connectionCount[node] > 5 && !nodeToNeighbors[node].empty()) {
+                        // Znajdź sąsiada o największej liczbie połączeń
+                        int maxNeighbor = -1;
+                        int maxDegree = -1;
+                        for (int neighbor : nodeToNeighbors[node]) {
+                            if (connectionCount[neighbor] > maxDegree) {
+                                maxDegree = connectionCount[neighbor];
+                                maxNeighbor = neighbor;
+                            }
+                        }
+                        if (maxNeighbor == -1) break;
+                        // Usuń krawędź node <-> maxNeighbor
+                        auto it = m_GameConnections.begin();
+                        while (it != m_GameConnections.end()) {
+                            bool match =
+                                (it->sourceNode == node && it->destNode == maxNeighbor) ||
+                                (it->sourceNode == maxNeighbor && it->destNode == node);
+                            if (match) {
+                                it = m_GameConnections.erase(it);
+                                connectionCount[node]--;
+                                connectionCount[maxNeighbor]--;
+                                nodeToNeighbors[node].erase(maxNeighbor);
+                                nodeToNeighbors[maxNeighbor].erase(node);
+                                changed = true;
+                                break;
+                            } else {
+                                ++it;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Usuwanie duplikatów połączeń (1-5 == 5-1)
+    {
+        std::set<std::tuple<int, int, TransportType>> uniqueConns;
+        std::vector<GameConnection> deduped;
+        for (const auto& conn : m_GameConnections) {
+            int a = std::min(conn.sourceNode, conn.destNode);
+            int b = std::max(conn.sourceNode, conn.destNode);
+            auto key = std::make_tuple(a, b, conn.type);
+            if (uniqueConns.insert(key).second) {
+                deduped.push_back(conn);
+            }
+        }
+        m_GameConnections = deduped;
+    }
         // Znajdź wszystkie komponenty
         std::set<int> allVisited;
         std::vector<std::set<int>> components;
@@ -4411,6 +4604,31 @@ namespace CityGen {
         std::cout << "  - Bus: " << finalBus << std::endl;
         std::cout << "  - Taxi: " << finalTaxi << std::endl;
         std::cout << "  - Total: " << m_GameConnections.size() << std::endl;
+        
+        // ============================================
+        // STATYSTYKI POŁĄCZEŃ NA WĘZEŁ
+        // ============================================
+        std::cout << "\n[GameConnections] === NODE CONNECTION STATISTICS ===" << std::endl;
+        int finalNodeCount = static_cast<int>(m_StreetBranchNodes.size());
+        std::map<int, int> connectionCount; // gameNum -> liczba połączeń
+        for (int i = 1; i <= finalNodeCount; ++i) {
+            connectionCount[i] = 0;
+        }
+        for (const auto& conn : m_GameConnections) {
+            connectionCount[conn.sourceNode]++;
+            connectionCount[conn.destNode]++;
+        }
+        
+        // Zlicz ile węzłów ma daną liczbę połączeń
+        std::map<int, int> histogram; // liczba połączeń -> ile węzłów
+        for (int i = 1; i <= finalNodeCount; ++i) {
+            histogram[connectionCount[i]]++;
+        }
+        
+        std::cout << "  Nodes by connection count:" << std::endl;
+        for (const auto& [connCnt, nodeCnt] : histogram) {
+            std::cout << "    " << connCnt << " connections: " << nodeCnt << " nodes" << std::endl;
+        }
         std::cout << "[GameConnections] =======================================" << std::endl;
     }
     
