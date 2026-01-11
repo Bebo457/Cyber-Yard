@@ -1272,8 +1272,16 @@ namespace ScotlandYard
             };
             
             int taxiDrawn = 0, busDrawn = 0, metroDrawn = 0, waterDrawn = 0;
-            int busPathsDrawn = 0;  // Licznik busów rysowanych po ścieżce
-            const int MAX_BUS_PATHS = 20;  // Limit busów rysowanych po ścieżce
+            
+            // Policz ile jest połączeń każdego typu w danych
+            int totalTaxi = 0, totalBus = 0, totalMetro = 0;
+            for (const auto& conn : m_vec_GameConnections) {
+                if (conn.type == CityGen::TransportType::TAXI) totalTaxi++;
+                else if (conn.type == CityGen::TransportType::BUS) totalBus++;
+                else if (conn.type == CityGen::TransportType::METRO) totalMetro++;
+            }
+            std::cout << "[PreviewTexture] Connections in data - Taxi: " << totalTaxi 
+                      << ", Bus: " << totalBus << ", Metro: " << totalMetro << std::endl;
             
             // Zbiór węzłów stacji BUS (tylko te z rysowanych połączeń)
             std::set<int> drawnBusStationNodes;
@@ -1308,8 +1316,8 @@ namespace ScotlandYard
                 for (auto transportType : filteredTypes) {
                     auto [r, g, b] = GetTransportColor(transportType);
                     
-                    // Dla BUS - rysuj wzdłuż drogi (tylko pierwsze MAX_BUS_PATHS)
-                    if (transportType == CityGen::TransportType::BUS && busPathsDrawn < MAX_BUS_PATHS) {
+                    // Dla BUS - rysuj wzdłuż drogi (wszystkie BUS są zwalidowane w generatorze)
+                    if (transportType == CityGen::TransportType::BUS) {
                         // BFS do znalezienia ścieżki
                         std::queue<int> pathBfsQueue;
                         std::map<int, int> pathParent;
@@ -1353,51 +1361,23 @@ namespace ScotlandYard
                             }
                             std::reverse(path.begin(), path.end());
                             
-                            // Sprawdź czy ścieżka przechodzi przez park
-                            bool passesThroughPark = false;
-                            for (size_t i = 0; i + 1 < path.size() && !passesThroughPark; ++i) {
+                            // Rysuj segmenty ścieżki
+                            for (size_t i = 0; i + 1 < path.size(); ++i) {
                                 const auto& p1 = m_vec_HighwayNodes[path[i]];
                                 const auto& p2 = m_vec_HighwayNodes[path[i + 1]];
-                                
-                                // Sprawdź punkty wzdłuż segmentu (co 5 pikseli)
-                                float dx = p2.x - p1.x;
-                                float dy = p2.y - p1.y;
-                                float segLen = std::sqrt(dx * dx + dy * dy);
-                                int steps = std::max(1, static_cast<int>(segLen / 5.0f));
-                                
-                                for (int s = 0; s <= steps && !passesThroughPark; ++s) {
-                                    float t = static_cast<float>(s) / steps;
-                                    float px = p1.x + dx * t;
-                                    float py = p1.y + dy * t;
-                                    
-                                    for (const auto& park : m_vec_Parks) {
-                                        if (park.ContainsPoint(px, py)) {
-                                            passesThroughPark = true;
-                                            break;
-                                        }
-                                    }
-                                }
+                                DrawThickLine(static_cast<int>(p1.x), static_cast<int>(p1.y),
+                                              static_cast<int>(p2.x), static_cast<int>(p2.y), 4, r, g, b);
                             }
-                            
-                            if (!passesThroughPark) {
-                                // Rysuj segmenty ścieżki
-                                for (size_t i = 0; i + 1 < path.size(); ++i) {
-                                    const auto& p1 = m_vec_HighwayNodes[path[i]];
-                                    const auto& p2 = m_vec_HighwayNodes[path[i + 1]];
-                                    DrawThickLine(static_cast<int>(p1.x), static_cast<int>(p1.y),
-                                                  static_cast<int>(p2.x), static_cast<int>(p2.y), 4, r, g, b);
-                                }
-                                busPathsDrawn++;
-                                busDrawn++;
-                                
-                                // Dodaj początek i koniec do stacji BUS
-                                drawnBusStationNodes.insert(nodeAIdx);
-                                drawnBusStationNodes.insert(nodeBIdx);
-                            }
-                            // Jeśli przechodzi przez park - pomijamy to połączenie
+                            busDrawn++;
+                            drawnBusStationNodes.insert(nodeAIdx);
+                            drawnBusStationNodes.insert(nodeBIdx);
+                        } else {
+                            // Fallback - rysuj linię prostą (nie powinno się zdarzyć po walidacji)
+                            DrawThickLine(x1, y1, x2, y2, 4, r, g, b);
+                            busDrawn++;
+                            drawnBusStationNodes.insert(nodeAIdx);
+                            drawnBusStationNodes.insert(nodeBIdx);
                         }
-                    } else if (transportType == CityGen::TransportType::BUS) {
-                        // BUS ponad limit - nie rysuj i nie licz jako stacja
                     } else if (transportType == CityGen::TransportType::METRO) {
                         // METRO - rysuj linię prostą (grubość 5)
                         DrawThickLine(x1, y1, x2, y2, 5, r, g, b);
@@ -1456,6 +1436,10 @@ namespace ScotlandYard
                                               static_cast<int>(p2.x), static_cast<int>(p2.y), 2, r, g, b);
                             }
                             taxiDrawn++;
+                        } else {
+                            // Fallback: rysuj linię prostą jeśli BFS nie znalazł ścieżki
+                            DrawThickLine(x1, y1, x2, y2, 2, r, g, b);
+                            taxiDrawn++;
                         }
                     }
                 }
@@ -1464,6 +1448,48 @@ namespace ScotlandYard
             std::cout << "[PreviewTexture] Game connections drawn - Taxi: " << taxiDrawn 
                       << ", Bus: " << busDrawn << ", Metro: " << metroDrawn 
                       << ", Water: " << waterDrawn << std::endl;
+            
+            // Diagnostyka: sprawdź które węzły nie mają żadnych narysowanych połączeń
+            std::map<int, int> drawnConnectionsPerNode;
+            for (int i = 1; i <= (int)m_vec_StreetBranchNodes.size(); ++i) {
+                drawnConnectionsPerNode[i] = 0;
+            }
+            
+            // Zbuduj odwrotne mapowanie: nodeIdx -> gameNumber
+            std::map<int, int> nodeIdxToGameNum;
+            for (const auto& [gameNum, nodeIdx] : gameNumberToNodeIdx) {
+                nodeIdxToGameNum[nodeIdx] = gameNum;
+            }
+            
+            // Policz dla każdego węzła ile ma narysowanych połączeń
+            // (taxi zawsze rysowane, bus i metro zliczane przez stacje)
+            for (const auto& conn : m_vec_GameConnections) {
+                if (conn.type == CityGen::TransportType::TAXI) {
+                    drawnConnectionsPerNode[conn.sourceNode]++;
+                    drawnConnectionsPerNode[conn.destNode]++;
+                }
+            }
+            for (int nodeIdx : drawnBusStationNodes) {
+                if (nodeIdxToGameNum.count(nodeIdx)) {
+                    drawnConnectionsPerNode[nodeIdxToGameNum[nodeIdx]]++;
+                }
+            }
+            for (int nodeIdx : drawnMetroStationNodes) {
+                if (nodeIdxToGameNum.count(nodeIdx)) {
+                    drawnConnectionsPerNode[nodeIdxToGameNum[nodeIdx]]++;
+                }
+            }
+            
+            int nodesWithZeroDrawn = 0;
+            for (int i = 1; i <= (int)m_vec_StreetBranchNodes.size(); ++i) {
+                if (drawnConnectionsPerNode[i] == 0) {
+                    nodesWithZeroDrawn++;
+                    std::cout << "[PreviewTexture] WARNING: Node " << i << " has 0 drawn connections!" << std::endl;
+                }
+            }
+            if (nodesWithZeroDrawn > 0) {
+                std::cout << "[PreviewTexture] TOTAL nodes with 0 drawn connections: " << nodesWithZeroDrawn << std::endl;
+            }
 
             // ============================================
             // 6.6 RYSUJ ROZGAŁĘZIENIA STREETS (CZERWONE KROPKI)
