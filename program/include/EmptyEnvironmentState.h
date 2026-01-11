@@ -32,6 +32,7 @@ namespace ScotlandYard {
                 const std::vector<CityGen::Road>& vec_Roads,
                 const std::vector<MapGen::Park>& vec_Parks,
                 const std::vector<MapGen::Point>& vec_RiverPath,
+                const std::vector<CityGen::Highway>& vec_Highways,
                 const std::vector<MapGen::BuildingData>& vec_Buildings = std::vector<MapGen::BuildingData>()
             );
             // -----------------------------------------------------
@@ -69,6 +70,18 @@ namespace ScotlandYard {
 
             // Road material/texture
             GLuint m_TexRoad = 0;
+
+            struct RoadMesh {
+                GLuint VAO;
+                GLuint VBO;
+                GLuint EBO;
+                int indexCount;
+            };
+            std::vector<RoadMesh> m_RoadMeshes;
+
+            std::vector<CityGen::Point> m_vec_HighwayNodes;
+            std::vector<CityGen::Road>  m_vec_HighwayRoads;
+            std::vector<CityGen::Highway> m_vec_Highways;
 
             // Bridge mesh
             GLuint m_VAO_Bridge = 0;
@@ -206,6 +219,8 @@ namespace ScotlandYard {
             void AccelerateCameraRight(float f_DeltaTime);
             void UpdateCameraPhysics(float f_DeltaTime);
             void CreateTestRoad(Core::Application* p_App);
+
+            void BuildHighwaysFromMapData(Core::Application* p_App);
         };
 
     } // namespace States
