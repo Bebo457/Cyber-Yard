@@ -52,6 +52,8 @@ namespace ScotlandYard {
             // Rendering
             GLuint m_VAO_Plane = 0;
             GLuint m_VBO_Plane = 0;
+            GLuint m_VAO_Frame = 0;
+            GLuint m_VBO_Frame = 0;
             GLuint m_ShaderProgram = 0;
             GLuint m_ShaderBridge = 0;
 
@@ -168,6 +170,7 @@ namespace ScotlandYard {
 
             // Private methods
             void CreatePlane();
+            void CreateFrame();
             void CreateShaders();
             void TryLoadGeneratedMap(Core::Application* p_App);
             void LoadPolygonData(Core::Application* p_App);

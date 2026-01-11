@@ -636,6 +636,105 @@ namespace States {
             glBindVertexArray(0);
         }
 
+        void EmptyEnvironmentState::CreateFrame() {
+            float frameWidth = 0.8f;
+            float frameHeight = 0.12f;
+            float innerLip = 0.0f;
+            float frameY = 0.01f;
+
+            std::vector<float> frameVertices;
+            auto addQuad = [&](float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3, float x4, float y4, float z4) {
+                frameVertices.insert(frameVertices.end(), {x1, y1, z1, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+                frameVertices.insert(frameVertices.end(), {x2, y2, z2, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f});
+                frameVertices.insert(frameVertices.end(), {x3, y3, z3, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f});
+                frameVertices.insert(frameVertices.end(), {x1, y1, z1, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+                frameVertices.insert(frameVertices.end(), {x3, y3, z3, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f});
+                frameVertices.insert(frameVertices.end(), {x4, y4, z4, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f});
+            };
+
+            float boardLeft = -1.0f;
+            float boardRight = 23.0f;
+            float boardTop = 17.0f;
+            float boardBottom = -1.0f;
+            // === TOP EDGE ===
+            addQuad(boardLeft - frameWidth, frameY, boardTop + frameWidth,
+                   boardRight + frameWidth, frameY, boardTop + frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardLeft - frameWidth, frameY + frameHeight, boardTop - innerLip,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop - innerLip,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardLeft - innerLip, frameY, boardTop - innerLip,
+                   boardRight + innerLip, frameY, boardTop - innerLip,
+                   boardRight + innerLip, frameY + frameHeight, boardTop - innerLip,
+                   boardLeft - innerLip, frameY + frameHeight, boardTop - innerLip);
+
+            // === LEFT EDGE ===
+            addQuad(boardLeft - frameWidth, frameY, boardBottom - frameWidth,
+                   boardLeft - frameWidth, frameY, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom - frameWidth);
+
+            addQuad(boardLeft - frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardBottom - frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft - frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardLeft + innerLip, frameY, boardBottom - frameWidth,
+                   boardLeft + innerLip, frameY, boardTop + frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardTop + frameWidth,
+                   boardLeft + innerLip, frameY + frameHeight, boardBottom - frameWidth);
+
+            // === RIGHT EDGE ===
+            addQuad(boardRight + frameWidth, frameY, boardTop + frameWidth,
+                   boardRight + frameWidth, frameY, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardRight - innerLip, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardTop + frameWidth,
+                   boardRight - innerLip, frameY + frameHeight, boardTop + frameWidth);
+
+            addQuad(boardRight - innerLip, frameY, boardTop + frameWidth,
+                   boardRight - innerLip, frameY, boardBottom - frameWidth,
+                   boardRight - innerLip, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight - innerLip, frameY + frameHeight, boardTop + frameWidth);
+
+            // === BOTTOM EDGE ===
+            addQuad(boardRight + frameWidth, frameY, boardBottom,
+                   boardLeft - frameWidth, frameY, boardBottom,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom);
+
+            addQuad(boardLeft - frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom - frameWidth,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom + innerLip,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom + innerLip);
+
+            addQuad(boardRight + frameWidth, frameY, boardBottom + innerLip,
+                   boardLeft - frameWidth, frameY, boardBottom + innerLip,
+                   boardLeft - frameWidth, frameY + frameHeight, boardBottom + innerLip,
+                   boardRight + frameWidth, frameY + frameHeight, boardBottom + innerLip);
+
+            glGenVertexArrays(1, &m_VAO_Frame);
+            glGenBuffers(1, &m_VBO_Frame);
+            glBindVertexArray(m_VAO_Frame);
+            glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Frame);
+            glBufferData(GL_ARRAY_BUFFER, frameVertices.size() * sizeof(float), frameVertices.data(), GL_STATIC_DRAW);
+
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+            glEnableVertexAttribArray(2);
+            glBindVertexArray(0);
+        }
+
         void EmptyEnvironmentState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
             (void)p_App;
 
@@ -689,6 +788,7 @@ namespace States {
                 glEnable(GL_DEPTH_TEST);
                 CreateShaders();
                 CreatePlane();
+                CreateFrame();
                 m_TexSidewalk = p_App->LoadTexture(p_App->GetAssetPath("textures/sidewalk.jpg"));
                 m_TexGrass = p_App->LoadTexture(p_App->GetAssetPath("textures/grass.png"));
                 TryLoadGeneratedMap(p_App);
@@ -780,6 +880,14 @@ namespace States {
             if (m_VAO_Plane) {
                 glDeleteVertexArrays(1, &m_VAO_Plane);
                 m_VAO_Plane = 0;
+            }
+            if (m_VBO_Frame) {
+                glDeleteBuffers(1, &m_VBO_Frame);
+                m_VBO_Frame = 0;
+            }
+            if (m_VAO_Frame) {
+                glDeleteVertexArrays(1, &m_VAO_Frame);
+                m_VAO_Frame = 0;
             }
             if (m_ShaderProgram) {
                 glDeleteProgram(m_ShaderProgram);
@@ -1099,6 +1207,30 @@ namespace States {
                 }
 
                 glDisable(GL_POLYGON_OFFSET_FILL);
+            }
+
+            if (m_VAO_Frame) {
+                GLint previousProgram = 0;
+                GLint previousVAO = 0;
+                glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+                glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+                GLboolean wasCullingEnabled = glIsEnabled(GL_CULL_FACE);
+                glDisable(GL_CULL_FACE);
+
+                glUseProgram(m_ShaderBridge);
+                glm::mat4 mat4_MVP_Frame = mat4_Projection * mat4_View;
+                glUniformMatrix4fv(glGetUniformLocation(m_ShaderBridge, "uMVP"), 1, GL_FALSE, glm::value_ptr(mat4_MVP_Frame));
+                glUniformMatrix4fv(glGetUniformLocation(m_ShaderBridge, "uModel"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+                glUniform3f(glGetUniformLocation(m_ShaderBridge, "uColor"), 0.545f, 0.353f, 0.169f);
+                glUniform1i(glGetUniformLocation(m_ShaderBridge, "uHasTex"), 0);
+                glBindVertexArray(m_VAO_Frame);
+                glDrawArrays(GL_TRIANGLES, 0, 72);
+
+                glBindVertexArray(previousVAO);
+                glUseProgram(previousProgram);
+                if (wasCullingEnabled) {
+                    glEnable(GL_CULL_FACE);
+                }
             }
 
             // HUD
