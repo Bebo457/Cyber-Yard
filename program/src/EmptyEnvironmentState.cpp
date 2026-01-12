@@ -371,9 +371,9 @@ void main()
     constexpr float k_PlayerMultiRadius = 0.03f;
     constexpr float k_TokenClickRadiusPx = 32.0f;
     constexpr float k_DestinationClickRadiusPx = 28.0f;
-    constexpr float k_TransportButtonClickRadiusPx = 26.0f;
-    constexpr float k_TransportButtonRadius = 5.0f;
-    constexpr float k_TransportButtonOrbitScale = 0.6f;
+    constexpr float k_TransportButtonClickRadiusPx = 52.0f;
+    constexpr float k_TransportButtonRadius = 16.0f;
+    constexpr float k_TransportButtonOrbitScale = 1.2f;
     constexpr float k_HighlightBaseScale = 18.0f;
     constexpr float k_HighlightPulseScale = 6.0f;
     constexpr float k_HighlightInnerScale = 11.0f;
@@ -3394,6 +3394,7 @@ namespace ScotlandYard {
                 token.busTickets = Core::k_DetectiveBusTickets;
                 token.metroTickets = Core::k_DetectiveMetroTickets;
                 token.blackTickets = 0;
+                token.doubleTickets = 0;
                 m_vec_PlayerTokens.push_back(token);
                 i_Cursor += i_Stride;
             }
@@ -3407,11 +3408,21 @@ namespace ScotlandYard {
             tokenMrX.busTickets = Core::k_MrXBusTickets;
             tokenMrX.metroTickets = Core::k_MrXMetroTickets;
             tokenMrX.blackTickets = Core::k_MrXBlackTickets;
+            tokenMrX.doubleTickets = Core::k_MrXDoubleMoveTickets;
             m_vec_PlayerTokens.push_back(tokenMrX);
+
+            m_i_MrXTokenIndex = static_cast<int>(m_vec_PlayerTokens.size()) - 1;
+            m_vec_TokenMovedThisRound.assign(m_vec_PlayerTokens.size(), false);
+            m_i_CurrentRound = 1;
+            m_b_IsMrXTurn = true;
+            m_b_MrXSecondMovePending = false;
 
             ClearMovementSelection();
             m_i_SelectedStationID = -1;
             m_vec_HighlightedStations.clear();
+            UI::ClearMrXSelections();
+            UI::SetRound(m_i_CurrentRound);
+            UpdateMrXButtonStates();
         }
 
         void EmptyEnvironmentState::RenderPlayerTokens(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
@@ -3732,8 +3743,121 @@ namespace ScotlandYard {
             m_vec_HighlightedStations.clear();
         }
 
+        bool EmptyEnvironmentState::IsTokenSelectable(size_t i_TokenIndex) const {
+            if (i_TokenIndex >= m_vec_PlayerTokens.size()) {
+                return false;
+            }
+
+            const auto& token = m_vec_PlayerTokens[i_TokenIndex];
+            if (token.i_StationID < 0) {
+                return false;
+            }
+
+            bool b_HasMoved = (i_TokenIndex < m_vec_TokenMovedThisRound.size()) ?
+                m_vec_TokenMovedThisRound[i_TokenIndex] : false;
+
+            if (token.b_IsMrX) {
+                if (!m_b_IsMrXTurn) {
+                    return false;
+                }
+                if (b_HasMoved && !m_b_MrXSecondMovePending) {
+                    return false;
+                }
+                return true;
+            }
+
+            if (m_i_CurrentRound < 2) {
+                return false;
+            }
+
+            if (m_b_IsMrXTurn) {
+                return false;
+            }
+
+            return !b_HasMoved;
+        }
+
+        void EmptyEnvironmentState::AdvanceRoundIfNeeded() {
+            if (m_vec_PlayerTokens.empty()) {
+                return;
+            }
+
+            if (m_vec_TokenMovedThisRound.size() != m_vec_PlayerTokens.size()) {
+                m_vec_TokenMovedThisRound.resize(m_vec_PlayerTokens.size(), false);
+            }
+
+            bool b_AllMoved = true;
+            for (size_t i = 0; i < m_vec_PlayerTokens.size(); ++i) {
+                const auto& token = m_vec_PlayerTokens[i];
+                bool b_ShouldMove = token.b_IsMrX || m_i_CurrentRound >= 2;
+                if (!b_ShouldMove) {
+                    continue;
+                }
+
+                if (!m_vec_TokenMovedThisRound[i]) {
+                    b_AllMoved = false;
+                    break;
+                }
+            }
+
+            if (!b_AllMoved) {
+                return;
+            }
+
+            ++m_i_CurrentRound;
+            m_b_IsMrXTurn = true;
+            m_b_MrXSecondMovePending = false;
+            std::fill(m_vec_TokenMovedThisRound.begin(), m_vec_TokenMovedThisRound.end(), false);
+            ClearMovementSelection();
+            m_i_SelectedStationID = -1;
+            UI::ClearMrXSelections();
+            UI::SetRound(m_i_CurrentRound);
+            UpdateMrXButtonStates();
+
+            std::cout << "[EmptyEnvironmentState] Starting round " << m_i_CurrentRound << std::endl;
+            if (m_i_CurrentRound == 2) {
+                std::cout << "[EmptyEnvironmentState] Detectives are now allowed to move." << std::endl;
+            }
+        }
+
+        void EmptyEnvironmentState::UpdateMrXButtonStates() {
+            if (m_i_MrXTokenIndex < 0 ||
+                m_i_MrXTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                UI::SetMrXButtonsVisible(false);
+                UI::SetMrXButtonsEnabled(false, false);
+                return;
+            }
+
+            const auto& mrX = m_vec_PlayerTokens[static_cast<size_t>(m_i_MrXTokenIndex)];
+            bool b_ShowButtons = m_b_IsMrXTurn;
+            UI::SetMrXButtonsVisible(b_ShowButtons);
+
+            if (!b_ShowButtons) {
+                UI::SetMrXButtonsEnabled(false, false);
+                return;
+            }
+
+            bool b_BlackEnabled = mrX.blackTickets > 0;
+            bool b_DoubleEnabled = mrX.doubleTickets > 0 && !m_b_MrXSecondMovePending;
+            UI::SetMrXButtonsEnabled(b_BlackEnabled, b_DoubleEnabled);
+        }
+
         void EmptyEnvironmentState::SelectPlayerToken(int i_TokenIndex) {
             if (i_TokenIndex < 0 || i_TokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return;
+            }
+
+            if (!IsTokenSelectable(static_cast<size_t>(i_TokenIndex))) {
+                const auto& token = m_vec_PlayerTokens[static_cast<size_t>(i_TokenIndex)];
+                if (token.b_IsMrX && !m_b_IsMrXTurn) {
+                    std::cout << "[EmptyEnvironmentState] Mr X already moved this phase." << std::endl;
+                }
+                else if (!token.b_IsMrX && m_i_CurrentRound < 2) {
+                    std::cout << "[EmptyEnvironmentState] Detectives become active starting from round 2." << std::endl;
+                }
+                else {
+                    std::cout << "[EmptyEnvironmentState] This token cannot move right now." << std::endl;
+                }
                 return;
             }
 
@@ -3755,6 +3879,11 @@ namespace ScotlandYard {
             if (!m_b_GraphLoaded ||
                 m_i_SelectedTokenIndex < 0 ||
                 m_i_SelectedTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return;
+            }
+
+            if (!IsTokenSelectable(static_cast<size_t>(m_i_SelectedTokenIndex))) {
+                ClearMovementSelection();
                 return;
             }
 
@@ -3906,20 +4035,86 @@ namespace ScotlandYard {
                 return;
             }
 
-            auto& token = m_vec_PlayerTokens[static_cast<size_t>(m_i_SelectedTokenIndex)];
-            if (!SpendTicket(token, i_TransportType)) {
-                std::cout << "[EmptyEnvironmentState] No tickets for transport type " << i_TransportType << std::endl;
+            PlayerToken& token = m_vec_PlayerTokens[static_cast<size_t>(m_i_SelectedTokenIndex)];
+            const bool b_IsMrX = token.b_IsMrX;
+            const bool b_ForceBlack = (i_TransportType == Core::k_TransportTypeWater);
+
+            if (!b_IsMrX && b_ForceBlack) {
+                std::cout << "[EmptyEnvironmentState] Detectives cannot use water transport." << std::endl;
                 return;
+            }
+
+            if (m_vec_TokenMovedThisRound.size() != m_vec_PlayerTokens.size()) {
+                m_vec_TokenMovedThisRound.resize(m_vec_PlayerTokens.size(), false);
+            }
+
+            bool b_SpentTicket = false;
+            bool b_MrXSecondMoveWasPending = m_b_MrXSecondMovePending;
+
+            if (b_IsMrX) {
+                bool b_UIBlack = UI::IsMrXBlackSelected();
+                if ((b_UIBlack || b_ForceBlack)) {
+                    if (token.blackTickets <= 0) {
+                        std::cout << "[EmptyEnvironmentState] Mr X does not have a black ticket for this move." << std::endl;
+                        return;
+                    }
+                    --token.blackTickets;
+                    b_SpentTicket = true;
+                    std::cout << "[EmptyEnvironmentState] Mr X spent a black ticket." << std::endl;
+                }
+            }
+
+            if (!b_SpentTicket) {
+                if (!SpendTicket(token, i_TransportType)) {
+                    std::cout << "[EmptyEnvironmentState] No tickets for transport type " << i_TransportType << std::endl;
+                    return;
+                }
             }
 
             token.i_StationID = m_i_SelectedDestinationNode;
             m_i_SelectedStationID = token.i_StationID;
             std::cout << "[EmptyEnvironmentState] Token moved to node " << token.i_StationID << std::endl;
 
+            const size_t tokenIndex = static_cast<size_t>(m_i_SelectedTokenIndex);
+
+            if (b_IsMrX) {
+                if (!b_MrXSecondMoveWasPending) {
+                    bool b_UIDouble = UI::IsMrXDoubleSelected();
+                    if (b_UIDouble && token.doubleTickets > 0) {
+                        --token.doubleTickets;
+                        m_b_MrXSecondMovePending = true;
+                        std::cout << "[EmptyEnvironmentState] Mr X activated a double move." << std::endl;
+                    }
+                }
+                else {
+                    m_b_MrXSecondMovePending = false;
+                }
+
+                if (m_b_MrXSecondMovePending) {
+                    m_vec_TokenMovedThisRound[tokenIndex] = false;
+                    m_b_IsMrXTurn = true;
+                }
+                else {
+                    m_vec_TokenMovedThisRound[tokenIndex] = true;
+                    m_b_IsMrXTurn = false;
+                }
+            }
+            else {
+                m_vec_TokenMovedThisRound[tokenIndex] = true;
+            }
+
             m_i_SelectedDestinationNode = -1;
             m_vec_TransportButtons.clear();
 
-            UpdateDestinationsForSelectedToken();
+            if (b_IsMrX && m_b_MrXSecondMovePending) {
+                UpdateDestinationsForSelectedToken();
+            }
+            else {
+                ClearMovementSelection();
+            }
+
+            AdvanceRoundIfNeeded();
+            UpdateMrXButtonStates();
         }
 
         void EmptyEnvironmentState::RenderTransportButtons(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {

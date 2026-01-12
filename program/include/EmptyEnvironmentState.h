@@ -137,6 +137,7 @@ namespace ScotlandYard {
                 int busTickets = 0;
                 int metroTickets = 0;
                 int blackTickets = 0;
+                int doubleTickets = 0;
             };
             std::vector<PlayerToken> m_vec_PlayerTokens;
             GLuint m_VAO_Circle = 0;
@@ -320,6 +321,11 @@ namespace ScotlandYard {
             int m_i_SelectedDestinationNode = -1;
             std::vector<DestinationOption> m_vec_DestinationOptions;
             std::vector<TransportButton> m_vec_TransportButtons;
+            int m_i_CurrentRound = 1;
+            bool m_b_IsMrXTurn = true;
+            bool m_b_MrXSecondMovePending = false;
+            std::vector<bool> m_vec_TokenMovedThisRound;
+            int m_i_MrXTokenIndex = -1;
 
             int FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH);
             int FindPlayerTokenAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH) const;
@@ -337,6 +343,9 @@ namespace ScotlandYard {
             bool TokenHasTicket(const PlayerToken& token, int i_TransportType) const;
             bool SpendTicket(PlayerToken& token, int i_TransportType);
             void ClearMovementSelection();
+            bool IsTokenSelectable(size_t i_TokenIndex) const;
+            void AdvanceRoundIfNeeded();
+            void UpdateMrXButtonStates();
             void RenderStationInfo(Core::Application* p_App);
             void RenderConnectionLines(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
