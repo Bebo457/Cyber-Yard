@@ -133,6 +133,10 @@ namespace ScotlandYard {
                 int i_StationID = -1;
                 glm::vec3 vec3_Color{ 1.0f, 1.0f, 1.0f };
                 bool b_IsMrX = false;
+                int taxiTickets = 0;
+                int busTickets = 0;
+                int metroTickets = 0;
+                int blackTickets = 0;
             };
             std::vector<PlayerToken> m_vec_PlayerTokens;
             GLuint m_VAO_Circle = 0;
@@ -146,6 +150,19 @@ namespace ScotlandYard {
             GLuint m_VAO_PlayerHemisphere = 0;
             GLuint m_VBO_PlayerHemisphere = 0;
             int m_i_PlayerHemisphereVertexCount = 0;
+
+            struct DestinationOption {
+                int i_NodeID = -1;
+                glm::vec2 vec2_Position{ 0.0f, 0.0f };
+                std::vector<int> vec_AvailableTransports;
+            };
+
+            struct TransportButton {
+                glm::vec2 vec2_Position{ 0.0f, 0.0f };
+                int i_TransportType = 0;
+                float f_Radius = 5.0f;
+                bool b_Available = true;
+            };
 
             // Camera system (mirrors GameState behavior)
             bool m_b_Camera3D = true;
@@ -299,8 +316,27 @@ namespace ScotlandYard {
             std::vector<int> m_vec_HighlightedStations; // Stations connected to selected
             Core::GraphManager m_graph;
             bool m_b_GraphLoaded = false;
+            int m_i_SelectedTokenIndex = -1;
+            int m_i_SelectedDestinationNode = -1;
+            std::vector<DestinationOption> m_vec_DestinationOptions;
+            std::vector<TransportButton> m_vec_TransportButtons;
 
-            int FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            int FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH);
+            int FindPlayerTokenAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH) const;
+            int FindDestinationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH) const;
+            int FindTransportButtonAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH) const;
+            bool ProjectToScreen(const glm::vec3& vec3_WorldPos, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH, glm::vec2& out_ScreenPos) const;
+            glm::vec3 GetTokenWorldPosition(size_t i_TokenIndex) const;
+            void SelectPlayerToken(int i_TokenIndex);
+            void UpdateDestinationsForSelectedToken();
+            void UpdateTransportButtons(int i_DestinationNode);
+            void RenderTransportButtons(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            void HandleDestinationSelection(int i_DestinationNode);
+            void HandleTransportButtonClick(int i_TransportType);
+            void ExecuteTokenMove(int i_TransportType);
+            bool TokenHasTicket(const PlayerToken& token, int i_TransportType) const;
+            bool SpendTicket(PlayerToken& token, int i_TransportType);
+            void ClearMovementSelection();
             void RenderStationInfo(Core::Application* p_App);
             void RenderConnectionLines(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);

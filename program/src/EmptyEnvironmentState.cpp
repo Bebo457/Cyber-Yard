@@ -20,9 +20,12 @@
 #include <cstring>
 #include <cctype>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <type_traits>
 #include <unordered_map>
+#include <map>
+#include <iterator>
 #include <nlohmann/json.hpp>
 
 namespace {
@@ -360,6 +363,21 @@ void main()
         glDeleteShader(fs);
         return program;
     }
+
+    constexpr float k_PlayerScale = 0.5f;
+    constexpr float k_PlayerHeightScale = 2.5f;
+    constexpr float k_PlayerHover = 0.01f;
+    constexpr float k_PlayerHeadOffset = 0.125f;
+    constexpr float k_PlayerMultiRadius = 0.03f;
+    constexpr float k_TokenClickRadiusPx = 32.0f;
+    constexpr float k_DestinationClickRadiusPx = 28.0f;
+    constexpr float k_TransportButtonClickRadiusPx = 26.0f;
+    constexpr float k_TransportButtonRadius = 5.0f;
+    constexpr float k_TransportButtonOrbitScale = 0.6f;
+    constexpr float k_HighlightBaseScale = 18.0f;
+    constexpr float k_HighlightPulseScale = 6.0f;
+    constexpr float k_HighlightInnerScale = 11.0f;
+    constexpr float k_HighlightPulseSpeed = 4.0f;
 
 } // namespace
 
@@ -868,7 +886,6 @@ namespace ScotlandYard {
         }
 
         void EmptyEnvironmentState::HandleEvent(const SDL_Event& event, Core::Application* p_App) {
-            (void)p_App;
 
             switch (event.type) {
             case SDL_MOUSEBUTTONDOWN: {
@@ -881,22 +898,45 @@ namespace ScotlandYard {
                 // First, check if UI was clicked
                 UI::HandleMouseClick(static_cast<int>(f_VirtualX), static_cast<int>(f_VirtualY));
 
-                // Then check for station clicks (only left mouse button)
                 if (event.button.button == SDL_BUTTON_LEFT && m_b_Camera3D) {
-                    // Get view and projection matrices (same as in Render)
-                    int i_W = p_App ? p_App->GetVirtualWidth() : 1280;
-                    int i_H = p_App ? p_App->GetVirtualHeight() : 720;
+                    int i_WindowW = p_App ? p_App->GetWidth() : 1280;
+                    int i_WindowH = p_App ? p_App->GetHeight() : 720;
+                    int i_VirtualW = p_App ? p_App->GetVirtualWidth() : 1280;
+                    int i_VirtualH = p_App ? p_App->GetVirtualHeight() : 720;
 
                     glm::vec3 vec3_Target = m_vec3_CameraPosition + m_vec3_CameraFront;
                     glm::mat4 mat4_View = glm::lookAt(m_vec3_CameraPosition, vec3_Target, m_vec3_CameraUp);
-                    glm::mat4 mat4_Projection = glm::perspective(glm::radians(45.0f), (float)i_W / (float)i_H, 0.1f, 100.0f);
+                    glm::mat4 mat4_Projection = glm::perspective(glm::radians(45.0f), (float)i_VirtualW / (float)i_VirtualH, 0.1f, 100.0f);
 
-                    int i_ClickedStation = FindStationAtScreenPos(event.button.x, event.button.y, mat4_View, mat4_Projection);
+                    int i_ButtonIdx = FindTransportButtonAtScreenPos(event.button.x, event.button.y, mat4_View, mat4_Projection, i_WindowW, i_WindowH);
+                    if (i_ButtonIdx >= 0) {
+                        const auto& btn = m_vec_TransportButtons[i_ButtonIdx];
+                        if (btn.b_Available) {
+                            HandleTransportButtonClick(btn.i_TransportType);
+                        } else {
+                            std::cout << "[EmptyEnvironmentState] No tickets available for this transport option." << std::endl;
+                        }
+                        break;
+                    }
+
+                    int i_DestinationNode = FindDestinationAtScreenPos(event.button.x, event.button.y, mat4_View, mat4_Projection, i_WindowW, i_WindowH);
+                    if (i_DestinationNode >= 0) {
+                        HandleDestinationSelection(i_DestinationNode);
+                        break;
+                    }
+
+                    int i_TokenIndex = FindPlayerTokenAtScreenPos(event.button.x, event.button.y, mat4_View, mat4_Projection, i_WindowW, i_WindowH);
+                    if (i_TokenIndex >= 0) {
+                        SelectPlayerToken(i_TokenIndex);
+                        break;
+                    }
+
+                    int i_ClickedStation = FindStationAtScreenPos(event.button.x, event.button.y, mat4_View, mat4_Projection, i_WindowW, i_WindowH);
                     if (i_ClickedStation >= 0) {
+                        ClearMovementSelection();
                         m_i_SelectedStationID = i_ClickedStation;
                         std::cout << "[EmptyEnvironmentState] Selected station ID: " << i_ClickedStation << std::endl;
 
-                        // Update highlighted stations (connected to selected)
                         m_vec_HighlightedStations.clear();
                         if (m_b_GraphLoaded) {
                             auto connections = m_graph.GetConnections(i_ClickedStation);
@@ -906,11 +946,12 @@ namespace ScotlandYard {
                             std::cout << "[EmptyEnvironmentState] Found " << m_vec_HighlightedStations.size()
                                 << " connected stations" << std::endl;
                         }
+                        break;
                     }
-                    else {
-                        m_i_SelectedStationID = -1;
-                        m_vec_HighlightedStations.clear();
-                    }
+
+                    ClearMovementSelection();
+                    m_i_SelectedStationID = -1;
+                    m_vec_HighlightedStations.clear();
                 }
                 break;
             }
@@ -1552,6 +1593,7 @@ namespace ScotlandYard {
 
             // Render connection lines from selected station
             RenderConnectionLines(mat4_View, mat4_Projection);
+            RenderTransportButtons(mat4_View, mat4_Projection);
 
             if (!m_vec_ParkRenderers.empty() && m_TexGrass) {
                 glEnable(GL_POLYGON_OFFSET_FILL);
@@ -3309,26 +3351,67 @@ namespace ScotlandYard {
 
             constexpr size_t k_DetectiveCount = 4;
             const glm::vec3 vec3_DetectiveColor(0.0f, 0.0f, 1.0f);
-            size_t i_AvailableStations = m_vec_CircleStations.size();
+            std::vector<int> vec_ConnectedStationIDs;
+            if (m_b_GraphLoaded) {
+                vec_ConnectedStationIDs.reserve(m_vec_CircleStations.size());
+                for (const auto& station : m_vec_CircleStations) {
+                    auto connections = m_graph.GetConnections(station.stationID);
+                    bool b_HasConnection = std::any_of(connections.begin(), connections.end(),
+                        [](const auto& edge) {
+                            return edge.i_NodeId >= 0;
+                        });
+                    if (b_HasConnection) {
+                        vec_ConnectedStationIDs.push_back(station.stationID);
+                    }
+                }
+            }
+
+            if (!vec_ConnectedStationIDs.empty()) {
+                std::shuffle(vec_ConnectedStationIDs.begin(), vec_ConnectedStationIDs.end(), m_Rng);
+            }
+            else {
+                std::cout << "[EmptyEnvironmentState] Warning: Using all stations for debug tokens (graph not loaded or no connected stations)." << std::endl;
+            }
+
+            auto pickStationId = [&](size_t index) -> int {
+                if (!vec_ConnectedStationIDs.empty()) {
+                    return vec_ConnectedStationIDs[index % vec_ConnectedStationIDs.size()];
+                }
+                return m_vec_CircleStations[index % m_vec_CircleStations.size()].stationID;
+            };
+
+            size_t i_AvailableStations = !vec_ConnectedStationIDs.empty() ? vec_ConnectedStationIDs.size() : m_vec_CircleStations.size();
             size_t i_Stride = std::max<size_t>(1, i_AvailableStations / (k_DetectiveCount + 1));
             size_t i_Cursor = 0;
 
             for (size_t i_Index = 0; i_Index < k_DetectiveCount && i_Index < i_AvailableStations; ++i_Index) {
-                const auto& station = m_vec_CircleStations[i_Cursor % i_AvailableStations];
+                int i_StationId = pickStationId(i_Cursor);
                 PlayerToken token{};
-                token.i_StationID = station.stationID;
+                token.i_StationID = i_StationId;
                 token.vec3_Color = vec3_DetectiveColor;
                 token.b_IsMrX = false;
+                token.taxiTickets = Core::k_DetectiveTaxiTickets;
+                token.busTickets = Core::k_DetectiveBusTickets;
+                token.metroTickets = Core::k_DetectiveMetroTickets;
+                token.blackTickets = 0;
                 m_vec_PlayerTokens.push_back(token);
                 i_Cursor += i_Stride;
             }
 
-            const auto& stationMrX = m_vec_CircleStations[i_Cursor % i_AvailableStations];
+            int i_MrXStationId = pickStationId(i_Cursor);
             PlayerToken tokenMrX{};
-            tokenMrX.i_StationID = stationMrX.stationID;
+            tokenMrX.i_StationID = i_MrXStationId;
             tokenMrX.vec3_Color = glm::vec3(0.0f, 0.0f, 0.0f);
             tokenMrX.b_IsMrX = true;
+            tokenMrX.taxiTickets = Core::k_MrXTaxiTickets;
+            tokenMrX.busTickets = Core::k_MrXBusTickets;
+            tokenMrX.metroTickets = Core::k_MrXMetroTickets;
+            tokenMrX.blackTickets = Core::k_MrXBlackTickets;
             m_vec_PlayerTokens.push_back(tokenMrX);
+
+            ClearMovementSelection();
+            m_i_SelectedStationID = -1;
+            m_vec_HighlightedStations.clear();
         }
 
         void EmptyEnvironmentState::RenderPlayerTokens(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
@@ -3339,12 +3422,6 @@ namespace ScotlandYard {
             glUseProgram(m_ShaderCircle);
             GLuint mvpLoc = glGetUniformLocation(m_ShaderCircle, "MVP");
             GLuint colorLoc = glGetUniformLocation(m_ShaderCircle, "circleColor");
-
-            constexpr float k_PlayerScale = 0.5f;
-            constexpr float k_PlayerHover = 0.01f;
-            constexpr float k_PlayerHeadOffset = 0.125f;
-            constexpr float k_MultiTokenRadius = 0.03f;
-            constexpr float k_PlayerHeightScale = 2.5f;
 
             std::unordered_map<int, std::vector<size_t>> map_TokensByStation;
             for (size_t i_Index = 0; i_Index < m_vec_PlayerTokens.size(); ++i_Index) {
@@ -3365,8 +3442,8 @@ namespace ScotlandYard {
                     float f_OffsetZ = 0.0f;
                     if (vec_TokenIndices.size() > 1) {
                         float f_Angle = (2.0f * glm::pi<float>() * static_cast<float>(i_Order)) / static_cast<float>(vec_TokenIndices.size());
-                        f_OffsetX = k_MultiTokenRadius * cos(f_Angle);
-                        f_OffsetZ = k_MultiTokenRadius * sin(f_Angle);
+                        f_OffsetX = k_PlayerMultiRadius * cos(f_Angle);
+                        f_OffsetZ = k_PlayerMultiRadius * sin(f_Angle);
                     }
 
                     glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f),
@@ -3392,6 +3469,148 @@ namespace ScotlandYard {
 
             glBindVertexArray(0);
             glUseProgram(0);
+        }
+
+        glm::vec3 EmptyEnvironmentState::GetTokenWorldPosition(size_t i_TokenIndex) const {
+            if (i_TokenIndex >= m_vec_PlayerTokens.size()) {
+                return glm::vec3(0.0f);
+            }
+
+            const auto& token = m_vec_PlayerTokens[i_TokenIndex];
+            const StationCircle* p_Station = FindStationCircle(token.i_StationID);
+            if (!p_Station) {
+                return glm::vec3(0.0f);
+            }
+
+            std::vector<size_t> vec_TokenIndices;
+            vec_TokenIndices.reserve(m_vec_PlayerTokens.size());
+            for (size_t i = 0; i < m_vec_PlayerTokens.size(); ++i) {
+                if (m_vec_PlayerTokens[i].i_StationID == token.i_StationID) {
+                    vec_TokenIndices.push_back(i);
+                }
+            }
+
+            size_t i_Order = 0;
+            auto it = std::find(vec_TokenIndices.begin(), vec_TokenIndices.end(), i_TokenIndex);
+            if (it != vec_TokenIndices.end()) {
+                i_Order = static_cast<size_t>(std::distance(vec_TokenIndices.begin(), it));
+            }
+
+            float f_OffsetX = 0.0f;
+            float f_OffsetZ = 0.0f;
+            if (vec_TokenIndices.size() > 1) {
+                float f_Angle = (2.0f * glm::pi<float>() * static_cast<float>(i_Order)) / static_cast<float>(vec_TokenIndices.size());
+                f_OffsetX = k_PlayerMultiRadius * cos(f_Angle);
+                f_OffsetZ = k_PlayerMultiRadius * sin(f_Angle);
+            }
+
+            return glm::vec3(p_Station->position.x + f_OffsetX, k_PlayerHover,
+                p_Station->position.y + f_OffsetZ);
+        }
+
+        bool EmptyEnvironmentState::ProjectToScreen(const glm::vec3& vec3_WorldPos,
+            const glm::mat4& mat4_View,
+            const glm::mat4& mat4_Projection,
+            int i_WindowW,
+            int i_WindowH,
+            glm::vec2& out_ScreenPos) const {
+
+            glm::vec4 vec4_Clip = mat4_Projection * mat4_View * glm::vec4(vec3_WorldPos, 1.0f);
+            if (std::abs(vec4_Clip.w) < 1e-5f) {
+                return false;
+            }
+
+            glm::vec3 vec3_NDC = glm::vec3(vec4_Clip) / vec4_Clip.w;
+            if (vec3_NDC.x < -1.0f || vec3_NDC.x > 1.0f ||
+                vec3_NDC.y < -1.0f || vec3_NDC.y > 1.0f ||
+                vec3_NDC.z < -1.0f || vec3_NDC.z > 1.0f) {
+                return false;
+            }
+
+            float f_ScreenXGL = (vec3_NDC.x + 1.0f) * 0.5f * static_cast<float>(i_WindowW);
+            float f_ScreenYGL = (vec3_NDC.y + 1.0f) * 0.5f * static_cast<float>(i_WindowH);
+            out_ScreenPos.x = f_ScreenXGL;
+            out_ScreenPos.y = static_cast<float>(i_WindowH) - f_ScreenYGL;
+            return true;
+        }
+
+        int EmptyEnvironmentState::FindPlayerTokenAtScreenPos(int i_ScreenX, int i_ScreenY,
+            const glm::mat4& mat4_View,
+            const glm::mat4& mat4_Projection,
+            int i_WindowW,
+            int i_WindowH) const {
+
+            float f_ClosestDist = std::numeric_limits<float>::max();
+            int i_Selected = -1;
+
+            for (size_t i = 0; i < m_vec_PlayerTokens.size(); ++i) {
+                glm::vec3 vec3_World = GetTokenWorldPosition(i);
+                glm::vec2 vec2_Screen;
+                if (!ProjectToScreen(vec3_World, mat4_View, mat4_Projection, i_WindowW, i_WindowH, vec2_Screen)) {
+                    continue;
+                }
+
+                float f_Dist = glm::distance(vec2_Screen, glm::vec2(static_cast<float>(i_ScreenX), static_cast<float>(i_ScreenY)));
+                if (f_Dist < k_TokenClickRadiusPx && f_Dist < f_ClosestDist) {
+                    f_ClosestDist = f_Dist;
+                    i_Selected = static_cast<int>(i);
+                }
+            }
+
+            return i_Selected;
+        }
+
+        int EmptyEnvironmentState::FindDestinationAtScreenPos(int i_ScreenX, int i_ScreenY,
+            const glm::mat4& mat4_View,
+            const glm::mat4& mat4_Projection,
+            int i_WindowW,
+            int i_WindowH) const {
+
+            float f_ClosestDist = std::numeric_limits<float>::max();
+            int i_Selected = -1;
+
+            for (const auto& destination : m_vec_DestinationOptions) {
+                glm::vec3 vec3_World(destination.vec2_Position.x, 0.03f, destination.vec2_Position.y);
+                glm::vec2 vec2_Screen;
+                if (!ProjectToScreen(vec3_World, mat4_View, mat4_Projection, i_WindowW, i_WindowH, vec2_Screen)) {
+                    continue;
+                }
+
+                float f_Dist = glm::distance(vec2_Screen, glm::vec2(static_cast<float>(i_ScreenX), static_cast<float>(i_ScreenY)));
+                if (f_Dist < k_DestinationClickRadiusPx && f_Dist < f_ClosestDist) {
+                    f_ClosestDist = f_Dist;
+                    i_Selected = destination.i_NodeID;
+                }
+            }
+
+            return i_Selected;
+        }
+
+        int EmptyEnvironmentState::FindTransportButtonAtScreenPos(int i_ScreenX, int i_ScreenY,
+            const glm::mat4& mat4_View,
+            const glm::mat4& mat4_Projection,
+            int i_WindowW,
+            int i_WindowH) const {
+
+            float f_ClosestDist = std::numeric_limits<float>::max();
+            int i_Selected = -1;
+
+            for (size_t i = 0; i < m_vec_TransportButtons.size(); ++i) {
+                const auto& button = m_vec_TransportButtons[i];
+                glm::vec3 vec3_World(button.vec2_Position.x, 0.12f, button.vec2_Position.y);
+                glm::vec2 vec2_Screen;
+                if (!ProjectToScreen(vec3_World, mat4_View, mat4_Projection, i_WindowW, i_WindowH, vec2_Screen)) {
+                    continue;
+                }
+
+                float f_Dist = glm::distance(vec2_Screen, glm::vec2(static_cast<float>(i_ScreenX), static_cast<float>(i_ScreenY)));
+                if (f_Dist < k_TransportButtonClickRadiusPx && f_Dist < f_ClosestDist) {
+                    f_ClosestDist = f_Dist;
+                    i_Selected = static_cast<int>(i);
+                }
+            }
+
+            return i_Selected;
         }
 
         void EmptyEnvironmentState::RenderStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
@@ -3478,39 +3697,23 @@ namespace ScotlandYard {
             glUseProgram(0);
         }
 
-        int EmptyEnvironmentState::FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
-            // Get window dimensions (TODO: pass from p_App)
-            int i_WindowW = 1280;
-            int i_WindowH = 720;
-
-            // Flip Y coordinate (OpenGL uses bottom-left origin)
-            int i_ScreenY_GL = i_WindowH - i_ScreenY;
+        int EmptyEnvironmentState::FindStationAtScreenPos(int i_ScreenX, int i_ScreenY,
+            const glm::mat4& mat4_View,
+            const glm::mat4& mat4_Projection,
+            int i_WindowW,
+            int i_WindowH) {
 
             float f_ClosestDist = std::numeric_limits<float>::max();
             int i_ClosestStation = -1;
 
             for (const auto& station : m_vec_CircleStations) {
-                // Project 3D world position to screen space
-                glm::vec4 vec4_WorldPos(station.position.x, 0.02f, station.position.y, 1.0f);
-                glm::vec4 vec4_ClipPos = mat4_Projection * mat4_View * vec4_WorldPos;
+                glm::vec3 vec3_World(station.position.x, 0.02f, station.position.y);
+                glm::vec2 vec2_Screen;
+                if (!ProjectToScreen(vec3_World, mat4_View, mat4_Projection, i_WindowW, i_WindowH, vec2_Screen)) {
+                    continue;
+                }
 
-                // Perspective divide
-                if (vec4_ClipPos.w == 0.0f) continue;
-                glm::vec3 vec3_NDC = glm::vec3(vec4_ClipPos) / vec4_ClipPos.w;
-
-                // Check if behind camera
-                if (vec3_NDC.z < -1.0f || vec3_NDC.z > 1.0f) continue;
-
-                // Convert NDC to screen coordinates
-                float f_ScreenX = (vec3_NDC.x + 1.0f) * 0.5f * (float)i_WindowW;
-                float f_ScreenY_GL = (vec3_NDC.y + 1.0f) * 0.5f * (float)i_WindowH;
-
-                // Calculate distance from mouse to station in screen space
-                float f_Dx = f_ScreenX - (float)i_ScreenX;
-                float f_Dy = f_ScreenY_GL - (float)i_ScreenY_GL;
-                float f_Dist = std::sqrt(f_Dx * f_Dx + f_Dy * f_Dy);
-
-                // Check if within click radius
+                float f_Dist = glm::distance(vec2_Screen, glm::vec2(static_cast<float>(i_ScreenX), static_cast<float>(i_ScreenY)));
                 const float k_ClickRadius = 30.0f;
                 if (f_Dist < k_ClickRadius && f_Dist < f_ClosestDist) {
                     f_ClosestDist = f_Dist;
@@ -3519,6 +3722,263 @@ namespace ScotlandYard {
             }
 
             return i_ClosestStation;
+        }
+
+        void EmptyEnvironmentState::ClearMovementSelection() {
+            m_i_SelectedTokenIndex = -1;
+            m_i_SelectedDestinationNode = -1;
+            m_vec_DestinationOptions.clear();
+            m_vec_TransportButtons.clear();
+            m_vec_HighlightedStations.clear();
+        }
+
+        void EmptyEnvironmentState::SelectPlayerToken(int i_TokenIndex) {
+            if (i_TokenIndex < 0 || i_TokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return;
+            }
+
+            m_i_SelectedTokenIndex = i_TokenIndex;
+            m_i_SelectedDestinationNode = -1;
+            m_vec_TransportButtons.clear();
+
+            const auto& token = m_vec_PlayerTokens[i_TokenIndex];
+            m_i_SelectedStationID = token.i_StationID;
+            std::cout << "[EmptyEnvironmentState] Selected token at station " << token.i_StationID << std::endl;
+
+            UpdateDestinationsForSelectedToken();
+        }
+
+        void EmptyEnvironmentState::UpdateDestinationsForSelectedToken() {
+            m_vec_DestinationOptions.clear();
+            m_vec_HighlightedStations.clear();
+
+            if (!m_b_GraphLoaded ||
+                m_i_SelectedTokenIndex < 0 ||
+                m_i_SelectedTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return;
+            }
+
+            const auto& token = m_vec_PlayerTokens[static_cast<size_t>(m_i_SelectedTokenIndex)];
+            if (token.i_StationID < 0) {
+                return;
+            }
+
+            const auto vec_Connections = m_graph.GetConnections(token.i_StationID);
+            std::map<int, std::vector<int>> map_NodeToTransports;
+            for (const auto& conn : vec_Connections) {
+                if (!TokenHasTicket(token, conn.i_TransportType)) {
+                    continue;
+                }
+                map_NodeToTransports[conn.i_NodeId].push_back(conn.i_TransportType);
+            }
+
+            for (const auto& entry : map_NodeToTransports) {
+                const StationCircle* p_Destination = FindStationCircle(entry.first);
+                if (!p_Destination) {
+                    continue;
+                }
+
+                DestinationOption option;
+                option.i_NodeID = entry.first;
+                option.vec2_Position = p_Destination->position;
+                option.vec_AvailableTransports = entry.second;
+                m_vec_DestinationOptions.push_back(option);
+                m_vec_HighlightedStations.push_back(entry.first);
+            }
+
+            std::cout << "[EmptyEnvironmentState] " << m_vec_DestinationOptions.size()
+                << " destinations available." << std::endl;
+        }
+
+        void EmptyEnvironmentState::UpdateTransportButtons(int i_DestinationNode) {
+            m_vec_TransportButtons.clear();
+
+            if (m_i_SelectedTokenIndex < 0 ||
+                m_i_SelectedTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return;
+            }
+
+            auto it = std::find_if(m_vec_DestinationOptions.begin(), m_vec_DestinationOptions.end(),
+                [i_DestinationNode](const DestinationOption& option) {
+                    return option.i_NodeID == i_DestinationNode;
+                });
+            if (it == m_vec_DestinationOptions.end()) {
+                return;
+            }
+
+            int i_ButtonCount = static_cast<int>(it->vec_AvailableTransports.size());
+            if (i_ButtonCount <= 0) {
+                return;
+            }
+
+            float f_OrbitRadius = k_TransportButtonOrbitScale * m_f_GlobalScale;
+            const auto& token = m_vec_PlayerTokens[static_cast<size_t>(m_i_SelectedTokenIndex)];
+
+            for (int i = 0; i < i_ButtonCount; ++i) {
+                float f_Angle = (2.0f * glm::pi<float>() * i) / std::max(1, i_ButtonCount) - glm::half_pi<float>();
+                glm::vec2 vec2_Offset(cosf(f_Angle) * f_OrbitRadius, sinf(f_Angle) * f_OrbitRadius);
+
+                TransportButton button;
+                button.vec2_Position = it->vec2_Position + vec2_Offset;
+                button.f_Radius = k_TransportButtonRadius;
+                button.i_TransportType = it->vec_AvailableTransports[static_cast<size_t>(i)];
+                button.b_Available = TokenHasTicket(token, button.i_TransportType);
+                m_vec_TransportButtons.push_back(button);
+            }
+        }
+
+        void EmptyEnvironmentState::HandleDestinationSelection(int i_DestinationNode) {
+            if (m_i_SelectedTokenIndex < 0) {
+                return;
+            }
+
+            auto it = std::find_if(m_vec_DestinationOptions.begin(), m_vec_DestinationOptions.end(),
+                [i_DestinationNode](const DestinationOption& option) {
+                    return option.i_NodeID == i_DestinationNode;
+                });
+            if (it == m_vec_DestinationOptions.end()) {
+                return;
+            }
+
+            m_i_SelectedDestinationNode = i_DestinationNode;
+
+            if (it->vec_AvailableTransports.size() == 1) {
+                int i_Transport = it->vec_AvailableTransports.front();
+                if (TokenHasTicket(m_vec_PlayerTokens[static_cast<size_t>(m_i_SelectedTokenIndex)], i_Transport)) {
+                    HandleTransportButtonClick(i_Transport);
+                    return;
+                }
+            }
+
+            UpdateTransportButtons(i_DestinationNode);
+        }
+
+        bool EmptyEnvironmentState::TokenHasTicket(const PlayerToken& token, int i_TransportType) const {
+            switch (i_TransportType) {
+            case Core::k_TransportTypeTaxi:
+                return token.taxiTickets > 0;
+            case Core::k_TransportTypeBus:
+                return token.busTickets > 0;
+            case Core::k_TransportTypeMetro:
+                return token.metroTickets > 0;
+            case Core::k_TransportTypeWater:
+                return token.b_IsMrX && token.blackTickets > 0;
+            default:
+                return false;
+            }
+        }
+
+        bool EmptyEnvironmentState::SpendTicket(PlayerToken& token, int i_TransportType) {
+            if (!TokenHasTicket(token, i_TransportType)) {
+                return false;
+            }
+
+            switch (i_TransportType) {
+            case Core::k_TransportTypeTaxi:
+                --token.taxiTickets;
+                return true;
+            case Core::k_TransportTypeBus:
+                --token.busTickets;
+                return true;
+            case Core::k_TransportTypeMetro:
+                --token.metroTickets;
+                return true;
+            case Core::k_TransportTypeWater:
+                --token.blackTickets;
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        void EmptyEnvironmentState::HandleTransportButtonClick(int i_TransportType) {
+            if (m_i_SelectedTokenIndex < 0 || m_i_SelectedDestinationNode < 0) {
+                return;
+            }
+
+            ExecuteTokenMove(i_TransportType);
+        }
+
+        void EmptyEnvironmentState::ExecuteTokenMove(int i_TransportType) {
+            if (m_i_SelectedTokenIndex < 0 ||
+                m_i_SelectedDestinationNode < 0 ||
+                m_i_SelectedTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return;
+            }
+
+            auto& token = m_vec_PlayerTokens[static_cast<size_t>(m_i_SelectedTokenIndex)];
+            if (!SpendTicket(token, i_TransportType)) {
+                std::cout << "[EmptyEnvironmentState] No tickets for transport type " << i_TransportType << std::endl;
+                return;
+            }
+
+            token.i_StationID = m_i_SelectedDestinationNode;
+            m_i_SelectedStationID = token.i_StationID;
+            std::cout << "[EmptyEnvironmentState] Token moved to node " << token.i_StationID << std::endl;
+
+            m_i_SelectedDestinationNode = -1;
+            m_vec_TransportButtons.clear();
+
+            UpdateDestinationsForSelectedToken();
+        }
+
+        void EmptyEnvironmentState::RenderTransportButtons(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+            if (m_vec_TransportButtons.empty() || !m_VAO_Circle || !m_ShaderCircle) {
+                return;
+            }
+
+            glUseProgram(m_ShaderCircle);
+            glBindVertexArray(m_VAO_Circle);
+
+            GLuint mvpLoc = glGetUniformLocation(m_ShaderCircle, "MVP");
+            GLuint colorLoc = glGetUniformLocation(m_ShaderCircle, "circleColor");
+
+            for (const auto& button : m_vec_TransportButtons) {
+                glm::vec3 vec3_Color(0.5f, 0.5f, 0.5f);
+                switch (button.i_TransportType) {
+                case Core::k_TransportTypeTaxi:
+                    vec3_Color = glm::vec3(1.0f, 1.0f, 0.0f);
+                    break;
+                case Core::k_TransportTypeBus:
+                    vec3_Color = glm::vec3(0.0f, 1.0f, 0.0f);
+                    break;
+                case Core::k_TransportTypeMetro:
+                    vec3_Color = glm::vec3(1.0f, 0.0f, 0.0f);
+                    break;
+                case Core::k_TransportTypeWater:
+                    vec3_Color = glm::vec3(0.0f, 0.4f, 1.0f);
+                    break;
+                default:
+                    break;
+                }
+
+                if (!button.b_Available) {
+                    vec3_Color *= 0.3f;
+                }
+
+                glm::mat4 mat4_ModelOutline = glm::translate(glm::mat4(1.0f),
+                    glm::vec3(button.vec2_Position.x, 0.13f, button.vec2_Position.y));
+                mat4_ModelOutline = glm::scale(mat4_ModelOutline, glm::vec3(button.f_Radius * 1.3f, 0.2f, button.f_Radius * 1.3f));
+                mat4_ModelOutline = mat4_ModelOutline * m_mat4_GlobalScaleMatrix;
+
+                glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_ModelOutline;
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+                glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, 0.0f)));
+                glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+
+                glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f),
+                    glm::vec3(button.vec2_Position.x, 0.14f, button.vec2_Position.y));
+                mat4_Model = glm::scale(mat4_Model, glm::vec3(button.f_Radius, 0.2f, button.f_Radius));
+                mat4_Model = mat4_Model * m_mat4_GlobalScaleMatrix;
+
+                mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+                glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
+                glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+            }
+
+            glBindVertexArray(0);
+            glUseProgram(0);
         }
 
         void EmptyEnvironmentState::RenderStationInfo(Core::Application* p_App) {
@@ -3740,6 +4200,10 @@ namespace ScotlandYard {
         void EmptyEnvironmentState::RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
             if (m_vec_HighlightedStations.empty()) return;
 
+            float f_Pulse = 0.5f + 0.5f * sinf(m_f_Time * k_HighlightPulseSpeed);
+            float f_OuterScale = m_f_GlobalScale * (k_HighlightBaseScale + f_Pulse * k_HighlightPulseScale);
+            float f_InnerScale = m_f_GlobalScale * (k_HighlightInnerScale + f_Pulse * (k_HighlightPulseScale * 0.5f));
+
             glUseProgram(m_ShaderCircle);
 
             GLint i_LocMVP = glGetUniformLocation(m_ShaderCircle, "MVP");
@@ -3749,27 +4213,28 @@ namespace ScotlandYard {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            // Render highlight rings for each connected station
             for (int i_StationID : m_vec_HighlightedStations) {
-                // Find station
                 auto it = std::find_if(m_vec_CircleStations.begin(), m_vec_CircleStations.end(),
                     [i_StationID](const StationCircle& sc) { return sc.stationID == i_StationID; });
-
-                if (it == m_vec_CircleStations.end()) continue;
+                if (it == m_vec_CircleStations.end()) {
+                    continue;
+                }
 
                 const auto& station = *it;
+                glm::vec3 vec3_Position(station.position.x, 0.03f, station.position.y);
 
-                // Render larger white/yellow highlight ring
-                glm::mat4 mat4_Model = glm::mat4(1.0f);
-                mat4_Model = glm::translate(mat4_Model, glm::vec3(station.position.x, 0.03f, station.position.y));
-                mat4_Model = glm::scale(mat4_Model, glm::vec3(m_f_GlobalScale * 8.0f)); // Larger than largest station
+                glm::mat4 mat4_ModelOuter = glm::translate(glm::mat4(1.0f), vec3_Position);
+                mat4_ModelOuter = glm::scale(mat4_ModelOuter, glm::vec3(f_OuterScale));
+                glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_ModelOuter;
+                glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+                glUniform3f(i_LocColor, 1.0f, 0.95f, 0.2f + 0.4f * f_Pulse);
+                glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
 
-                glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
-                glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, &mat4_MVP[0][0]);
-
-                // Bright yellow highlight
-                glUniform3f(i_LocColor, 1.0f, 1.0f, 0.5f);
-
+                glm::mat4 mat4_ModelInner = glm::translate(glm::mat4(1.0f), vec3_Position);
+                mat4_ModelInner = glm::scale(mat4_ModelInner, glm::vec3(f_InnerScale));
+                mat4_MVP = mat4_Projection * mat4_View * mat4_ModelInner;
+                glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+                glUniform3f(i_LocColor, 1.0f, 0.5f + 0.5f * f_Pulse, 0.0f);
                 glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
             }
 
