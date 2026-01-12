@@ -291,6 +291,11 @@ namespace ScotlandYard {
             void AccelerateCameraRight(float f_DeltaTime);
             void UpdateCameraPhysics(float f_DeltaTime);
             void CreateTestRoad(Core::Application* p_App);
+            enum class Winner {
+                None = 0,
+                Detectives,
+                MisterX
+            };
 
             void BuildHighwaysFromMapData(Core::Application* p_App);
             void GenerateRoadsFromMapData(Core::Application* p_App);
@@ -309,6 +314,7 @@ namespace ScotlandYard {
             void InitializePlayerTokenGeometry();
             void DestroyPlayerTokenGeometry();
             void RenderPlayerTokens(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
+            void RenderMoveAvailabilityIndicators(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void InitializeDebugPlayerTokens();
             const StationCircle* FindStationCircle(int stationID) const;
 
@@ -326,6 +332,14 @@ namespace ScotlandYard {
             bool m_b_MrXSecondMovePending = false;
             std::vector<bool> m_vec_TokenMovedThisRound;
             int m_i_MrXTokenIndex = -1;
+            bool m_b_RevealMrXPosition = false;
+            int m_i_MrXMoveCounter = 0;
+            bool m_b_GameOver = false;
+            Winner m_e_GameWinner = Winner::None;
+            std::string m_s_EndGameMessage;
+            std::string m_s_EndGameDetail;
+            SDL_Rect m_GameOverButtonRect{ 0, 0, 0, 0 };
+            bool m_b_GameOverButtonHover = false;
 
             int FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH);
             int FindPlayerTokenAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH) const;
@@ -346,6 +360,17 @@ namespace ScotlandYard {
             bool IsTokenSelectable(size_t i_TokenIndex) const;
             void AdvanceRoundIfNeeded();
             void UpdateMrXButtonStates();
+            void FocusCameraOnMrX();
+            bool ShouldHighlightToken(size_t i_TokenIndex) const;
+            bool IsMrXVisibleToBoard() const;
+            bool TokenHasAnyMove(const PlayerToken& token) const;
+            bool DetectivesHaveMoves() const;
+            bool MrXHasMoves() const;
+            bool DidDetectivesCaptureMrX() const;
+            void CheckEndOfGame(Winner winner = Winner::None, const std::string& s_Reason = {});
+            void RenderGameOverBanner(Core::Application* p_App);
+            static bool IsPointInsideRect(int x, int y, const SDL_Rect& rect);
+            void HandleGameOverMenuRequest(Core::Application* p_App);
             void RenderStationInfo(Core::Application* p_App);
             void RenderConnectionLines(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);
             void RenderHighlightedStations(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection);

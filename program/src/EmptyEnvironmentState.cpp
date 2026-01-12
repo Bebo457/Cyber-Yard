@@ -378,6 +378,13 @@ void main()
     constexpr float k_HighlightPulseScale = 6.0f;
     constexpr float k_HighlightInnerScale = 11.0f;
     constexpr float k_HighlightPulseSpeed = 4.0f;
+    constexpr float k_HighlightColumnRadius = 8.0f;
+    constexpr float k_HighlightColumnRadiusPulse = 2.0f;
+    constexpr float k_HighlightColumnHeight = 35.0f;
+    constexpr float k_HighlightColumnHeightPulse = 6.0f;
+    constexpr float k_HighlightColumnBaseY = 0.02f;
+    constexpr float k_CameraFocusHeight = 2.2f;
+    constexpr float k_CameraFocusBackOffset = 4.0f;
 
 } // namespace
 
@@ -898,7 +905,22 @@ namespace ScotlandYard {
                 // First, check if UI was clicked
                 UI::HandleMouseClick(static_cast<int>(f_VirtualX), static_cast<int>(f_VirtualY));
 
+                if (event.button.button == SDL_BUTTON_LEFT && m_b_GameOver) {
+                    int i_VirtualX = static_cast<int>(f_VirtualX);
+                    int i_VirtualY = static_cast<int>(f_VirtualY);
+                    int i_VirtualHeight = p_App ? p_App->GetVirtualHeight() : 720;
+                    int i_VirtualYBottom = i_VirtualHeight - i_VirtualY;
+                    m_b_GameOverButtonHover = IsPointInsideRect(i_VirtualX, i_VirtualYBottom, m_GameOverButtonRect);
+                    if (m_b_GameOverButtonHover) {
+                        HandleGameOverMenuRequest(p_App);
+                    }
+                    break;
+                }
+
                 if (event.button.button == SDL_BUTTON_LEFT && m_b_Camera3D) {
+                    if (m_b_GameOver) {
+                        break;
+                    }
                     int i_WindowW = p_App ? p_App->GetWidth() : 1280;
                     int i_WindowH = p_App ? p_App->GetHeight() : 720;
                     int i_VirtualW = p_App ? p_App->GetVirtualWidth() : 1280;
@@ -957,6 +979,17 @@ namespace ScotlandYard {
             }
             case SDL_MOUSEMOTION:
                 UI::HandleMouseMotion(event.motion.x, event.motion.y);
+                if (m_b_GameOver) {
+                    float f_VirtualX = static_cast<float>(event.motion.x);
+                    float f_VirtualY = static_cast<float>(event.motion.y);
+                    if (p_App) {
+                        p_App->TransformMouseToVirtual(event.motion.x, event.motion.y, f_VirtualX, f_VirtualY);
+                    }
+                    int i_VirtualHeight = p_App ? p_App->GetVirtualHeight() : 720;
+                    int i_VirtualYBottom = i_VirtualHeight - static_cast<int>(f_VirtualY);
+                    m_b_GameOverButtonHover = IsPointInsideRect(static_cast<int>(f_VirtualX), i_VirtualYBottom, m_GameOverButtonRect);
+                    break;
+                }
                 break;
             case SDL_MOUSEWHEEL:
                 if (m_b_Camera3D) {
@@ -1595,6 +1628,7 @@ namespace ScotlandYard {
             // Render transport stations
             RenderStations(mat4_View, mat4_Projection);
             RenderPlayerTokens(mat4_View, mat4_Projection);
+            RenderMoveAvailabilityIndicators(mat4_View, mat4_Projection);
 
             // Render highlighted stations (connected to selected)
             RenderHighlightedStations(mat4_View, mat4_Projection);
@@ -1645,7 +1679,87 @@ namespace ScotlandYard {
             UI::SetViewport(p_App->GetVirtualWidth(), p_App->GetVirtualHeight());
             UI::RenderHUD(p_App);
 
+            RenderGameOverBanner(p_App);
+
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+        }
+
+        void EmptyEnvironmentState::RenderGameOverBanner(Core::Application* p_App) {
+            if (!m_b_GameOver || !p_App) {
+                return;
+            }
+
+            GLboolean b_DepthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+            GLboolean b_BlendWasEnabled = glIsEnabled(GL_BLEND);
+            GLboolean b_SrgbWasEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB);
+
+            if (b_DepthWasEnabled) {
+                glDisable(GL_DEPTH_TEST);
+            }
+            if (!b_BlendWasEnabled) {
+                glEnable(GL_BLEND);
+            }
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            if (b_SrgbWasEnabled) {
+                glDisable(GL_FRAMEBUFFER_SRGB);
+            }
+
+            UI::SetViewport(p_App->GetVirtualWidth(), p_App->GetVirtualHeight());
+
+            const float f_W = static_cast<float>(p_App->GetVirtualWidth());
+            const float f_H = static_cast<float>(p_App->GetVirtualHeight());
+            const float f_X0 = f_W * 0.18f;
+            const float f_X1 = f_W * 0.82f;
+            const float f_Y0 = f_H * 0.36f;
+            const float f_Y1 = f_H * 0.66f;
+            const float f_BannerHeight = f_Y1 - f_Y0;
+
+            const UI::Color bg{ 0.07f, 0.07f, 0.18f, 0.92f };
+            UI::DrawRoundedRectScreen(f_X0, f_Y0, f_X1, f_Y1, bg, 22, p_App);
+
+            const float f_TitleCenter = f_Y0 + f_BannerHeight * 0.78f;
+            const float f_TitleHalf = 34.0f;
+            const float f_TitleY0 = f_TitleCenter - f_TitleHalf;
+            const float f_TitleY1 = f_TitleCenter + f_TitleHalf;
+            UI::DrawTextCenteredPx("GAME OVER!", f_X0, f_TitleY0, f_X1, f_TitleY1,
+                UI::Color{ 1.0f, 1.0f, 1.0f, 1.0f }, p_App, -6.0f);
+
+            const float f_WinnerCenter = f_Y0 + f_BannerHeight * 0.60f;
+            const float f_WinnerHalf = 26.0f;
+            const float f_WinnerY0 = f_WinnerCenter - f_WinnerHalf;
+            const float f_WinnerY1 = f_WinnerCenter + f_WinnerHalf;
+            const std::string s_Winner = m_s_EndGameMessage.empty() ? std::string("Game finished") : m_s_EndGameMessage;
+            UI::DrawTextCenteredPx(s_Winner, f_X0, f_WinnerY0, f_X1, f_WinnerY1,
+                UI::Color{ 0.93f, 0.93f, 0.93f, 1.0f }, p_App, -2.0f);
+
+            if (!m_s_EndGameDetail.empty()) {
+                const float f_DetailCenter = f_Y0 + f_BannerHeight * 0.45f;
+                const float f_DetailHalf = 22.0f;
+                UI::DrawTextCenteredPx(m_s_EndGameDetail, f_X0 + 40.0f, f_DetailCenter - f_DetailHalf,
+                    f_X1 - 40.0f, f_DetailCenter + f_DetailHalf,
+                    UI::Color{ 0.8f, 0.8f, 0.85f, 1.0f }, p_App, 2.0f);
+            }
+
+            const float f_ButtonWidth = 260.0f;
+            const float f_ButtonHeight = 54.0f;
+            const float f_ButtonX0 = (f_W - f_ButtonWidth) * 0.5f;
+            const float f_ButtonY0 = f_Y0 + f_BannerHeight * 0.12f;
+            m_GameOverButtonRect.x = static_cast<int>(f_ButtonX0);
+            m_GameOverButtonRect.y = static_cast<int>(f_ButtonY0);
+            m_GameOverButtonRect.w = static_cast<int>(f_ButtonWidth);
+            m_GameOverButtonRect.h = static_cast<int>(f_ButtonHeight);
+
+            UI::DrawMenuLikeButton(m_GameOverButtonRect, "Return to menu", p_App, m_b_GameOverButtonHover);
+
+            if (b_SrgbWasEnabled) {
+                glEnable(GL_FRAMEBUFFER_SRGB);
+            }
+            if (!b_BlendWasEnabled) {
+                glDisable(GL_BLEND);
+            }
+            if (b_DepthWasEnabled) {
+                glEnable(GL_DEPTH_TEST);
+            }
         }
 
         void EmptyEnvironmentState::RenderText(const std::string& s_Text, float f_X, float f_Y, float f_Scale,
@@ -3424,6 +3538,14 @@ namespace ScotlandYard {
             m_i_CurrentRound = 1;
             m_b_IsMrXTurn = true;
             m_b_MrXSecondMovePending = false;
+            m_i_MrXMoveCounter = 0;
+            m_b_RevealMrXPosition = false;
+              m_b_GameOver = false;
+              m_e_GameWinner = Winner::None;
+              m_s_EndGameMessage.clear();
+              m_s_EndGameDetail.clear();
+              m_GameOverButtonRect = { 0, 0, 0, 0 };
+              m_b_GameOverButtonHover = false;
 
             ClearMovementSelection();
             m_i_SelectedStationID = -1;
@@ -3431,6 +3553,11 @@ namespace ScotlandYard {
             UI::ClearMrXSelections();
             UI::SetRound(m_i_CurrentRound);
             UpdateMrXButtonStates();
+            FocusCameraOnMrX();
+
+                            if (!MrXHasMoves()) {
+                                    CheckEndOfGame(Winner::Detectives, "Mr X has no available moves at the start.");
+                            }
         }
 
         void EmptyEnvironmentState::RenderPlayerTokens(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
@@ -3456,6 +3583,10 @@ namespace ScotlandYard {
                 const auto& vec_TokenIndices = pair_TokenEntry.second;
                 for (size_t i_Order = 0; i_Order < vec_TokenIndices.size(); ++i_Order) {
                     const auto& token = m_vec_PlayerTokens[vec_TokenIndices[i_Order]];
+
+                    if (token.b_IsMrX && !IsMrXVisibleToBoard()) {
+                        continue;
+                    }
 
                     float f_OffsetX = 0.0f;
                     float f_OffsetZ = 0.0f;
@@ -3484,6 +3615,45 @@ namespace ScotlandYard {
                     glBindVertexArray(m_VAO_PlayerHemisphere);
                     glDrawArrays(GL_TRIANGLES, 0, m_i_PlayerHemisphereVertexCount);
                 }
+            }
+
+            glBindVertexArray(0);
+            glUseProgram(0);
+        }
+
+        void EmptyEnvironmentState::RenderMoveAvailabilityIndicators(const glm::mat4& mat4_View, const glm::mat4& mat4_Projection) {
+            if (m_vec_PlayerTokens.empty() || !m_ShaderCircle || !m_VAO_PlayerHemisphere || m_i_PlayerHemisphereVertexCount <= 0) {
+                return;
+            }
+
+            glUseProgram(m_ShaderCircle);
+            GLuint mvpLoc = glGetUniformLocation(m_ShaderCircle, "MVP");
+            GLuint colorLoc = glGetUniformLocation(m_ShaderCircle, "circleColor");
+
+            glBindVertexArray(m_VAO_PlayerHemisphere);
+
+            float f_Pulse = 0.85f + 0.15f * sinf(m_f_Time * 8.0f);
+            float f_BaseScale = k_PlayerScale * 1.4f;
+            float f_YOffset = k_PlayerHeadOffset + 0.18f;
+            for (size_t i = 0; i < m_vec_PlayerTokens.size(); ++i) {
+                if (!ShouldHighlightToken(i)) {
+                    continue;
+                }
+
+                glm::vec3 vec3_Pos = GetTokenWorldPosition(i);
+                vec3_Pos.y += f_YOffset;
+
+                glm::mat4 mat4_Model = glm::translate(glm::mat4(1.0f), vec3_Pos);
+                mat4_Model = glm::scale(mat4_Model, glm::vec3(f_BaseScale * f_Pulse));
+                glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Model;
+                glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+
+                const auto& token = m_vec_PlayerTokens[i];
+                glm::vec3 vec3_Color = token.b_IsMrX ? glm::vec3(1.0f) : token.vec3_Color;
+                vec3_Color = glm::mix(vec3_Color, glm::vec3(1.0f, 1.0f, 1.0f), 0.25f);
+                glUniform3fv(colorLoc, 1, glm::value_ptr(vec3_Color));
+
+                glDrawArrays(GL_TRIANGLES, 0, m_i_PlayerHemisphereVertexCount);
             }
 
             glBindVertexArray(0);
@@ -3563,6 +3733,11 @@ namespace ScotlandYard {
             int i_Selected = -1;
 
             for (size_t i = 0; i < m_vec_PlayerTokens.size(); ++i) {
+                const auto& token = m_vec_PlayerTokens[i];
+                if (token.b_IsMrX && !IsMrXVisibleToBoard()) {
+                    continue;
+                }
+
                 glm::vec3 vec3_World = GetTokenWorldPosition(i);
                 glm::vec2 vec2_Screen;
                 if (!ProjectToScreen(vec3_World, mat4_View, mat4_Projection, i_WindowW, i_WindowH, vec2_Screen)) {
@@ -3749,9 +3924,13 @@ namespace ScotlandYard {
             m_vec_DestinationOptions.clear();
             m_vec_TransportButtons.clear();
             m_vec_HighlightedStations.clear();
+            UI::ShowDetectivePopup(false);
         }
 
         bool EmptyEnvironmentState::IsTokenSelectable(size_t i_TokenIndex) const {
+            if (m_b_GameOver) {
+                return false;
+            }
             if (i_TokenIndex >= m_vec_PlayerTokens.size()) {
                 return false;
             }
@@ -3774,8 +3953,30 @@ namespace ScotlandYard {
                 return true;
             }
 
-            if (m_i_CurrentRound < 2) {
+            if (m_b_IsMrXTurn) {
                 return false;
+            }
+
+            return !b_HasMoved;
+        }
+
+        bool EmptyEnvironmentState::ShouldHighlightToken(size_t i_TokenIndex) const {
+            if (i_TokenIndex >= m_vec_PlayerTokens.size()) {
+                return false;
+            }
+
+            const auto& token = m_vec_PlayerTokens[i_TokenIndex];
+            bool b_HasMoved = (i_TokenIndex < m_vec_TokenMovedThisRound.size()) ?
+                m_vec_TokenMovedThisRound[i_TokenIndex] : false;
+
+            if (token.b_IsMrX) {
+                if (!m_b_IsMrXTurn) {
+                    return false;
+                }
+                if (m_b_MrXSecondMovePending) {
+                    return true;
+                }
+                return !b_HasMoved;
             }
 
             if (m_b_IsMrXTurn) {
@@ -3785,8 +3986,115 @@ namespace ScotlandYard {
             return !b_HasMoved;
         }
 
+        bool EmptyEnvironmentState::IsMrXVisibleToBoard() const {
+            return m_b_IsMrXTurn || m_b_MrXSecondMovePending || m_b_RevealMrXPosition;
+        }
+
+        bool EmptyEnvironmentState::TokenHasAnyMove(const PlayerToken& token) const {
+            if (!m_b_GraphLoaded || token.i_StationID < 0) {
+                return true; // Defer evaluation until graph is ready.
+            }
+
+            const auto connections = m_graph.GetConnections(token.i_StationID);
+            for (const auto& conn : connections) {
+                if (TokenHasTicket(token, conn.i_TransportType)) {
+                    return true;
+                }
+                if (token.b_IsMrX && token.blackTickets > 0) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool EmptyEnvironmentState::DetectivesHaveMoves() const {
+            for (const auto& token : m_vec_PlayerTokens) {
+                if (!token.b_IsMrX && TokenHasAnyMove(token)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool EmptyEnvironmentState::MrXHasMoves() const {
+            if (m_i_MrXTokenIndex < 0 || m_i_MrXTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return false;
+            }
+            return TokenHasAnyMove(m_vec_PlayerTokens[static_cast<size_t>(m_i_MrXTokenIndex)]);
+        }
+
+        bool EmptyEnvironmentState::DidDetectivesCaptureMrX() const {
+            if (m_i_MrXTokenIndex < 0 || m_i_MrXTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return false;
+            }
+
+            const int i_MrXNode = m_vec_PlayerTokens[static_cast<size_t>(m_i_MrXTokenIndex)].i_StationID;
+            if (i_MrXNode < 0) {
+                return false;
+            }
+
+            for (const auto& token : m_vec_PlayerTokens) {
+                if (!token.b_IsMrX && token.i_StationID == i_MrXNode) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void EmptyEnvironmentState::CheckEndOfGame(Winner winner, const std::string& s_Reason) {
+            if (m_b_GameOver) {
+                return;
+            }
+
+            if (winner == Winner::None) {
+                winner = Winner::MisterX;
+            }
+
+            m_b_GameOver = true;
+            m_e_GameWinner = winner;
+            m_s_EndGameMessage = (winner == Winner::Detectives) ? "Detectives win" : "Mr X wins";
+            m_s_EndGameDetail = s_Reason;
+            m_b_MrXSecondMovePending = false;
+
+            ClearMovementSelection();
+            UI::ShowDetectivePopup(false);
+            UI::ClearMrXSelections();
+            UI::SetMrXButtonsVisible(false);
+            UI::SetMrXButtonsEnabled(false, false);
+
+            std::vector<std::string> vec_Labels = { m_s_EndGameMessage };
+            std::vector<UI::Color> vec_Colors = {
+                (winner == Winner::Detectives) ? UI::Color{ 0.13f, 0.62f, 0.36f, 1.0f }
+                                               : UI::Color{ 0.73f, 0.18f, 0.12f, 1.0f }
+            };
+            std::vector<int> vec_Counts = { -1 };
+            UI::SetTopBar(vec_Labels, vec_Colors, vec_Counts);
+
+            std::cout << "[EmptyEnvironmentState] Koniec gry: " << m_s_EndGameMessage << std::endl;
+            if (!m_s_EndGameDetail.empty()) {
+                std::cout << "[EmptyEnvironmentState] Powód: " << m_s_EndGameDetail << std::endl;
+            }
+        }
+
+        bool EmptyEnvironmentState::IsPointInsideRect(int x, int y, const SDL_Rect& rect) {
+            return (x >= rect.x) && (x <= rect.x + rect.w) &&
+                (y >= rect.y) && (y <= rect.y + rect.h);
+        }
+
+        void EmptyEnvironmentState::HandleGameOverMenuRequest(Core::Application* p_App) {
+            if (!p_App) {
+                return;
+            }
+
+            auto* p_StateManager = p_App->GetStateManager();
+            if (p_StateManager) {
+                p_StateManager->ChangeState("menu", p_App);
+            }
+        }
+
         void EmptyEnvironmentState::AdvanceRoundIfNeeded() {
-            if (m_vec_PlayerTokens.empty()) {
+            if (m_b_GameOver || m_vec_PlayerTokens.empty()) {
                 return;
             }
 
@@ -3796,12 +4104,6 @@ namespace ScotlandYard {
 
             bool b_AllMoved = true;
             for (size_t i = 0; i < m_vec_PlayerTokens.size(); ++i) {
-                const auto& token = m_vec_PlayerTokens[i];
-                bool b_ShouldMove = token.b_IsMrX || m_i_CurrentRound >= 2;
-                if (!b_ShouldMove) {
-                    continue;
-                }
-
                 if (!m_vec_TokenMovedThisRound[i]) {
                     b_AllMoved = false;
                     break;
@@ -3809,6 +4111,11 @@ namespace ScotlandYard {
             }
 
             if (!b_AllMoved) {
+                return;
+            }
+
+            if (m_i_CurrentRound >= Core::k_MaxRounds) {
+                CheckEndOfGame(Winner::MisterX, "Mr X survived the maximum number of rounds.");
                 return;
             }
 
@@ -3821,10 +4128,12 @@ namespace ScotlandYard {
             UI::ClearMrXSelections();
             UI::SetRound(m_i_CurrentRound);
             UpdateMrXButtonStates();
+            FocusCameraOnMrX();
 
             std::cout << "[EmptyEnvironmentState] Starting round " << m_i_CurrentRound << std::endl;
-            if (m_i_CurrentRound == 2) {
-                std::cout << "[EmptyEnvironmentState] Detectives are now allowed to move." << std::endl;
+
+            if (!MrXHasMoves()) {
+                CheckEndOfGame(Winner::Detectives, "Mr X has no available moves in the new round.");
             }
         }
 
@@ -3850,7 +4159,24 @@ namespace ScotlandYard {
             UI::SetMrXButtonsEnabled(b_BlackEnabled, b_DoubleEnabled);
         }
 
+        void EmptyEnvironmentState::FocusCameraOnMrX() {
+            if (m_i_MrXTokenIndex < 0 ||
+                m_i_MrXTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
+                return;
+            }
+
+            glm::vec3 tokenPos = GetTokenWorldPosition(static_cast<size_t>(m_i_MrXTokenIndex));
+            glm::vec3 cameraPos(tokenPos.x, k_CameraFocusHeight, tokenPos.z + k_CameraFocusBackOffset);
+
+            m_vec3_Saved3DCameraPosition = cameraPos;
+            m_vec3_CameraPosition = cameraPos;
+            m_vec3_CameraVelocity = glm::vec3(0.0f);
+        }
+
         void EmptyEnvironmentState::SelectPlayerToken(int i_TokenIndex) {
+            if (m_b_GameOver) {
+                return;
+            }
             if (i_TokenIndex < 0 || i_TokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
                 return;
             }
@@ -3859,9 +4185,6 @@ namespace ScotlandYard {
                 const auto& token = m_vec_PlayerTokens[static_cast<size_t>(i_TokenIndex)];
                 if (token.b_IsMrX && !m_b_IsMrXTurn) {
                     std::cout << "[EmptyEnvironmentState] Mr X already moved this phase." << std::endl;
-                }
-                else if (!token.b_IsMrX && m_i_CurrentRound < 2) {
-                    std::cout << "[EmptyEnvironmentState] Detectives become active starting from round 2." << std::endl;
                 }
                 else {
                     std::cout << "[EmptyEnvironmentState] This token cannot move right now." << std::endl;
@@ -3876,6 +4199,21 @@ namespace ScotlandYard {
             const auto& token = m_vec_PlayerTokens[i_TokenIndex];
             m_i_SelectedStationID = token.i_StationID;
             std::cout << "[EmptyEnvironmentState] Selected token at station " << token.i_StationID << std::endl;
+
+            if (token.b_IsMrX) {
+                UI::ShowDetectivePopup(false);
+            }
+            else {
+                UI::DetectiveTickets ticketInfo;
+                ticketInfo.taxi = token.taxiTickets;
+                ticketInfo.bus = token.busTickets;
+                ticketInfo.metro = token.metroTickets;
+                ticketInfo.isMrX = false;
+
+                UI::SetDetectivePopupTickets(ticketInfo);
+                UI::SetDetectivePopupText(std::string("Player ") + std::to_string(i_TokenIndex + 1));
+                UI::ShowDetectivePopup(true);
+            }
 
             UpdateDestinationsForSelectedToken();
         }
@@ -3965,6 +4303,9 @@ namespace ScotlandYard {
         }
 
         void EmptyEnvironmentState::HandleDestinationSelection(int i_DestinationNode) {
+            if (m_b_GameOver) {
+                return;
+            }
             if (m_i_SelectedTokenIndex < 0) {
                 return;
             }
@@ -4029,6 +4370,9 @@ namespace ScotlandYard {
         }
 
         void EmptyEnvironmentState::HandleTransportButtonClick(int i_TransportType) {
+            if (m_b_GameOver) {
+                return;
+            }
             if (m_i_SelectedTokenIndex < 0 || m_i_SelectedDestinationNode < 0) {
                 return;
             }
@@ -4037,6 +4381,9 @@ namespace ScotlandYard {
         }
 
         void EmptyEnvironmentState::ExecuteTokenMove(int i_TransportType) {
+            if (m_b_GameOver) {
+                return;
+            }
             if (m_i_SelectedTokenIndex < 0 ||
                 m_i_SelectedDestinationNode < 0 ||
                 m_i_SelectedTokenIndex >= static_cast<int>(m_vec_PlayerTokens.size())) {
@@ -4057,6 +4404,7 @@ namespace ScotlandYard {
             }
 
             bool b_SpentTicket = false;
+            bool b_MrXUsedBlack = false;
             bool b_MrXSecondMoveWasPending = m_b_MrXSecondMovePending;
 
             if (b_IsMrX) {
@@ -4068,6 +4416,7 @@ namespace ScotlandYard {
                     }
                     --token.blackTickets;
                     b_SpentTicket = true;
+                    b_MrXUsedBlack = true;
                     std::cout << "[EmptyEnvironmentState] Mr X spent a black ticket." << std::endl;
                 }
             }
@@ -4082,6 +4431,19 @@ namespace ScotlandYard {
             token.i_StationID = m_i_SelectedDestinationNode;
             m_i_SelectedStationID = token.i_StationID;
             std::cout << "[EmptyEnvironmentState] Token moved to node " << token.i_StationID << std::endl;
+
+              int i_CaptureNode = -1;
+              if (m_i_MrXTokenIndex >= 0 && m_i_MrXTokenIndex < static_cast<int>(m_vec_PlayerTokens.size())) {
+                  i_CaptureNode = m_vec_PlayerTokens[static_cast<size_t>(m_i_MrXTokenIndex)].i_StationID;
+              }
+
+              if (DidDetectivesCaptureMrX()) {
+                  std::string s_Reason = (i_CaptureNode >= 0)
+                      ? (std::string("Mr X was captured at station ") + std::to_string(i_CaptureNode) + ".")
+                      : std::string("Mr X was captured.");
+                  CheckEndOfGame(Winner::Detectives, s_Reason);
+                  return;
+              }
 
             const size_t tokenIndex = static_cast<size_t>(m_i_SelectedTokenIndex);
 
@@ -4098,21 +4460,59 @@ namespace ScotlandYard {
                     m_b_MrXSecondMovePending = false;
                 }
 
+                UI::TicketMark mark = UI::TicketMark::None;
+                if (b_MrXUsedBlack) {
+                    mark = UI::TicketMark::Black;
+                }
+                else {
+                    switch (i_TransportType) {
+                    case Core::k_TransportTypeTaxi:
+                        mark = UI::TicketMark::Taxi;
+                        break;
+                    case Core::k_TransportTypeBus:
+                        mark = UI::TicketMark::Bus;
+                        break;
+                    case Core::k_TransportTypeMetro:
+                        mark = UI::TicketMark::Metro;
+                        break;
+                    default:
+                        break;
+                    }
+                }
+
+                ++m_i_MrXMoveCounter;
+                if (mark != UI::TicketMark::None && m_i_MrXMoveCounter <= UI::k_TicketSlotCount) {
+                    UI::SetSlotMark(m_i_MrXMoveCounter, mark, true);
+                }
+
+                m_b_RevealMrXPosition = Core::IsRevealRound(m_i_MrXMoveCounter);
+
                 if (m_b_MrXSecondMovePending) {
                     m_vec_TokenMovedThisRound[tokenIndex] = false;
                     m_b_IsMrXTurn = true;
+                      if (!MrXHasMoves()) {
+                          CheckEndOfGame(Winner::Detectives, "Mr X has no tickets for the second move.");
+                          return;
+                      }
                 }
                 else {
                     m_vec_TokenMovedThisRound[tokenIndex] = true;
                     m_b_IsMrXTurn = false;
+                      if (!DetectivesHaveMoves()) {
+                          CheckEndOfGame(Winner::MisterX, "Detectives have no available moves.");
+                          return;
+                      }
                 }
             }
             else {
                 m_vec_TokenMovedThisRound[tokenIndex] = true;
+                  if (!DetectivesHaveMoves()) {
+                      CheckEndOfGame(Winner::MisterX, "Detectives cannot perform any more moves.");
+                      return;
+                  }
             }
 
             m_i_SelectedDestinationNode = -1;
-            m_vec_TransportButtons.clear();
 
             if (b_IsMrX && m_b_MrXSecondMovePending) {
                 UpdateDestinationsForSelectedToken();
@@ -4122,6 +4522,9 @@ namespace ScotlandYard {
             }
 
             AdvanceRoundIfNeeded();
+              if (m_b_GameOver) {
+                  return;
+              }
             UpdateMrXButtonStates();
         }
 
@@ -4412,6 +4815,26 @@ namespace ScotlandYard {
             GLint i_LocMVP = glGetUniformLocation(m_ShaderCircle, "MVP");
             GLint i_LocColor = glGetUniformLocation(m_ShaderCircle, "circleColor");
 
+            auto GetTransportColor = [](int transportType) {
+                switch (transportType) {
+                case Core::k_TransportTypeTaxi:
+                    return glm::vec3(1.0f, 1.0f, 0.0f);
+                case Core::k_TransportTypeBus:
+                    return glm::vec3(0.0f, 1.0f, 0.0f);
+                case Core::k_TransportTypeMetro:
+                    return glm::vec3(1.0f, 0.0f, 0.0f);
+                case Core::k_TransportTypeWater:
+                    return glm::vec3(0.0f, 0.4f, 1.0f);
+                default:
+                    return glm::vec3(1.0f, 1.0f, 1.0f);
+                }
+            };
+
+            std::vector<glm::vec3> vec_HighlightBases;
+            std::vector<glm::vec3> vec_HighlightColors;
+            vec_HighlightBases.reserve(m_vec_HighlightedStations.size());
+            vec_HighlightColors.reserve(m_vec_HighlightedStations.size());
+
             glBindVertexArray(m_VAO_Circle);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -4426,23 +4849,61 @@ namespace ScotlandYard {
                 const auto& station = *it;
                 glm::vec3 vec3_Position(station.position.x, 0.03f, station.position.y);
 
+                glm::vec3 vec3_BaseColor(1.0f, 1.0f, 1.0f);
+                auto destIt = std::find_if(m_vec_DestinationOptions.begin(), m_vec_DestinationOptions.end(),
+                    [i_StationID](const DestinationOption& option) { return option.i_NodeID == i_StationID; });
+                if (destIt != m_vec_DestinationOptions.end() && !destIt->vec_AvailableTransports.empty()) {
+                    int i_FirstTransport = destIt->vec_AvailableTransports.front();
+                    bool b_AllSame = std::all_of(destIt->vec_AvailableTransports.begin(), destIt->vec_AvailableTransports.end(),
+                        [i_FirstTransport](int transportType) { return transportType == i_FirstTransport; });
+                    if (b_AllSame) {
+                        vec3_BaseColor = GetTransportColor(i_FirstTransport);
+                    }
+                }
+
+                float f_OuterIntensity = 0.7f + 0.3f * f_Pulse;
+                glm::vec3 vec3_OuterColor = vec3_BaseColor * f_OuterIntensity;
+                glm::vec3 vec3_InnerColor = glm::mix(vec3_BaseColor, glm::vec3(1.0f, 1.0f, 1.0f), 0.25f);
+
                 glm::mat4 mat4_ModelOuter = glm::translate(glm::mat4(1.0f), vec3_Position);
                 mat4_ModelOuter = glm::scale(mat4_ModelOuter, glm::vec3(f_OuterScale));
                 glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_ModelOuter;
                 glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
-                glUniform3f(i_LocColor, 1.0f, 0.95f, 0.2f + 0.4f * f_Pulse);
+                glUniform3fv(i_LocColor, 1, glm::value_ptr(vec3_OuterColor));
                 glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
 
                 glm::mat4 mat4_ModelInner = glm::translate(glm::mat4(1.0f), vec3_Position);
                 mat4_ModelInner = glm::scale(mat4_ModelInner, glm::vec3(f_InnerScale));
                 mat4_MVP = mat4_Projection * mat4_View * mat4_ModelInner;
                 glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
-                glUniform3f(i_LocColor, 1.0f, 0.5f + 0.5f * f_Pulse, 0.0f);
+                glUniform3fv(i_LocColor, 1, glm::value_ptr(vec3_InnerColor));
                 glDrawArrays(GL_TRIANGLE_FAN, 0, m_i_CircleVertexCount);
+
+                vec_HighlightBases.emplace_back(station.position.x, k_HighlightColumnBaseY, station.position.y);
+                vec_HighlightColors.push_back(vec3_BaseColor);
+            }
+
+            glBindVertexArray(0);
+
+            if (!vec_HighlightBases.empty() && m_VAO_PlayerCylinder && m_i_PlayerCylinderVertexCount > 0) {
+                float f_ColumnRadius = m_f_GlobalScale * (k_HighlightColumnRadius + f_Pulse * k_HighlightColumnRadiusPulse);
+                float f_ColumnHeight = m_f_GlobalScale * (k_HighlightColumnHeight + f_Pulse * k_HighlightColumnHeightPulse);
+
+                glBindVertexArray(m_VAO_PlayerCylinder);
+                for (size_t i = 0; i < vec_HighlightBases.size(); ++i) {
+                    const auto& basePos = vec_HighlightBases[i];
+                    glm::vec3 vec3_ColumnColor = glm::mix(vec_HighlightColors[i], glm::vec3(1.0f, 1.0f, 1.0f), 0.1f);
+                    glm::mat4 mat4_Column = glm::translate(glm::mat4(1.0f), basePos);
+                    mat4_Column = glm::scale(mat4_Column, glm::vec3(f_ColumnRadius, f_ColumnHeight, f_ColumnRadius));
+                    glm::mat4 mat4_MVP = mat4_Projection * mat4_View * mat4_Column;
+                    glUniformMatrix4fv(i_LocMVP, 1, GL_FALSE, glm::value_ptr(mat4_MVP));
+                    glUniform3fv(i_LocColor, 1, glm::value_ptr(vec3_ColumnColor));
+                    glDrawArrays(GL_TRIANGLES, 0, m_i_PlayerCylinderVertexCount);
+                }
+                glBindVertexArray(0);
             }
 
             glDisable(GL_BLEND);
-            glBindVertexArray(0);
             glUseProgram(0);
         }
 
