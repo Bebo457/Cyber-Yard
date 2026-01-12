@@ -1077,90 +1077,98 @@ namespace ScotlandYard {
 
                 InitializePlayerTokenGeometry();
 
-                // Load station data from generated map or CSV
+                // Load station data from generated CSV files in build/ folder
                 m_vec_CircleStations.clear();
 
-                if (m_b_MapDataLoaded && !m_MapData.vec_GraphNodes.empty()) {
-                    // Use generated map data
-                    std::cout << "[EmptyEnvironmentState] Loading stations from generated map..." << std::endl;
+                // Try to load from build/ folder first
+                // Use ASSETS_DIR as base and go up to find build folder
+                std::string s_BuildDir;
+                #ifdef ASSETS_DIR
+                    s_BuildDir = std::string(ASSETS_DIR) + "/../build/";
+                #else
+                    s_BuildDir = "build/";
+                #endif
 
-                    for (const auto& graphNode : m_MapData.vec_GraphNodes) {
+                std::string s_BuildNodesPath = s_BuildDir + "nodes_with_station.csv";
+                std::string s_BuildEdgesPath = s_BuildDir + "edges_geometry.csv";
+                std::string s_BuildConnectionsPath = s_BuildDir + "game_connections.csv";
+
+                std::cout << "[EmptyEnvironmentState] Attempting to load from CSV files..." << std::endl;
+                std::cout << "[EmptyEnvironmentState] Build directory: " << s_BuildDir << std::endl;
+                std::cout << "[EmptyEnvironmentState] Nodes path: " << s_BuildNodesPath << std::endl;
+
+                auto vec_StationData = Utils::MapDataLoader::LoadNodesWithStation(s_BuildNodesPath);
+
+                if (!vec_StationData.empty()) {
+                    std::cout << "[EmptyEnvironmentState] Loading stations from build/ CSV files..." << std::endl;
+
+                    // NOTE: CSV data is in HighwayGenerator coordinate space (600x450)
+                    // which is 0.5x scale of the original map (1200x900).
+                    // We need to scale up by 2.0 first, THEN transform to world coordinates.
+                    const float streetGenScale = 0.5f;
+                    const float scaleBack = 1.0f / streetGenScale; // 2.0
+
+                    for (const auto& sd : vec_StationData) {
                         StationCircle sc;
 
-                        // Transform from map coordinates (0-1200) to world coordinates
-                        sc.position.x = (graphNode.position.x * 0.02f) - 1.0f;
-                        sc.position.y = (graphNode.position.y * 0.02f) - 1.0f;
+                        // Step 1: Scale back from HighwayGenerator space (600x450) to map space (1200x900)
+                        float mapX = sd.vec2_Position.x * scaleBack;
+                        float mapY = sd.vec2_Position.y * scaleBack;
 
-                        // Determine transport types based on connections
-                        sc.transportTypes.clear();
-                        if (!graphNode.vec_TaxiConnections.empty()) {
-                            sc.transportTypes.push_back("taxi");
-                        }
-                        if (!graphNode.vec_BusConnections.empty()) {
-                            sc.transportTypes.push_back("bus");
-                        }
-                        if (!graphNode.vec_MetroConnections.empty()) {
-                            sc.transportTypes.push_back("metro");
-                        }
-                        if (!graphNode.vec_FerryConnections.empty()) {
-                            sc.transportTypes.push_back("water");
-                        }
+                        // Step 2: Transform from map coordinates (0-1200) to world coordinates (-1 to 23)
+                        sc.position.x = (mapX * 0.02f) - 1.0f;
+                        sc.position.y = (mapY * 0.02f) - 1.0f;
 
-                        // Default to taxi if no connections (shouldn't happen)
-                        if (sc.transportTypes.empty()) {
-                            sc.transportTypes.push_back("taxi");
-                        }
-
-                        sc.stationID = graphNode.i_ID;
+                        sc.transportTypes = sd.vec_TransportTypes;
+                        sc.stationID = sd.i_StationID;
                         m_vec_CircleStations.push_back(sc);
                     }
 
                     std::cout << "[EmptyEnvironmentState] Loaded " << m_vec_CircleStations.size()
-                        << " transport stations from generated map" << std::endl;
+                        << " transport stations from build/ CSV" << std::endl;
 
                     if (!m_vec_CircleStations.empty()) {
-                        std::cout << "[EmptyEnvironmentState] First station: Map pos=("
-                            << m_MapData.vec_GraphNodes[0].position.x << ", " << m_MapData.vec_GraphNodes[0].position.y
+                        const auto& first = vec_StationData.front();
+                        std::cout << "[EmptyEnvironmentState] First station: CSV pos=("
+                            << first.vec2_Position.x << ", " << first.vec2_Position.y
                             << ") -> World pos=(" << m_vec_CircleStations[0].position.x
                             << ", " << m_vec_CircleStations[0].position.y << ")" << std::endl;
                     }
 
-                    // Load graph connections from generated map
-                    LoadGraphDataFromGeneratedMap();
+                    // Load graph connections from build/ CSV
+                    try {
+                        std::cout << "[EmptyEnvironmentState] Loading graph from build/ CSV files..." << std::endl;
+
+                        m_graph.LoadNodeData(s_BuildNodesPath, true);
+                        m_graph.LoadConnections(s_BuildConnectionsPath, true);
+
+                        m_b_GraphLoaded = true;
+                        std::cout << "[EmptyEnvironmentState] Graph loaded successfully from build/ CSV" << std::endl;
+                    }
+                    catch (const std::exception& e) {
+                        std::cerr << "[EmptyEnvironmentState] Failed to load graph from build/ CSV: " << e.what() << std::endl;
+                        m_b_GraphLoaded = false;
+                    }
                 }
                 else {
-                    // Fallback: Load from CSV
-                    auto vec_StationData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
+                    std::cout << "[EmptyEnvironmentState] Could not load from build/ folder, trying fallback..." << std::endl;
 
-                    if (vec_StationData.empty()) {
-                        std::cout << "[EmptyEnvironmentState] No station data loaded from CSV" << std::endl;
+                    // Fallback to old method
+                    if (m_b_MapDataLoaded && !m_MapData.vec_GraphNodes.empty()) {
+                        LoadGraphDataFromGeneratedMap();
                     }
                     else {
-                        // Transform using EXACT same formula as highways: (pos * 0.02f) - 1.0f
-                        // This ensures stations are placed at their exact road positions
-                        for (const auto& sd : vec_StationData) {
-                            StationCircle sc;
+                        auto vec_FallbackData = Utils::MapDataLoader::LoadStations(Core::GetMapPath(Core::k_NodeDataRelativePath));
 
+                        for (const auto& sd : vec_FallbackData) {
+                            StationCircle sc;
                             sc.position.x = sd.vec2_Position.x;
                             sc.position.y = sd.vec2_Position.y;
-
                             sc.transportTypes = sd.vec_TransportTypes;
                             sc.stationID = sd.i_StationID;
                             m_vec_CircleStations.push_back(sc);
                         }
 
-                        std::cout << "[EmptyEnvironmentState] Loaded " << m_vec_CircleStations.size()
-                            << " transport stations from CSV (exact road positions)" << std::endl;
-
-                        if (!m_vec_CircleStations.empty()) {
-                            const auto& first = vec_StationData.front();
-                            std::cout << "[EmptyEnvironmentState] First station: CSV pos=("
-                                << first.vec2_Position.x << ", " << first.vec2_Position.y
-                                << ") -> World pos=(" << m_vec_CircleStations[0].position.x
-                                << ", " << m_vec_CircleStations[0].position.y << ")" << std::endl;
-                        }
-
-                        // Load graph connections from CSV
                         LoadGraphData();
                     }
                 }
