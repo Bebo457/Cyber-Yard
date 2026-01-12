@@ -14,9 +14,26 @@ struct StationData {
     int i_StationID;
 };
 
+struct EdgeGeometryData {
+    int i_Source;
+    int i_Dest;
+    std::string s_Type;
+    std::string s_Format;
+    std::vector<glm::vec2> vec_Points;
+};
+
+struct GameConnectionData {
+    int i_Source;
+    int i_Destination;
+    std::string s_ConnectionType;
+};
+
 class MapDataLoader {
 public:
     static std::vector<StationData> LoadStations(const std::string& s_FilePath);
+    static std::vector<StationData> LoadNodesWithStation(const std::string& s_FilePath);
+    static std::vector<EdgeGeometryData> LoadEdgesGeometry(const std::string& s_FilePath);
+    static std::vector<GameConnectionData> LoadGameConnections(const std::string& s_FilePath);
 
 private:
     static bool ParseStationLine(const std::string& s_Line, StationData& out_Station);
