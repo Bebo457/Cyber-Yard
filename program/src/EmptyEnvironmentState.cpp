@@ -902,6 +902,24 @@ namespace ScotlandYard {
                     p_App->TransformMouseToVirtual(event.button.x, event.button.y, f_VirtualX, f_VirtualY);
                 }
 
+                if (m_b_ShowMrXTurnModal) {
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        int i_VirtualHeight = p_App ? p_App->GetVirtualHeight() : 720;
+                        int i_VirtualYBottom = i_VirtualHeight - static_cast<int>(f_VirtualY);
+                        m_b_MrXTurnButtonHover = IsPointInsideRect(static_cast<int>(f_VirtualX), i_VirtualYBottom, m_MrXTurnButtonRect);
+                        if (m_b_MrXTurnButtonHover) {
+                            m_b_ShowMrXTurnModal = false;
+                            m_b_MrXTurnButtonHover = false;
+                            UpdateMrXButtonStates();
+                            if (m_b_PendingMrXCameraFocus) {
+                                FocusCameraOnMrX();
+                                m_b_PendingMrXCameraFocus = false;
+                            }
+                        }
+                    }
+                    break;
+                }
+
                 // First, check if UI was clicked
                 UI::HandleMouseClick(static_cast<int>(f_VirtualX), static_cast<int>(f_VirtualY));
 
@@ -978,6 +996,18 @@ namespace ScotlandYard {
                 break;
             }
             case SDL_MOUSEMOTION:
+                if (m_b_ShowMrXTurnModal) {
+                    float f_VirtualX = static_cast<float>(event.motion.x);
+                    float f_VirtualY = static_cast<float>(event.motion.y);
+                    if (p_App) {
+                        p_App->TransformMouseToVirtual(event.motion.x, event.motion.y, f_VirtualX, f_VirtualY);
+                    }
+                    int i_VirtualHeight = p_App ? p_App->GetVirtualHeight() : 720;
+                    int i_VirtualYBottom = i_VirtualHeight - static_cast<int>(f_VirtualY);
+                    m_b_MrXTurnButtonHover = IsPointInsideRect(static_cast<int>(f_VirtualX), i_VirtualYBottom, m_MrXTurnButtonRect);
+                    break;
+                }
+
                 UI::HandleMouseMotion(event.motion.x, event.motion.y);
                 if (m_b_GameOver) {
                     float f_VirtualX = static_cast<float>(event.motion.x);
@@ -992,11 +1022,17 @@ namespace ScotlandYard {
                 }
                 break;
             case SDL_MOUSEWHEEL:
+                if (m_b_ShowMrXTurnModal) {
+                    break;
+                }
                 if (m_b_Camera3D) {
                     m_f_CameraAngleVelocity += static_cast<float>(event.wheel.y) * k_CameraScrollAcceleration;
                 }
                 break;
             case SDL_KEYDOWN:
+                if (m_b_ShowMrXTurnModal) {
+                    break;
+                }
                 if (event.key.keysym.sym == SDLK_SPACE) {
                     m_b_Camera3D = !m_b_Camera3D;
                     if (m_b_Camera3D) {
@@ -1679,9 +1715,77 @@ namespace ScotlandYard {
             UI::SetViewport(p_App->GetVirtualWidth(), p_App->GetVirtualHeight());
             UI::RenderHUD(p_App);
 
+            RenderMrXTurnBanner(p_App);
             RenderGameOverBanner(p_App);
 
             SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+        }
+
+        void EmptyEnvironmentState::RenderMrXTurnBanner(Core::Application* p_App) {
+            if (!m_b_ShowMrXTurnModal || m_b_GameOver || !p_App) {
+                return;
+            }
+
+            GLboolean b_DepthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+            GLboolean b_BlendWasEnabled = glIsEnabled(GL_BLEND);
+            GLboolean b_SrgbWasEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB);
+
+            if (b_DepthWasEnabled) {
+                glDisable(GL_DEPTH_TEST);
+            }
+            if (!b_BlendWasEnabled) {
+                glEnable(GL_BLEND);
+            }
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            if (b_SrgbWasEnabled) {
+                glDisable(GL_FRAMEBUFFER_SRGB);
+            }
+
+            UI::SetViewport(p_App->GetVirtualWidth(), p_App->GetVirtualHeight());
+
+            const float f_W = static_cast<float>(p_App->GetVirtualWidth());
+            const float f_H = static_cast<float>(p_App->GetVirtualHeight());
+            const float f_X0 = f_W * 0.20f;
+            const float f_X1 = f_W * 0.80f;
+            const float f_Y0 = f_H * 0.38f;
+            const float f_Y1 = f_H * 0.62f;
+
+            const UI::Color bg{ 0.06f, 0.06f, 0.16f, 0.93f };
+            UI::DrawRoundedRectScreen(f_X0, f_Y0, f_X1, f_Y1, bg, 20, p_App);
+
+            const float f_TitleCenter = f_Y0 + (f_Y1 - f_Y0) * 0.65f;
+            const float f_TitleHalf = 22.0f;
+            UI::DrawTextCenteredPx("MR X'S TURN", f_X0, f_TitleCenter - f_TitleHalf, f_X1, f_TitleCenter + f_TitleHalf,
+                UI::Color{ 1.0f, 1.0f, 1.0f, 1.0f }, p_App, -2.0f);
+
+            const float f_ButtonWidth = 140.0f;
+            const float f_ButtonHeight = 42.0f;
+            const float f_ButtonX0 = (f_W - f_ButtonWidth) * 0.5f;
+            const float f_ButtonY0 = f_Y0 + 36.0f;
+            m_MrXTurnButtonRect.x = static_cast<int>(f_ButtonX0);
+            m_MrXTurnButtonRect.y = static_cast<int>(f_ButtonY0);
+            m_MrXTurnButtonRect.w = static_cast<int>(f_ButtonWidth);
+            m_MrXTurnButtonRect.h = static_cast<int>(f_ButtonHeight);
+
+            UI::DrawMenuLikeButton(m_MrXTurnButtonRect, "", p_App, m_b_MrXTurnButtonHover);
+            UI::DrawTextCenteredPx("OK",
+                static_cast<float>(m_MrXTurnButtonRect.x),
+                static_cast<float>(m_MrXTurnButtonRect.y) - 2.0f,
+                static_cast<float>(m_MrXTurnButtonRect.x + m_MrXTurnButtonRect.w),
+                static_cast<float>(m_MrXTurnButtonRect.y + m_MrXTurnButtonRect.h) - 2.0f,
+                UI::Color{ 1.0f, 1.0f, 1.0f, 1.0f },
+                p_App,
+                -4.0f);
+
+            if (b_SrgbWasEnabled) {
+                glEnable(GL_FRAMEBUFFER_SRGB);
+            }
+            if (!b_BlendWasEnabled) {
+                glDisable(GL_BLEND);
+            }
+            if (b_DepthWasEnabled) {
+                glEnable(GL_DEPTH_TEST);
+            }
         }
 
         void EmptyEnvironmentState::RenderGameOverBanner(Core::Application* p_App) {
@@ -3546,6 +3650,10 @@ namespace ScotlandYard {
               m_s_EndGameDetail.clear();
               m_GameOverButtonRect = { 0, 0, 0, 0 };
               m_b_GameOverButtonHover = false;
+              m_b_ShowMrXTurnModal = false;
+              m_b_MrXTurnButtonHover = false;
+              m_MrXTurnButtonRect = { 0, 0, 0, 0 };
+              m_b_PendingMrXCameraFocus = false;
 
             ClearMovementSelection();
             m_i_SelectedStationID = -1;
@@ -3554,6 +3662,8 @@ namespace ScotlandYard {
             UI::SetRound(m_i_CurrentRound);
             UpdateMrXButtonStates();
             FocusCameraOnMrX();
+            m_b_PendingMrXCameraFocus = false;
+            m_b_ShowMrXTurnModal = false;
 
                             if (!MrXHasMoves()) {
                                     CheckEndOfGame(Winner::Detectives, "Mr X has no available moves at the start.");
@@ -4075,6 +4185,20 @@ namespace ScotlandYard {
             if (!m_s_EndGameDetail.empty()) {
                 std::cout << "[EmptyEnvironmentState] Powód: " << m_s_EndGameDetail << std::endl;
             }
+
+            m_b_ShowMrXTurnModal = false;
+            m_b_MrXTurnButtonHover = false;
+        }
+
+        void EmptyEnvironmentState::ShowMrXTurnModal() {
+            if (m_b_GameOver || !m_b_IsMrXTurn || m_i_CurrentRound <= 1) {
+                m_b_ShowMrXTurnModal = false;
+                return;
+            }
+
+            m_b_ShowMrXTurnModal = true;
+            m_b_MrXTurnButtonHover = false;
+            m_MrXTurnButtonRect = { 0, 0, 0, 0 };
         }
 
         bool EmptyEnvironmentState::IsPointInsideRect(int x, int y, const SDL_Rect& rect) {
@@ -4128,7 +4252,8 @@ namespace ScotlandYard {
             UI::ClearMrXSelections();
             UI::SetRound(m_i_CurrentRound);
             UpdateMrXButtonStates();
-            FocusCameraOnMrX();
+            m_b_PendingMrXCameraFocus = true;
+            ShowMrXTurnModal();
 
             std::cout << "[EmptyEnvironmentState] Starting round " << m_i_CurrentRound << std::endl;
 

@@ -340,6 +340,10 @@ namespace ScotlandYard {
             std::string m_s_EndGameDetail;
             SDL_Rect m_GameOverButtonRect{ 0, 0, 0, 0 };
             bool m_b_GameOverButtonHover = false;
+            bool m_b_ShowMrXTurnModal = false;
+            SDL_Rect m_MrXTurnButtonRect{ 0, 0, 0, 0 };
+            bool m_b_MrXTurnButtonHover = false;
+            bool m_b_PendingMrXCameraFocus = false;
 
             int FindStationAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH);
             int FindPlayerTokenAtScreenPos(int i_ScreenX, int i_ScreenY, const glm::mat4& mat4_View, const glm::mat4& mat4_Projection, int i_WindowW, int i_WindowH) const;
@@ -368,7 +372,9 @@ namespace ScotlandYard {
             bool MrXHasMoves() const;
             bool DidDetectivesCaptureMrX() const;
             void CheckEndOfGame(Winner winner = Winner::None, const std::string& s_Reason = {});
+            void ShowMrXTurnModal();
             void RenderGameOverBanner(Core::Application* p_App);
+            void RenderMrXTurnBanner(Core::Application* p_App);
             static bool IsPointInsideRect(int x, int y, const SDL_Rect& rect);
             void HandleGameOverMenuRequest(Core::Application* p_App);
             void RenderStationInfo(Core::Application* p_App);
