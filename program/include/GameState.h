@@ -18,6 +18,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <sys/types.h>
 
 
 #include <glm/glm.hpp>
@@ -302,6 +303,10 @@ private:
 
     // Network manager
     std::unique_ptr<Net::NetworkManager> m_pNetworkManager;
+    
+    // Python AI script process IDs  
+    pid_t m_pidMrXScript = -1;
+    pid_t m_pidDetectiveScript = -1;
 
     // Serialize the current players into a string to send to clients
     std::string SerializePlayerStates(const std::vector<Core::Player>& players) const;

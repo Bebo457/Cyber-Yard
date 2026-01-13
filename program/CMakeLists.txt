@@ -91,6 +91,7 @@ set(SOURCES
     src/GameStateNetwork.cpp
     src/Logger.cpp
     src/PythonBridge.cpp
+    src/PythonProcessLauncher.cpp
     src/TreeGenerator.cpp
     src/TreePlacement.cpp
     src/WaterRenderer.cpp
@@ -123,6 +124,7 @@ set(HEADERS
     include/NetworkManager.h
     include/Logger.h
     include/PythonBridge.h
+    include/PythonProcessLauncher.h
     include/TreeGenerator.h
     include/TreePlacement.h
     include/WaterRenderer.h

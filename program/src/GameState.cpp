@@ -7,6 +7,7 @@
 #include "RoadGenerator.h"
 #include "Logger.h"
 #include "PythonBridge.h"
+#include "PythonProcessLauncher.h"
 #include "GraphManager.h"
 
 #include <GL/glew.h>
@@ -154,6 +155,15 @@ void GameState::OnEnter(Core::Application* p_App) {
     if (needMrXBridge) {
         const std::string serverAddr = "tcp://localhost:5555";
         
+        // Auto-launch Python AI script if not already running
+        std::string script = Core::PythonProcessLauncher::GetScriptForAlgorithm(settings.e_AIMisterX);
+        if (!script.empty()) {
+            std::string scriptDir = Core::GetMapPath("../scripts/");
+            std::string fullPath = scriptDir + script;
+            m_pidMrXScript = Core::PythonProcessLauncher::LaunchScript(fullPath);
+            Core::PythonProcessLauncher::WaitForServer(serverAddr, 5000);
+        }
+        
         if (PythonBridge::ProbeServer(serverAddr)) {
             try {
                 ::g_pBridge = new PythonBridge(serverAddr);
@@ -170,6 +180,16 @@ void GameState::OnEnter(Core::Application* p_App) {
 
     if (needDetectiveBridge) {
         const std::string detectiveAddr = "tcp://localhost:5556";
+        
+        // Auto-launch Python AI script if not already running
+        std::string script = Core::PythonProcessLauncher::GetScriptForAlgorithm(settings.e_AIDetectives);
+        if (!script.empty()) {
+            std::string scriptDir = Core::GetMapPath("../scripts/");
+            std::string fullPath = scriptDir + script;
+            m_pidDetectiveScript = Core::PythonProcessLauncher::LaunchScript(fullPath);
+            Core::PythonProcessLauncher::WaitForServer(detectiveAddr, 5000);
+        }
+        
         if (PythonBridge::ProbeServer(detectiveAddr)) {
             try {
                 ::g_pDetectiveBridge = new PythonBridge(detectiveAddr);
@@ -1152,6 +1172,16 @@ void GameState::OnExit(Core::Application* p_App) {
         std::cout << "[OnExit] Cleaning up Python bridge (Detective)...\n" << std::flush;
         delete ::g_pDetectiveBridge;
         ::g_pDetectiveBridge = nullptr;
+    }
+    
+    // Terminate Python AI script processes
+    if (m_pidMrXScript > 0) {
+        Core::PythonProcessLauncher::TerminateScript(m_pidMrXScript);
+        m_pidMrXScript = -1;
+    }
+    if (m_pidDetectiveScript > 0) {
+        Core::PythonProcessLauncher::TerminateScript(m_pidDetectiveScript);
+        m_pidDetectiveScript = -1;
     }
 
     if (!p_App || !p_App->IsTrainingMode()) {

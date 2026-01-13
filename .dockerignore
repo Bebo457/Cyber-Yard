@@ -1,0 +1,27 @@
+# Ignore build artifacts
+program/build/
+*.o
+*.a
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker files (don't need to copy these into the image)
+docker/
+
+# Git
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Training data and logs (large files)
+program/scripts/logs/
+program/scripts/training_data/
+program/scripts/*.pth
